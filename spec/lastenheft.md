@@ -1,8 +1,9 @@
 # Lastenheft: k-deskflight (OpenDesk Preflight Operator)
 
 **Dokument-ID:** LH-OPD-PFO-001  
-**Arbeitsname (Repository):** k-deskflight  
-**Produktname (vorläufig):** opendesk-preflight-operator (siehe LH-PROD-001, LH-OP-009)  
+**Projektname / Repository:** k-deskflight  
+**Produktname:** k-deskflight  
+**Fachliche Produktbeschreibung:** OpenDesk Preflight Operator  
 **Artefakt:** Lastenheft  
 **Zielbild:** Kubernetes-native Vorabprüfung für OpenDesk-Bereitstellungen  
 **Version:** 0.1.0  
@@ -10,7 +11,7 @@
 **Autor:** Dietmar Burkard  
 **Lizenzziel:** Open Source (konkrete Lizenz offen, siehe LH-OP-003)  
 **Sprache des Lastenhefts:** Deutsch  
-**Sprache der Projektartefakte:** offen (siehe LH-OP-011)  
+**Sprache der Projektartefakte:** siehe LH-NF-021  
 
 ---
 
@@ -132,29 +133,72 @@ Das Projekt soll für externe Mitwirkende verständlich, testbar und nachvollzie
 
 ### LH-PROD-001 — Produktname
 
-Der vorläufige Produktname lautet:
+Der Produktname lautet:
 
 ```text
-opendesk-preflight-operator
+k-deskflight
 ```
+
+Die fachliche Produktbeschreibung lautet:
+
+```text
+OpenDesk Preflight Operator
+```
+
+Projektname, Repository-Name, Container-Image-Name und Helm-Chart-Name sollen einheitlich `k-deskflight` verwenden. Der Begriff „OpenDesk Preflight Operator" beschreibt ausschließlich die fachliche Funktion und stellt keine offizielle Zugehörigkeit zum OpenDesk-Projekt dar.
 
 ### LH-PROD-002 — Hauptressource
 
 Die zentrale Kubernetes-Ressource soll heißen:
 
 ```yaml
-apiVersion: opendesk.io/v1alpha1
+apiVersion: preflight.k-deskflight.dev/v1alpha1
 kind: OpenDeskPreflightCheck
 ```
 
-### LH-PROD-003 — Beispielhafte Zielressource
+### LH-PROD-003a — MVP-Beispiel
 
-Das Feld `domain` benennt den primären DNS-Namen der OpenDesk-Installation. Es dient als Eingabe für DNS- und TLS-Prüfungen (LH-F-018, LH-F-019).
+Das folgende Beispiel deckt ausschließlich Prüfungen ab, die im MVP (LH-PRI-001, LH-MVP-002) enthalten sind.
+
+```yaml
+apiVersion: preflight.k-deskflight.dev/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: cluster-readiness
+spec:
+  profile: production
+
+  checks:
+    kubernetesVersion:
+      min: "1.27"
+
+    ingress:
+      required: true
+      className: nginx
+
+    certManager:
+      required: true
+
+    storage:
+      requiredClasses:
+        - default
+        - backup
+
+    resources:
+      minCpu: "16"
+      minMemory: "64Gi"
+```
+
+### LH-PROD-003b — Zielbild-Beispiel (spätere Ausbaustufen)
+
+Das folgende Beispiel zeigt das vollständige Zielbild inklusive Prüfungen, die in späteren Versionen vorgesehen sind (LH-PRI-002, LH-PRI-003).
+
+Das Feld `domain` benennt den primären DNS-Namen der OpenDesk-Installation und dient als Eingabe für DNS- und TLS-Prüfungen (LH-F-018, LH-F-019).
 
 Zugangsdaten externer Dienste werden nicht direkt im Spec abgelegt, sondern über `secretRef` auf bestehende Kubernetes-Secrets referenziert (siehe LH-DAT-007).
 
 ```yaml
-apiVersion: opendesk.io/v1alpha1
+apiVersion: preflight.k-deskflight.dev/v1alpha1
 kind: OpenDeskPreflightCheck
 metadata:
   name: cluster-readiness
@@ -350,11 +394,11 @@ Das Profil `production` soll für produktionsnahe oder produktive Umgebungen ged
 
 Es soll strengere Anforderungen prüfen, insbesondere bezüglich Ressourcen, Storage, TLS, Ingress und externen Diensten.
 
-### LH-PROF-004 — Profil `custom` (spätere Version)
+### LH-PROF-004 — Modus `custom` (spätere Version)
 
-Das Profil `custom` soll es ermöglichen, Prüfungen vollständig über die Custom Resource zu definieren.
+Der Wert `custom` im Feld `profile` steht für vollständig benutzerdefinierte Prüfkonfigurationen. Er ist kein vordefinierter Prüfstandard, sondern markiert den Modus, in dem alle Prüfungen ausschließlich aus den Angaben der Custom Resource abgeleitet werden, ohne dass profil-spezifische Defaults angewendet werden.
 
-Dieses Profil ist nicht Bestandteil des initialen Profilumfangs (siehe LH-PROF-001) und wird mit einer späteren Version eingeführt.
+Dieser Modus ist nicht Bestandteil des initialen Profilumfangs (siehe LH-PROF-001) und wird mit einer späteren Version eingeführt.
 
 ---
 
@@ -632,6 +676,18 @@ Der Operator soll ressourcenschonend betrieben werden können.
 
 Änderungen an der CRD sollen nach Möglichkeit rückwärtskompatibel gestaltet werden.
 
+### LH-NF-021 — Projektsprache
+
+Die Sprache der Projektartefakte ist wie folgt festgelegt:
+
+- Quellcode, Bezeichner, Codekommentare: Englisch
+- Issues, Pull Requests, Commit Messages: Englisch
+- Benutzersichtbare Operator-Ausgaben (Conditions, Reasons, Messages, Events, Logs): Englisch
+- CONTRIBUTING, Code of Conduct: Englisch
+- README.md, Lastenheft, Pflichtenheft, fachliche Spezifikationsdokumente: Deutsch
+
+Begründung: Englisch für Code und Community-Artefakte ermöglicht internationale Mitwirkende; Deutsch für die fachlichen Spezifikationsdokumente entspricht der Zielgruppe behördennaher und deutschsprachiger Betreiber (siehe LH-PK-004).
+
 ---
 
 ## 13. Schnittstellenanforderungen
@@ -818,7 +874,7 @@ Der Operator kann erkennen, ob cert-manager-Ressourcen im Cluster vorhanden sind
 
 ### LH-AK-009 — Ressourcen prüfbar
 
-Der Operator kann grundlegende Clusterressourcen bewerten.
+Der Operator kann die allocatable CPU- und Arbeitsspeicherkapazität aller Nodes im Zustand `Ready` summieren und gegen die in der Custom Resource konfigurierten Mindestwerte für CPU und Speicher prüfen. Das Ergebnis wird im Status als Condition dargestellt.
 
 ### LH-AK-010 — Fehlerfall robust
 
@@ -1019,20 +1075,19 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 
 ## 22. Offene Punkte
 
-| Kennung   | Offener Punkt                                          |
-| --------- | ------------------------------------------------------ |
-| LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen |
-| LH-OP-002 | Namensraum und API-Gruppe final entscheiden            |
-| LH-OP-003 | Lizenz auswählen                                       |
-| LH-OP-004 | Unterstützte Kubernetes-Versionen definieren           |
-| LH-OP-005 | Umfang der externen Dienstprüfungen festlegen          |
-| LH-OP-006 | Entscheidung über Helm Chart im MVP treffen            |
-| LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen    |
-| LH-OP-008 | Entscheidung über Report-Format treffen                |
-| LH-OP-009 | Projektname finalisieren                               |
-| LH-OP-010 | Governance für Open-Source-Beiträge definieren         |
-| LH-OP-011 | Projektsprache (Code, Dokumentation, Commits) festlegen |
-| LH-OP-012 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren |
+| Kennung   | Offener Punkt                                                              |
+| --------- | -------------------------------------------------------------------------- |
+| LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     |
+| LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                |
+| LH-OP-003 | Lizenz auswählen                                                           |
+| LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               |
+| LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              |
+| LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                |
+| LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        |
+| LH-OP-008 | Entscheidung über Report-Format treffen                                    |
+| LH-OP-009 | Projektname finalisieren                                                   |
+| LH-OP-010 | Governance für Open-Source-Beiträge definieren                             |
+| LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren |
 
 ---
 
