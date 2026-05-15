@@ -9,7 +9,7 @@
 **Version:** 0.1.0  
 **Status:** Entwurf  
 **Autor:** Dietmar Burkard  
-**Lizenzziel:** Open Source (konkrete Lizenz offen, siehe LH-OP-003)  
+**Lizenzziel:** MIT  
 **Sprache des Lastenhefts:** Deutsch  
 **Sprache der Projektartefakte:** siehe LH-NF-021  
 
@@ -894,9 +894,7 @@ Das Projekt enthält eine Dokumentation mit Installations- und Nutzungsbeispiele
 
 ### LH-AK-014 — Open-Source-Veröffentlichung möglich
 
-Das Projekt enthält Lizenzdatei, README und grundlegende Beitragsinformationen.
-
-Hinweis: Voraussetzung für die Erfüllung dieses Kriteriums ist die vorherige Klärung von LH-OP-003 (Lizenzauswahl).
+Das Projekt enthält eine MIT-Lizenzdatei, README und grundlegende Beitragsinformationen.
 
 ### LH-AK-015 — Minimalrechte dokumentiert
 
@@ -1079,7 +1077,6 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 | --------- | -------------------------------------------------------------------------- |
 | LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     |
 | LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                |
-| LH-OP-003 | Lizenz auswählen                                                           |
 | LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               |
 | LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              |
 | LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                |
