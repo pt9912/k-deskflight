@@ -96,8 +96,10 @@ Pflicht-Quality-Gates auf Skelett-Ebene aktiv.
 - DCO-Bot-Aktivierung als Folgepflicht (`ADR 0011 §2.4`).
 - `deploy/manifests/`-Verzeichnis angelegt (initial leer oder
   CRD-Stub als Platzhalter; siehe M2).
-- README-Stand bleibt Stand `c3da8ff` (Roadmap und ADRs verlinken
-  weiterhin korrekt).
+- README-Stand bleibt zur M1-Aktivierung der aktuelle `main`-Stand;
+  Roadmap- und ADR-Querverweise im README sind konsistent zu halten,
+  legitime spätere Edits (Tippfehler, neue ADR-Aufnahmen) zwingen
+  zu keiner Roadmap-Änderung.
 
 **Memory-Hinweis (intern, für Maintainer):** Die m-trace-Quelldateien
 (`/Development/m-trace/Makefile`, `apps/api/.golangci.yml`,
@@ -156,6 +158,15 @@ depguard-Boundary-Gates aktiv.
 - **depguard-Regeln im Linter-Profil** (Stub): erste Layer-
   Definition gemäß Pflichtenheft/`architecture.md` (`LH-QG-004`).
   Strikte Durchsetzung kommt in M6.
+- **Coverage-Range-Selektor und `scripts/coverage-gate.sh` anlegen**
+  (`LH-QG-003`, Adaption von `m-trace/apps/api/scripts/
+  coverage-gate.sh`): Selektor schließt `cmd/`-Wiring aus und
+  zielt auf `internal/`-Pakete (konkrete Pfade gemäß Pflichtenheft).
+  Skript liest das Total-Line-Cover-Ergebnis und exited mit 1 bei
+  Unterschreitung der Schwelle. In M2 ist das Skript bereits
+  vorhanden und mit niedriger Schwelle (z. B. 0 %) als
+  Smoketest-Pfad aktiv; M6 hebt die Schwelle auf 90 % und macht
+  die Verletzung PR-blockierend.
 - Beispielmanifest minimal (CR ohne Inhalt außer Name).
 
 **Lastenheft-Kennungen:** `LH-F-001`, `LH-F-002`, `LH-F-003`,
@@ -164,7 +175,8 @@ depguard-Boundary-Gates aktiv.
 `LH-NF-002` (Kubernetes-Konventionen), `LH-NF-004` (Stabilität),
 `LH-NF-006` (Minimalrechte-Konzept), `LH-PROD-002` (API-Gruppe),
 `LH-PROF-002`/`LH-PROF-003` (Schema-Defaults), `LH-AK-015` (RBAC),
-`LH-DAT-002` (Status-Speicherung), `LH-QG-004` (Boundary-Stub),
+`LH-DAT-002` (Status-Speicherung), `LH-QG-003` (Coverage-Skript +
+Range-Selektor, Schwelle in M6), `LH-QG-004` (Boundary-Stub),
 `LH-QG-005` (Generated-Drift).
 
 **Verifikation:**
