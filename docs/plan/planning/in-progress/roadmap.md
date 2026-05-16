@@ -14,14 +14,17 @@ Diese Roadmap legt die **Slice-Reihenfolge** für den MVP fest — also das
 **Was** in welcher Reihenfolge geliefert wird, nicht das **Wie** im
 Detail.
 
-- Das **Pflichtenheft** (`LH-VM-002`) und/oder eine kompakte
-  `spec/architecture.md` entstehen **spätestens vor Aktivierung von
-  M1** und konkretisieren: Paketstruktur, Go-Modulpfad,
-  Reconciler-Layout, RBAC-Konzept, Build-/Release-Pipeline,
-  konkrete `depguard`-Regeln gemäß `LH-QG-004` und Coverage-Range
-  gemäß `LH-QG-003`. `ADR 0001 §3` verlangt diese Reihenfolge
-  („spätestens vor der ersten Implementierungs-Slice"); M1 ist die
-  erste Implementierungs-Slice.
+- **`spec/architecture.md`** ist angelegt (`AR-*`-Kennungsraum,
+  Paket-Layout-Hybrid, Modulpfad `github.com/pt9912/k-deskflight`,
+  Layer-Modell, konkrete `depguard`-Regeln gemäß `LH-QG-004`,
+  Reconciler-/Check-/RBAC-Skizze, Build-Pipeline-Anker). Damit ist
+  `ADR 0001 §3` („spätestens vor der ersten Implementierungs-Slice")
+  für die strukturellen Architekturentscheidungen erfüllt; M1 ist
+  aktivierbar. Das **Pflichtenheft** (`LH-VM-002`) im engeren
+  V-Modell-Sinn — exakte CRD-Spec-Feld-Typen, Test-Mock-Strategie,
+  konkrete Schwellen, Probe-Timeouts — entsteht mit dem M1-Slice-Plan
+  bzw. in einer eigenen `spec/pflichtenheft.md`; offene Punkte sind
+  in `architecture.md` als `AR-OP-*` geführt.
 - Pro Slice entsteht beim Aktivieren ein eigener
   `in-progress/slice-MX-…md`-Plan mit Detail-Lieferzielen,
   Abnahmekriterien und Test-Schritten. Diese Roadmap wird nicht
