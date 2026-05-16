@@ -152,16 +152,20 @@ Projektname, Repository-Name, Container-Image-Name und Helm-Chart-Name sollen ei
 Die zentrale Kubernetes-Ressource soll heißen:
 
 ```yaml
-apiVersion: preflight.k-deskflight.dev/v1alpha1
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
 kind: OpenDeskPreflightCheck
 ```
+
+API-Gruppe, -Version, CRD-Kind und CRD-Scope (namespaced) sind in
+`ADR 0006` final entschieden. Die Halter-Domain `geo-terrain.net` wird
+vom Projektowner kontrolliert.
 
 ### LH-PROD-003a — MVP-Beispiel
 
 Das folgende Beispiel deckt ausschließlich Prüfungen ab, die im MVP (LH-PRI-001, LH-MVP-002) enthalten sind.
 
 ```yaml
-apiVersion: preflight.k-deskflight.dev/v1alpha1
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
 kind: OpenDeskPreflightCheck
 metadata:
   name: cluster-readiness
@@ -198,7 +202,7 @@ Das Feld `domain` benennt den primären DNS-Namen der OpenDesk-Installation und 
 Zugangsdaten externer Dienste werden nicht direkt im Spec abgelegt, sondern über `secretRef` auf bestehende Kubernetes-Secrets referenziert (siehe LH-DAT-007).
 
 ```yaml
-apiVersion: preflight.k-deskflight.dev/v1alpha1
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
 kind: OpenDeskPreflightCheck
 metadata:
   name: cluster-readiness
@@ -1077,7 +1081,7 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 | Kennung   | Offener Punkt                                                              | Status                                                                                                              |
 | --------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     | offen                                                                                                               |
-| LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                | offen — Vorklärung in [`docs/plan/planning/open/api-gruppe-domain.md`](../docs/plan/planning/open/api-gruppe-domain.md) |
+| LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                | Geschlossen mit [`ADR 0006`](../docs/plan/adr/0006-api-gruppe-und-crd-scope.md) (Vorklärung archiviert unter [`docs/archive/api-gruppe-domain.md`](../docs/archive/api-gruppe-domain.md)) |
 | LH-OP-003 | Lizenz auswählen                                                           | entfallen mit Commit `3be7b28` (MIT-Entscheidung; vor Einführung des ADR-Lifecycles)                                |
 | LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | offen                                                                                                               |
 | LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |

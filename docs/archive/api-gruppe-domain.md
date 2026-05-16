@@ -1,10 +1,20 @@
 # Trigger — Domain für Kubernetes-API-Gruppe
 
+> **Archiv-Notiz (2026-05-16):** Dieser Vorklärungs-Trigger ist mit
+> [`ADR 0006`](../plan/adr/0006-api-gruppe-und-crd-scope.md) beantwortet.
+> Halter-Domain: `geo-terrain.net`. API-Gruppe:
+> `k-deskflight.geo-terrain.net/v1alpha1`. Der Eintrag wurde aus
+> `docs/plan/planning/open/` nach `docs/archive/` verschoben (überholt,
+> weil entschieden — `ADR 0001 §3`). Inhaltliche Aussagen unten sind
+> historischer Stand der Vorklärung; nur die Bezug-Pfade wurden an den
+> Archiv-Speicherort angepasst. Die abschließende Auswertung findet
+> sich in §6.
+
 **Trigger für:** `LH-OP-002` (Namensraum und API-Gruppe final entscheiden)
 **Eröffnet:** 2026-05-16
-**Bezug:** [Lastenheft `LH-OP-002`, `LH-PROD-002`, `LH-DAT-007`](../../../../spec/lastenheft.md),
-[ADR 0001](../../adr/0001-dokumentations-und-planungsstruktur.md),
-[ADR 0002](../../adr/0002-adr-lifecycle.md)
+**Bezug:** [Lastenheft `LH-OP-002`, `LH-PROD-002`, `LH-DAT-007`](../../spec/lastenheft.md),
+[ADR 0001](../plan/adr/0001-dokumentations-und-planungsstruktur.md),
+[ADR 0002](../plan/adr/0002-adr-lifecycle.md)
 
 ---
 
@@ -72,3 +82,25 @@ Offen. Wandert nach `next/`, sobald ein Halterkandidat steht, oder
 direkt nach `in-progress/`, falls die Domainregistrierung ohne weitere
 Vorklärung möglich ist. Wird mit Akzeptanz der zugehörigen ADR
 abgeschlossen und in `done/` als Closure-Notiz dokumentiert.
+
+---
+
+## 6. Closure
+
+**Datum:** 2026-05-16
+**Beschluss-ADR:** [`ADR 0006`](../plan/adr/0006-api-gruppe-und-crd-scope.md)
+**Status:** überholt — entschieden.
+
+**Ergebnis:**
+
+- Halter-Domain: `geo-terrain.net` (vom Projektowner kontrolliert).
+- API-Gruppe: `k-deskflight.geo-terrain.net`.
+- API-Version: `v1alpha1`.
+- CRD-Kind: `OpenDeskPreflightCheck`.
+- CRD-Scope: namespaced.
+
+**Pfad:** `docs/plan/planning/open/` → `docs/archive/`. `ADR 0001 §3`
+trennt `archive/` (verworfen oder überholt) von `done/` (umgesetzt);
+ein Vorklärungs-Trigger gehört bei Beantwortung in `archive/`. Der in
+§5 oben genannte `done/`-Pfad war eine kleine Ungenauigkeit beim
+Eröffnen — die korrekte Closure ist diese §6-Notiz im Archiv.
