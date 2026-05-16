@@ -256,7 +256,7 @@ die **Struktur-Schichten**:
   `production`.
 - `Spec.Checks`: verschachtelte Map auf Check-Typ-spezifische
   Sub-Strukturen (kubernetesVersion, ingress, certManager, storage,
-  resources). MVP-Set siehe `LH-PRI-001`.
+  resources, rbac). MVP-Set siehe `LH-PRI-001`.
 - `Status.Phase`: Enum (`LH-F-006`: `Pending`/`Running`/`Passed`/
   `Warning`/`Failed`/`Unknown`).
 - `Status.Summary`: Aggregat (`LH-F-007`: passed/warning/failed/
@@ -293,7 +293,17 @@ bei jedem CI-Lauf und vergleicht via `git diff --exit-code`.
 
 Initial `v1alpha1` (`ADR 0006 §2.3`). Schema-Brüche zwischen
 MVP-Releases sind nach Kubernetes-Konvention für `v1alpha1`
-zulässig. Migration auf `v1alpha2` oder `v1beta1` ist Folge-ADR-Stoff
+zulässig. Für produktive Instanzen wird dieses Risiko über einen
+bewussten Migrationspfad abgefedert:
+
+- CRD-Brüche im Release werden mit Release-Notes, betroffenen Feldern und
+  Re-Apply-Anleitung dokumentiert.
+- Der Operator transformiert bestehende CRs **nicht** automatisch.
+- Migration erfolgt kontrolliert: Reconcile kurz temporär stoppen,
+  betroffene CRs exportieren, auf neues Spec/CRD setzen, Reconcile
+  wieder starten.
+
+Migration auf `v1alpha2` oder `v1beta1` ist Folge-ADR-Stoff
 (siehe `ADR 0006 §4`).
 
 Conversion-Webhooks sind **nicht** Bestandteil des MVP. Ein
@@ -323,10 +333,41 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 3. **Determine Active Checks** — basierend auf Profile und
    Spec.Checks-Map die zu aktivierenden Check-Instanzen aus der
    `CheckRegistry` (`AR-013`) auflösen.
-4. **Execute Checks** — pro aktivem Check eine Goroutine starten
-   (Limit per Worker-Pool — Pflichtenheft-Detail) oder sequenziell,
-   je nach Pflichtenheft-Wahl. Pro Check: `Run(ctx, spec) Result`
-   ohne Cluster-Mutation.
+4. **Execute Checks** — basierend auf der Registry-Auflösung werden die
+   Check-spezifischen Werte in `CheckSpec`-Instanzen transformiert und via
+   `spec.Kind()` gegen `Check.SpecKind()` validiert.
+   Danach wird die Ausführung durch ein verbindliches Worker-Pool-Modell
+   bestimmt (Pflichtenheft-Detail):
+    - **MVP-Entscheidung:** bounded parallel über Worker-Pool (`workerPoolSize`
+     konfigurierbar), fallback auf sequenziell bei `workerPoolSize <= 1`.
+     Der Wert stammt aus dem Operator-Config (`WORKER_POOL_SIZE` / Flag) mit
+     Default `4` und wird in `Fetch` validiert:
+       - `< 1` wird auf `1` normalisiert.
+       - `> 32` wird auf `32` normalisiert.
+     Jede Normalisierung wird als Konfigurationsfehler mit `Status=Warning`
+     und `Condition=ConfigurationInvalid` in den Status geschrieben; die
+     Ausführung läuft mit dem normalisierten Wert weiter.
+   - Der Reconciler erzeugt pro aktivem Check eine immutable
+     Task-Repäsentation und pusht diese in ein **gepuffertes Task-Channel**.
+     Die Puffergröße ist mindestens `len(activeChecks)`; damit bleiben Produzenten
+     nicht blockiert, solange Worker noch starten.
+    - Resultate laufen ausschließlich über ein **gepuffertes Ergebnis-Channel**
+     (`domain.Result` + Check-Name), konsumiert durch einen
+     single-threaded Aggregator im Reconcile-Thread.
+    - Alle Worker und Kanäle werden mit demselben Reconcile-`ctx`
+      orchestriert: Bei `ctx.Done()` brechen sie frühzeitig ab, geben
+      `Unknown`/`Reason=ContextCancelled` zurück und beenden sich deterministisch.
+      Der Aggregator beendet die Aufzeichnung beim Schließen des Ergebnis-Channels.
+    - Kein geteilter mutable Check-Zustand im Adapter-/Reconcile-Pfad, um
+     Datenrennen auszuschließen.
+    - `workerTaskRunner` verwaltet `sync.WaitGroup`, startet Workers nur im
+      gültigen Pool-Bereich, schließt deterministisch das Ergebnis-Channel und
+      stellt sicher, dass keine Goroutine „hängen bleibt“ (kein Leak bei
+      vorzeitigem Rückgabepfad).
+   - Timeout-/Fehlerbehandlung wird zentral im Reconcile-Executor abgefangen
+     und als `Result` nach außen gegeben (`Unknown` bei Laufzeit- oder
+     Kontextabbruch).
+   - Pro Check: `Run(ctx, spec) Result` ohne Cluster-Mutation.
 5. **Aggregate** — Schweregrade auf die Gesamtphase mappen
    (`LH-F-031`/`ADR 0010 §2.3`).
 6. **Update Status** — `client.Status().Update` mit
@@ -356,6 +397,10 @@ andere Checks nicht stoppen. Konkrete Mechanik:
 - Reconciler selbst hat einen äußeren `defer/recover` für
   unerwartete Panics; bei einem solchen wird Phase `Unknown` mit
   Condition `ReconcileError` gesetzt.
+- `SpecInvalid` ist ausschließlich für inhaltliche Spec-Fehler vorgesehen
+  (z. B. Cross-Field-Validierung), `ConfigurationInvalid` nur für
+  Operator-/Ausführungs-Konfigurationsfehler (z. B. Bereichsüberschreitung
+  von `workerPoolSize`).
 
 ### AR-026 — Leader-Election und Replica-Modell
 
@@ -407,9 +452,16 @@ beide Probes:
   Reconcile-Schleifen-Panik.
 - **`readinessProbe`** auf `/readyz` mit straffen Schwellen
   (`initialDelaySeconds: 5`, `periodSeconds: 10`,
-  `failureThreshold: 3`) — Operator wird erst als „Ready" gemeldet,
-  wenn der Manager läuft und (bei aktiver Leader-Election, `AR-026`)
-  der Leader-Election-Loop ein Ergebnis hat.
+  `failureThreshold: 3`) — Operator wird ready, wenn Controller-Manager
+  läuft, Cache-Sync abgeschlossen ist und ein expliziter Leader-Check true
+  meldet.
+  Damit bleiben Standby-Pods bei `replicas>1` unready.
+  Die Readiness-Read-Logik ist verbindlich:
+  - Der Operator registriert einen benannten Readiness-Check (z. B.
+    über `mgr.AddReadyzCheck("leader", ...)`), der auf den aktuellen
+    Leader-Status (`LeaderElection`) prüft.
+  - Optional kann zusätzlich ein expliziter Alias-Endpunkt wie
+    `/readyz/leader` bereitgestellt werden.
 
 Konkrete Werte gehören ins Pflichtenheft; die Default-Werte oben sind
 controller-runtime-Standard und tragen den MVP-Pfad.
@@ -426,6 +478,7 @@ Definiert in `internal/domain/check.go`:
 package domain
 
 import "context"
+import "time"
 
 type Severity string
 
@@ -453,11 +506,19 @@ type Result struct {
 }
 
 type Check interface {
-    Name() string                                  // Stable ID, used as ConditionType
+    Name() string
+    SpecKind() string                               // Erwarteter Check-Spec-Typ-Token
     Run(ctx context.Context, spec CheckSpec) Result
 }
 
-type CheckSpec interface{}   // Marker; konkrete Checks casten auf eigene Sub-Spec
+type CheckSpec interface {
+    Kind() string
+    Validate(ctx context.Context) error
+}
+
+// Bei `CheckRegistry`- und Reconcile-Ebene ist vor dem `Run` zu prüfen,
+// dass `spec.Kind() == check.SpecKind()`. Bei Abweichung: kein Panic,
+// sondern `Unknown` + `Reason=InvalidSpec`.
 ```
 
 ### AR-013 — Check-Registry
@@ -473,7 +534,7 @@ import "github.com/pt9912/k-deskflight/internal/domain"
 type CheckRegistry interface {
     Register(c domain.Check)
     Resolve(name string) (domain.Check, bool)
-    ListByProfile(profile string, spec map[string]any) []domain.Check
+    ListByProfile(profile string, spec map[string]domain.CheckSpec) []domain.Check
 }
 ```
 
@@ -493,7 +554,7 @@ Phase. `Unknown`-Results aus `ConnectivityUnknown`-artigen Checks
 **Conditions-Sortierung:** Vor `Status().Update` werden die
 Conditions deterministisch nach `Type` (Condition-Name) alphabetisch
 sortiert — unabhängig von der Ausführungsreihenfolge der Checks
-(`AR-OP-003` Sequenz vs. Parallel) und unabhängig davon, in welcher
+(`AR-009 §4` Sequenz vs. Parallel) und unabhängig davon, in welcher
 Reihenfolge der Reconciler die Results aggregiert hat. Damit bleibt
 der CR-Status-Diff zwischen Reconcile-Läufen stabil und reflektiert
 nur tatsächliche Zustandsänderungen, nicht Sortierungs-Rauschen.
@@ -504,34 +565,52 @@ nur tatsächliche Zustandsänderungen, nicht Sortierungs-Rauschen.
 
 ### AR-015 — ClusterRole MVP-Minimum
 
-Für die MVP-Prüfungen werden ausschließlich **lesende** cluster-weite
-Rechte benötigt (`LH-F-035`, `LH-AK-015`, `LH-NF-006`):
+Für die MVP-Prüfungen werden die minimal notwendigen Cluster-Rechte benötigt
+(`LH-F-035`, `LH-AK-015`, `LH-NF-006`):
 
 | API-Gruppe | Ressourcen | Verben | Begründung |
 | ---------- | ---------- | ------ | ---------- |
 | `""` (core) | `nodes` | `get`, `list`, `watch` | Allocatable CPU/Memory, Ready-Status (`LH-F-015`) |
+| `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks` | `get`, `list`, `watch` | CR-Verarbeitung/Discovery (`LH-F-004`) |
+| `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks/status` | `get`, `update`, `patch` | Status-Update (`LH-F-004`) |
 | `storage.k8s.io` | `storageclasses` | `get`, `list`, `watch` | `LH-F-010`/`LH-F-011` |
 | `networking.k8s.io` | `ingressclasses` | `get`, `list`, `watch` | `LH-F-012` |
 | `apiextensions.k8s.io` | `customresourcedefinitions` | `get`, `list` | `cert-manager.io`-Discovery (`LH-F-013`) |
 | `authorization.k8s.io` | `selfsubjectaccessreviews`, `selfsubjectrulesreviews` | `create` | `LH-F-024` |
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch` | Leader-Election (`AR-026`) |
 
-Strikte Minimal-Rechte-Linie (`LH-SEC-001`, `LH-NF-006`): keine
-weiteren Rechte. Insbesondere keine `persistentvolumeclaims`-Rechte
-im MVP (PVC-Inspektion ist nicht Teil der MVP-Prüfungen aus
-`LH-PRI-001`).
+Strikte Minimal-Rechte-Linie (`LH-SEC-001`, `LH-NF-006`): Keine
+weiteren Rechte über die aufgeführten Verben/Typen hinaus.
+Insbesondere keine `persistentvolumeclaims`-Rechte im MVP (`LH-PRI-001` enthält PVC-Inspektion nicht).
 
 ### AR-016 — Role im Operator-Namespace
 
 **Default-Operator-Namespace:** `k-deskflight-system` (Konvention
 analog `cert-manager`, `metallb-system`, `kube-system`).
+**Betriebsmodus:**  
+1) **Cluster-Wide Mode (Default):** Reconciliation über alle Namespaces.
+   Dafür enthält `AR-015` die vollständigen Rechte inkl. `opendeskpreflightchecks`
+   und `/status`.
+2) **Namespace-Scoped Mode (optional):** Reconciliation nur in
+   `k-deskflight-system` über `--namespace=k-deskflight-system` und optional
+   zusätzliche Namespaced-RBAC-Objekte in diesem Namespace.
+   **Wichtig:** Viele Checks operieren auf clusterweiten Ressourcen
+   (`nodes`, `storageclasses`, `ingressclasses`, `customresourcedefinitions`),  
+   daher bleibt für diese Ressourcen die Cluster-Lese-Berechtigung in
+   der `AR-015`-ClusterRole aktiv. Der Namespace-Scoped-Modus reduziert
+   primär den Reconcile-Scope (`--namespace`) und die Namespaced-Status-/Spec-
+   Rechte, **nicht** automatisch jede clusterweite Leseberechtigung.
+   Der Trade-off wird als dokumentierte Security-Intention in der Ziel-Phase
+   `v0.2+` nachgezogen.
+
 Anwender-Overridebarkeit per Kustomize-Overlay ist möglich; ab v0.2
 zusätzlich per Helm-Values (`ADR 0005`). Die nachfolgenden
-Role-Definitionen leben in diesem Namespace.
+Role-Definitionen leben in diesem Namespace ausschließlich für den
+Namespace-Scoped Mode.
 
 | API-Gruppe | Ressourcen | Verben | Begründung |
 | ---------- | ---------- | ------ | ---------- |
-| `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks` | `get`, `list`, `watch`, `update`, `patch` | CR-Verarbeitung |
+| `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks` | `get`, `list`, `watch`, `update`, `patch` | CR-Verarbeitung (Namespace-Modus) |
 | `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks/status` | `get`, `update`, `patch` | Status-Updates (`LH-F-004`) |
 
 Strikte Minimal-Rechte-Linie: keine `events.create`/`events.patch`
@@ -543,13 +622,14 @@ RBAC-Set — siehe `§10` Verhältnis zu späteren Phasen.
 
 `k-deskflight-operator` im Operator-Namespace. Bindings:
 
-- ClusterRoleBinding `k-deskflight-operator` → ClusterRole
-  `k-deskflight-operator-cluster` (AR-015).
-- RoleBinding `k-deskflight-operator` im Operator-Namespace → Role
-  `k-deskflight-operator-namespace` (AR-016).
-- Optional: zusätzliche RoleBindings in CR-Namespaces, wenn CRs
-  außerhalb des Operator-Namespace liegen. Konkretisierung im
-  Pflichtenheft.
+- **Cluster-Wide Mode (Default):**
+  - ClusterRoleBinding `k-deskflight-operator` → ClusterRole
+    `k-deskflight-operator-cluster` (AR-015).
+- **Namespace-Scoped Mode (optional):**
+  - Zusätzlich RoleBinding `k-deskflight-operator` im Operator-Namespace →
+    Role `k-deskflight-operator-namespace` (AR-016).
+  - In diesem Profil bleibt die ClusterRoleBinding für die
+    clusterweiten Read-Ressourcen erhalten.
 
 ### AR-018 — SelfSubjectAccessReview-Right
 
@@ -567,8 +647,13 @@ aktivierten Prüfungen abgleichen, ohne weitere Rechte zu erhalten.
 
 Multi-Stage-`Dockerfile` analog `m-trace/apps/api/Dockerfile`:
 
-1. `deps` — `golang:1.26`-Base, `go.mod`/`go.sum` kopieren,
+1. `deps` — `golang:${GO_VERSION}`-Base (z. B. aus `go.mod`-Version oder
+   Projekt-Matrix, empfohlen `golang:1.22.x` als aktuelle Basis),
    `go mod download`.
+   Konkreter Build-Pfad: `Dockerfile` enthält `ARG GO_VERSION` (Default
+   aus `ARG GO_VERSION=1.22.3`) und validiert diesen ebenfalls im
+   `make`-Target gegen `go env GOVERSION`, damit Container- und Modul-Toolchain
+   synchron bleiben.
 2. `lint` — `golangci/golangci-lint:v2.x-alpine`,
    `golangci-lint run ./...` (`LH-QG-001`).
 3. `test` — von `deps`, `go test ./...` (`LH-QG-002`).
@@ -627,6 +712,9 @@ entstehen mit M1.
 - `internal/application/*` mit Port-Mocks (Tabellengetriebene
   Tests, generierte Mocks via `mockery` oder handgeschriebene
   Test-Doubles — Pflichtenheft).
+- Reconcile-spezifische Robustheitsfälle: `defer/recover` im Reconciler,
+  `context`-Timeouts bei Check-Ausführung, `Unknown`-Ergebnisse bei
+  Ausführungsfehlern sowie Condition/Phase-Mapping bei diesen Fehlern.
 - Hexagonal-Layer macht das ohne Cluster trivial.
 
 ### AR-024 — Integration-Tests via `envtest`
@@ -635,6 +723,10 @@ entstehen mit M1.
   Instanz lokal.
 - Tests für jede MVP-Check-Implementierung: passed-Case + failed-
   Case (`LH-AK-005..009`).
+- Tests für `resourceVersion`-Konflikte beim Status-Update, inklusive
+  Retry-Verhalten im Reconciler.
+- Integrationstest für `workerPoolSize`-Grenzfälle (Fallback auf Sequenz,
+  Begrenzung der Parallelität, sauberer Abbruch bei Timeout/Ctx-Cancel).
 - Laufzeit: erträglich (Sekunden bis wenige Minuten); Teil von
   `make test` / `make gates`.
 
@@ -672,12 +764,10 @@ ausdrücken kann. Dann eigene Folge-ADR.
 | ------- | ------------- | ------ |
 | `AR-OP-001` | Konkrete CRD-Spec-Feld-Typen und kubebuilder-Marker (validation, defaulting, printcolumns) | offen — Pflichtenheft (`LH-VM-002`) |
 | `AR-OP-002` | Wahl zwischen `mockery`-generierten Mocks und handgeschriebenen Test-Doubles für `internal/port/*` | offen — Pflichtenheft |
-| `AR-OP-003` | Worker-Pool-Modell für Check-Parallelisierung (`AR-009 §4` Execute-Phase): sequenziell vs. begrenzt-parallel | offen — Pflichtenheft, vor M3 |
 | `AR-OP-004` | Konkrete `+kubebuilder:rbac:...`-Marker-Sets am `Reconcile`-Receiver: genauer Verb-Satz pro Ressource, Marker-Doppelungen bei mehreren API-Gruppen, Konsolidierung mit `AR-015`/`AR-016` (Platzierung in `AR-007` festgelegt) | offen — M2-Slice-Plan |
 | `AR-OP-005` | Anwender-Overridebarkeit des Default-Operator-Namespace `k-deskflight-system` via Kustomize-Overlay (ab MVP) bzw. Helm-Values (ab v0.2, `ADR 0005`) — exakte Override-Mechanik | offen — M1-/M2-Slice-Plan |
 | `AR-OP-006` | OTel-Integration: Tracing-Spans im Reconcile-Pfad ja/nein | offen — v0.2-Slice, koordiniert mit `ADR 0007` |
 | `AR-OP-007` | Conversion-Webhook für künftige Versionssprünge (`AR-008`) — implementieren oder via Re-Apply lösen | offen — Folge-ADR zu `ADR 0006 §4` |
-| `AR-OP-008` | Check-Interface mit Generics (`type Check[Spec any]`) statt Marker-Interface (`CheckSpec interface{}`) — Go 1.26 unterstützt das; Type-Assertion-Panics wären eliminiert (`AR-012`) | offen — Entscheidung mit erstem Check-Slice (M3) |
 
 Die `AR-OP-*`-Punkte werden bei Aktivierung der jeweiligen Slice in
 die zugehörigen Slice-Pläne überführt oder, wenn übergreifend, als
