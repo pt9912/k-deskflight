@@ -14,8 +14,10 @@ Einträge wandern entweder:
 
 ## Bestand
 
-Aktuell keine Einträge.
+| Datei | Trigger für | Kurzbeschreibung |
+| ----- | ----------- | ---------------- |
+| [`api-gruppe-domain.md`](api-gruppe-domain.md) | `LH-OP-002` | Domain-Klärung als Vorbedingung für die finale Wahl der Kubernetes-API-Gruppe. |
 
 Die kanonische Liste offener fachlicher Punkte lebt im Lastenheft
-unter §22 (`LH-OP-*`). Eintrage in diesem Verzeichnis sind die
+unter §22 (`LH-OP-*`). Einträge in diesem Verzeichnis sind die
 Plan-/Arbeitssicht auf solche oder zusätzliche Trigger.

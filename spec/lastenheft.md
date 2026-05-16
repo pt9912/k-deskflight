@@ -1073,18 +1073,18 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 
 ## 22. Offene Punkte
 
-| Kennung   | Offener Punkt                                                              |
-| --------- | -------------------------------------------------------------------------- |
-| LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     |
-| LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                |
-| LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               |
-| LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              |
-| LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                |
-| LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        |
-| LH-OP-008 | Entscheidung über Report-Format treffen                                    |
-| LH-OP-009 | Projektname finalisieren                                                   |
-| LH-OP-010 | Governance für Open-Source-Beiträge definieren                             |
-| LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren |
+| Kennung   | Offener Punkt                                                              | Status                                                                                                              |
+| --------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     | offen                                                                                                               |
+| LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                | offen — Vorklärung in [`docs/plan/planning/open/api-gruppe-domain.md`](../docs/plan/planning/open/api-gruppe-domain.md) |
+| LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | offen                                                                                                               |
+| LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |
+| LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | offen                                                                                                               |
+| LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | offen                                                                                                               |
+| LH-OP-008 | Entscheidung über Report-Format treffen                                    | offen                                                                                                               |
+| LH-OP-009 | Projektname finalisieren                                                   | geschlossen mit [`ADR 0004`](../docs/plan/adr/0004-projektname.md)                                                  |
+| LH-OP-010 | Governance für Open-Source-Beiträge definieren                             | offen                                                                                                               |
+| LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren | offen                                                                                                               |
 
 ---
 
