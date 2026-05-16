@@ -221,7 +221,19 @@ depguard:
       deny:
         - pkg: github.com/pt9912/k-deskflight/internal/application
           desc: adapter implements port, must not call into application directly (AR-004)
+    api-no-internal:
+      list-mode: lax
+      files:
+        - '**/api/v1alpha1/**'
+      deny:
+        - pkg: github.com/pt9912/k-deskflight/internal
+          desc: api/v1alpha1 declares CRD types only — must not depend on internal/* (AR-004)
 ```
+
+`cmd/` ist bewusst ohne `depguard`-Restriktion — die Wiring-Schicht
+muss alle Layer importieren dürfen, um sie zu verdrahten (`AR-004`).
+Das ist die einzige Ausnahme; alle anderen Pakete tragen mindestens
+eine Deny-Regel.
 
 Konkrete Schwellen für die übrigen Linter (`cyclop.max-complexity`,
 `funlen`, `dupl.threshold` etc.) folgen der m-trace-Vorlage und sind
@@ -261,6 +273,18 @@ die **Struktur-Schichten**:
 - RBAC-Skelette unter `config/rbac/` (basierend auf
   kubebuilder-Markern im Controller-Code).
 
+**Marker-Platzierung:** `+kubebuilder:rbac:...`-Annotationen werden
+**direkt am `Reconcile`-Receiver** in
+`internal/application/reconciler.go` platziert. Das Hybrid-Layout
+(`AR-003`) verlegt den Reconciler aus dem kubebuilder-üblichen
+`internal/controller/`-Pfad nach `internal/application/`;
+`controller-gen rbac` bekommt den Marker-Pfad über sein
+`paths`-Argument im `Makefile`-Target, z. B.
+`controller-gen rbac:roleName=k-deskflight-operator-cluster
+paths=./internal/application/...`. Die Platzierung ist damit
+verbindlich; offen bleibt nur das konkrete Marker-Set pro Ressource
+(siehe `AR-OP-004`).
+
 Diese Artefakte sind committet, aber von Hand nicht editierbar.
 `LH-QG-005` (Generated-Drift-Gate, `ADR 0012 §2.7`) regeneriert sie
 bei jedem CI-Lauf und vergleicht via `git diff --exit-code`.
@@ -287,9 +311,15 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 
 1. **Fetch** — CR über `client.Get` lesen. Bei `NotFound`: kein
    Requeue (CR gelöscht).
-2. **Validate** — Spec-Konsistenz prüfen (Profile-Wert gültig,
-   keine widersprüchlichen Felder). Bei Validierungsfehler:
-   Phase `Failed`, Condition `SpecInvalid`.
+2. **Cross-Field-Validate** — OpenAPI-Constraints (Enum-Werte,
+   Range-Constraints, Pflicht-Felder) werden bereits beim
+   `kubectl apply` von der CRD-Schema-Validation geprüft (siehe
+   `AR-006`/`AR-007`). Diese Phase ergänzt **Cross-Field-Konsistenz**,
+   die das Schema nicht ausdrücken kann — z. B. „`Profile=evaluation`
+   schließt Check-Typ X aus", oder „konfigurierte
+   `kubernetesVersion.min` liegt im vom Operator unterstützten
+   Bereich gemäß `ADR 0009`". Bei Validierungsfehler: Phase `Failed`,
+   Condition `SpecInvalid`.
 3. **Determine Active Checks** — basierend auf Profile und
    Spec.Checks-Map die zu aktivierenden Check-Instanzen aus der
    `CheckRegistry` (`AR-013`) auflösen.
@@ -362,6 +392,28 @@ zusätzliche `Lease`-Ressource im Operator-Namespace, ein paar
 Watch-Verbindungen) sind vernachlässigbar; die Risiko-Mitigation ist
 substantiell.
 
+### AR-027 — Liveness- und Readiness-Probes
+
+Der `controller-runtime`-Manager bindet die Standard-HTTP-Endpoints
+`/healthz` (Liveness) und `/readyz` (Readiness) auf einem
+konfigurierbaren Port (Default `:8081` per controller-runtime, im
+Pflichtenheft pinnen). Das Deployment-Manifest unter
+`deploy/manifests/` (und später im Helm Chart, `ADR 0005`) verdrahtet
+beide Probes:
+
+- **`livenessProbe`** auf `/healthz` mit moderaten Schwellen
+  (`initialDelaySeconds: 15`, `periodSeconds: 20`,
+  `failureThreshold: 3`) — Restart bei länger anhaltender
+  Reconcile-Schleifen-Panik.
+- **`readinessProbe`** auf `/readyz` mit straffen Schwellen
+  (`initialDelaySeconds: 5`, `periodSeconds: 10`,
+  `failureThreshold: 3`) — Operator wird erst als „Ready" gemeldet,
+  wenn der Manager läuft und (bei aktiver Leader-Election, `AR-026`)
+  der Leader-Election-Loop ein Ergebnis hat.
+
+Konkrete Werte gehören ins Pflichtenheft; die Default-Werte oben sind
+controller-runtime-Standard und tragen den MVP-Pfad.
+
 ---
 
 ## 6. Check-Plugin-Architektur
@@ -429,7 +481,7 @@ type CheckRegistry interface {
 (KubernetesVersion, StorageClass, IngressClass, certManager,
 Resources, RBAC).
 
-### AR-014 — Schweregrad-Aggregation
+### AR-014 — Schweregrad-Aggregation und Conditions-Sortierung
 
 Implementierung in `internal/application/aggregator.go`. Mappt eine
 Liste von `Result` auf die Gesamtphase nach `LH-F-031`-Tabelle.
@@ -437,6 +489,14 @@ Reihenfolge: höchster Schweregrad eines Failed-Results bestimmt die
 Phase. `Unknown`-Results aus `ConnectivityUnknown`-artigen Checks
 (`ADR 0010 §2.3`) führen zu Gesamtphase `Unknown`, sofern kein
 `critical`/`warning`-Fail vorliegt.
+
+**Conditions-Sortierung:** Vor `Status().Update` werden die
+Conditions deterministisch nach `Type` (Condition-Name) alphabetisch
+sortiert — unabhängig von der Ausführungsreihenfolge der Checks
+(`AR-OP-003` Sequenz vs. Parallel) und unabhängig davon, in welcher
+Reihenfolge der Reconciler die Results aggregiert hat. Damit bleibt
+der CR-Status-Diff zwischen Reconcile-Läufen stabil und reflektiert
+nur tatsächliche Zustandsänderungen, nicht Sortierungs-Rauschen.
 
 ---
 
@@ -462,6 +522,12 @@ im MVP (PVC-Inspektion ist nicht Teil der MVP-Prüfungen aus
 `LH-PRI-001`).
 
 ### AR-016 — Role im Operator-Namespace
+
+**Default-Operator-Namespace:** `k-deskflight-system` (Konvention
+analog `cert-manager`, `metallb-system`, `kube-system`).
+Anwender-Overridebarkeit per Kustomize-Overlay ist möglich; ab v0.2
+zusätzlich per Helm-Values (`ADR 0005`). Die nachfolgenden
+Role-Definitionen leben in diesem Namespace.
 
 | API-Gruppe | Ressourcen | Verben | Begründung |
 | ---------- | ---------- | ------ | ---------- |
@@ -589,6 +655,15 @@ entstehen mit M1.
 | v0.2 (`LH-PRI-002`) | Helm-Chart als alternativer Distributions-Pfad (`ADR 0005`); CRD bleibt `v1alpha1` | DNS-/TLS-/Netzwerk-Check-Module unter `adapter/check/`; ConfigMap-Report-Adapter; Events-Emission; Domänen-Metriken. RBAC-Erweiterung gegenüber MVP-`AR-016`: `core/events` mit `create`+`patch` (`LH-F-027`) und `core/configmaps` mit `get`/`list`/`create`/`update`/`patch` (`LH-F-028`). |
 | v0.3+ (`LH-PRI-003`) | mit-Auth-Checks bauen auf der bestehenden Check-Interface auf (`AR-012`); RBAC-Konzept (`AR-015`) wird um Secret-Read-Rechte erweitert | PostgreSQL-Adapter, S3-Adapter, evtl. CRD-Schema-Erweiterung auf `v1alpha2` oder `v1beta1` |
 
+**Nicht im MVP-Scope:** Validating- oder Mutating-Webhooks für
+`OpenDeskPreflightCheck`. Die OpenAPI-Schema-Validation
+(`AR-006`/`AR-007`) plus die Cross-Field-Validation im Reconciler
+(`AR-009 §2`) decken die MVP-Pflichten ab. Webhooks kommen erst,
+wenn ein konkreter Anwendungsfall sie zwingt — z. B. Defaulting,
+das `kubectl apply --dry-run=server` benötigt, oder serverseitige
+Spec-Validierung jenseits dessen, was Cross-Field-Validate
+ausdrücken kann. Dann eigene Folge-ADR.
+
 ---
 
 ## 11. Offene Architektur-Punkte
@@ -598,10 +673,11 @@ entstehen mit M1.
 | `AR-OP-001` | Konkrete CRD-Spec-Feld-Typen und kubebuilder-Marker (validation, defaulting, printcolumns) | offen — Pflichtenheft (`LH-VM-002`) |
 | `AR-OP-002` | Wahl zwischen `mockery`-generierten Mocks und handgeschriebenen Test-Doubles für `internal/port/*` | offen — Pflichtenheft |
 | `AR-OP-003` | Worker-Pool-Modell für Check-Parallelisierung (`AR-009 §4` Execute-Phase): sequenziell vs. begrenzt-parallel | offen — Pflichtenheft, vor M3 |
-| `AR-OP-004` | Konkrete kubebuilder-Marker für RBAC-Generierung (`AR-015`/`AR-016` Quelle) — Hand-pflege vs. `+kubebuilder:rbac:...`-Annotationen am Controller | offen — M2-Slice-Plan |
-| `AR-OP-005` | Operator-Namespace-Konvention (`k-deskflight-system` vs. `k-deskflight-operator` vs. anwender-wählbar) | offen — M1-/M2-Slice-Plan |
+| `AR-OP-004` | Konkrete `+kubebuilder:rbac:...`-Marker-Sets am `Reconcile`-Receiver: genauer Verb-Satz pro Ressource, Marker-Doppelungen bei mehreren API-Gruppen, Konsolidierung mit `AR-015`/`AR-016` (Platzierung in `AR-007` festgelegt) | offen — M2-Slice-Plan |
+| `AR-OP-005` | Anwender-Overridebarkeit des Default-Operator-Namespace `k-deskflight-system` via Kustomize-Overlay (ab MVP) bzw. Helm-Values (ab v0.2, `ADR 0005`) — exakte Override-Mechanik | offen — M1-/M2-Slice-Plan |
 | `AR-OP-006` | OTel-Integration: Tracing-Spans im Reconcile-Pfad ja/nein | offen — v0.2-Slice, koordiniert mit `ADR 0007` |
 | `AR-OP-007` | Conversion-Webhook für künftige Versionssprünge (`AR-008`) — implementieren oder via Re-Apply lösen | offen — Folge-ADR zu `ADR 0006 §4` |
+| `AR-OP-008` | Check-Interface mit Generics (`type Check[Spec any]`) statt Marker-Interface (`CheckSpec interface{}`) — Go 1.26 unterstützt das; Type-Assertion-Panics wären eliminiert (`AR-012`) | offen — Entscheidung mit erstem Check-Slice (M3) |
 
 Die `AR-OP-*`-Punkte werden bei Aktivierung der jeweiligen Slice in
 die zugehörigen Slice-Pläne überführt oder, wenn übergreifend, als
