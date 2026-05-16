@@ -82,7 +82,8 @@ Halterung GitHub-Org/-Account `pt9912` (konsistent mit
   via `controller-gen`. Damit funktionieren `kubebuilder create`,
   `controller-gen object`, `controller-gen crd` direkt.
 - **Innen Hexagonal** unter `internal/` für fachliche Logik-
-  Trennung: `domain/`, `application/`, `port/`, `adapter/`. Damit
+  Trennung: `hexagon/domain/`, `hexagon/application/`, `hexagon/port/`,
+  `adapter/`. Damit
   bleibt die Domänenlogik unabhängig von der Kubernetes-API und
   testbar ohne Cluster.
 
@@ -104,16 +105,17 @@ github.com/pt9912/k-deskflight
 │       ├── groupversion_info.go              # Group/Version-Registrierung
 │       └── zz_generated.deepcopy.go          # controller-gen-Output
 ├── internal/
-│   ├── domain/                  # Reine Domänentypen, keine k8s-Abhängigkeit
-│   │   ├── check.go             # Check-Interface, Result, Severity
-│   │   └── profile.go           # Profile-Konstanten, Default-Werte
-│   ├── application/             # Use-Cases / Reconciler-Orchestrierung
-│   │   ├── reconciler.go        # Reconcile-Loop (high-level)
-│   │   └── aggregator.go        # Status-Aggregation per LH-F-031
-│   ├── port/                    # Interfaces, von application konsumiert
-│   │   ├── kubernetes.go        # KubernetesAPI-Interface
-│   │   ├── checkregistry.go     # CheckRegistry-Interface
-│   │   └── clock.go             # Clock-Interface (Test-Inversion)
+│   ├── hexagon/
+│   │   ├── domain/                  # Reine Domänentypen, keine k8s-Abhängigkeit
+│   │   │   ├── check.go             # Check-Interface, Result, Severity
+│   │   │   └── profile.go           # Profile-Konstanten, Default-Werte
+│   │   ├── application/             # Use-Cases / Reconciler-Orchestrierung
+│   │   │   ├── reconciler.go        # Reconcile-Loop (high-level)
+│   │   │   └── aggregator.go        # Status-Aggregation per LH-F-031
+│   │   ├── port/                    # Interfaces, von application konsumiert
+│   │   │   ├── kubernetes.go        # KubernetesAPI-Interface
+│   │   │   ├── checkregistry.go     # CheckRegistry-Interface
+│   │   │   └── clock.go             # Clock-Interface (Test-Inversion)
 │   └── adapter/
 │       ├── k8s/                 # Kubernetes-API-Adapter (implementiert port)
 │       │   ├── discovery.go     # ServerVersion-Lookup für LH-F-008
@@ -169,10 +171,11 @@ domain  ← application  ↔  port
   keine `adapter`.
 - `adapter` importiert `port` (zur Implementierung) und `domain`
   (für Result/Severity-Typen). Importiert **nicht** `application`.
-- `cmd/operator` ist die Wiring-Schicht: importiert `application`
-  und `adapter`, instanziiert konkrete Adapter und injiziert sie in
-  den Reconciler. Diese Schicht ist nicht testpflichtig
-  (Coverage-Range-Selektor schließt sie aus, `LH-QG-003`).
+- `cmd/operator` ist die Wiring-Schicht: importiert
+  `internal/hexagon/application` und `internal/adapter`, instanziiert
+  konkrete Adapter und injiziert sie in den Reconciler. Diese Schicht
+  ist nicht testpflichtig
+(Coverage-Range-Selektor schließt sie aus, `LH-QG-003`).
 - `api/v1alpha1` ist Spec-Definition; importiert nur Kubernetes-
   Standard-Typen und kubebuilder-Markers.
 
@@ -187,31 +190,31 @@ depguard:
     domain-isolation:
       list-mode: lax
       files:
-        - '**/internal/domain/**'
+        - '**/internal/hexagon/domain/**'
       deny:
         - pkg: k8s.io
           desc: domain layer must not depend on Kubernetes libraries (use port)
         - pkg: sigs.k8s.io
           desc: domain layer must not depend on controller-runtime
-        - pkg: github.com/pt9912/k-deskflight/internal/application
+        - pkg: github.com/pt9912/k-deskflight/internal/hexagon/application
           desc: domain must not depend on application (AR-004)
-        - pkg: github.com/pt9912/k-deskflight/internal/port
+        - pkg: github.com/pt9912/k-deskflight/internal/hexagon/port
           desc: domain must not depend on port (AR-004)
         - pkg: github.com/pt9912/k-deskflight/internal/adapter
           desc: domain must not depend on adapter (AR-004)
     application-no-adapter:
       list-mode: lax
       files:
-        - '**/internal/application/**'
+        - '**/internal/hexagon/application/**'
       deny:
         - pkg: github.com/pt9912/k-deskflight/internal/adapter
           desc: application must depend on ports, not on adapter implementations (AR-004)
     port-no-application:
       list-mode: lax
       files:
-        - '**/internal/port/**'
+        - '**/internal/hexagon/port/**'
       deny:
-        - pkg: github.com/pt9912/k-deskflight/internal/application
+        - pkg: github.com/pt9912/k-deskflight/internal/hexagon/application
           desc: ports are abstractions, must not depend on application (AR-004)
         - pkg: github.com/pt9912/k-deskflight/internal/adapter
           desc: ports define abstractions, must not depend on adapter implementations (AR-004)
@@ -220,14 +223,14 @@ depguard:
       files:
         - '**/internal/adapter/**'
       deny:
-        - pkg: github.com/pt9912/k-deskflight/internal/application
+        - pkg: github.com/pt9912/k-deskflight/internal/hexagon/application
           desc: adapter implements port, must not call into application directly (AR-004)
     api-no-internal:
       list-mode: lax
       files:
         - '**/api/v1alpha1/**'
       deny:
-        - pkg: github.com/pt9912/k-deskflight/internal
+        - pkg: github.com/pt9912/k-deskflight/internal/hexagon
           desc: api/v1alpha1 declares CRD types only — must not depend on internal/* (AR-004)
 ```
 
@@ -262,6 +265,8 @@ die **Struktur-Schichten**:
   `Warning`/`Failed`/`Unknown`).
 - `Status.Summary`: Aggregat (`LH-F-007`: passed/warning/failed/
   lastChecked).
+- `Status.ObservedGeneration`: Kopie von `metadata.generation`, auf die sich
+  der zuletzt vollständig ausgeführte Reconcile bezieht.
 - `Status.Conditions`: Standard-Kubernetes-Conditions-Liste
   (`LH-F-005`); Reason/Severity/Message gemäß `LH-F-031`/`LH-F-032`.
 
@@ -276,13 +281,13 @@ die **Struktur-Schichten**:
 
 **Marker-Platzierung:** `+kubebuilder:rbac:...`-Annotationen werden
 **direkt am `Reconcile`-Receiver** in
-`internal/application/reconciler.go` platziert. Das Hybrid-Layout
+`internal/hexagon/application/reconciler.go` platziert. Das Hybrid-Layout
 (`AR-003`) verlegt den Reconciler aus dem kubebuilder-üblichen
-`internal/controller/`-Pfad nach `internal/application/`;
+`internal/controller/`-Pfad nach `internal/hexagon/application/`;
 `controller-gen rbac` bekommt den Marker-Pfad über sein
 `paths`-Argument im `Makefile`-Target, z. B.
 `controller-gen rbac:roleName=k-deskflight-operator-cluster
-paths=./internal/application/...`. Die Platzierung ist damit
+paths=./internal/hexagon/application/...`. Die Platzierung ist damit
 verbindlich; offen bleibt nur das konkrete Marker-Set pro Ressource
 (siehe `AR-OP-004`).
 
@@ -317,7 +322,7 @@ Versionssprung im MVP-Zeitfenster wird über CR-Re-Apply gelöst, nicht
 
 ### AR-009 — Reconcile-Pfad
 
-Der Reconciler lebt in `internal/application/reconciler.go` und
+Der Reconciler lebt in `internal/hexagon/application/reconciler.go` und
 folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 
 1. **Fetch** — CR über `client.Get` lesen. Bei `NotFound`: kein
@@ -368,6 +373,17 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
        Condition=ConfigurationInvalid`, ein `Reason=TimeoutConfig` und die
        gewählte Normalisierung.
      - `Result`-Ausgabe bei Überschreitung bleibt: `Unknown` + `Reason: Timeout`.
+     - Jede Check-Ausführung läuft zusätzlich über einen hart begrenzten
+       `runCheckWithTimeout`-Ausführungspfad: `Check.Run(ctx, spec)` wird in einem
+       separaten Goroutine gestartet, der Reconciler wartet auf Ergebnis,
+       `ctx.Done()` oder Check-Timeout. Bei Timeout wird sofort `Unknown` +
+       `Reason: Timeout` gemappt und die Check-Execution wird als abgeschlossen
+       markiert.
+       - Nicht-kooperative Implementierungen werden über Adapter-Hardening abgefangen:
+         cancelbare API-Clients, begrenzte I/O-Timeouts und zentrale Fehlerpfade.
+       - Die Timeout-Guards verhindern Blockade des Reconcile-Laufes; ein
+         eventuell weiterlaufender Worker wird nicht mehr beobachtet und darf
+         keine Ressourcen leaken.
      - **MVP-Entscheidung:** bounded parallel über Worker-Pool (`workerPoolSize`
       konfigurierbar), fallback auf sequenziell bei `workerPoolSize <= 1`.
      Der Wert stammt aus dem Operator-Config (`WORKER_POOL_SIZE` / Flag) mit
@@ -403,16 +419,20 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 5. **Aggregate** — Schweregrade auf die Gesamtphase mappen
    (`LH-F-031`/`ADR 0010 §2.3`).
 6. **Update Status** — `client.Status().Update` mit
-   `Phase`/`Summary`/`Conditions`. Konflikte (resourceVersion)
+   `Phase`/`Summary`/`ObservedGeneration`/`Conditions`. Konflikte
+   (resourceVersion)
    werden mit Re-Fetch + Retry behandelt.
    - Die Status-Aktualisierung ist idempotent: nur wenn sich `Phase`,
-     `Summary` oder `Conditions` tatsächlich ändern, wird geschrieben.
+     `Summary`, `ObservedGeneration` oder `Conditions` tatsächlich ändern,
+     wird geschrieben.
    - Der Original-Status wird vor dem Update kopiert; bei Gleichstand
      (z. B. via `equality.Semantic.DeepEqual`) wird keine Änderung
      persistiert.
    - Bei Änderung wird `client.Status().Patch` mit
      `client.MergeFrom` bevorzugt eingesetzt, um unnötige Self-Writes zu
      reduzieren.
+   - `ObservedGeneration` wird auf die aktuelle `metadata.generation` des
+     zuletzt verarbeiteten Objekts gesetzt.
 
 ### AR-010 — Wiederholintervall (`LH-F-025`)
 
@@ -531,7 +551,7 @@ controller-runtime-Standard und tragen den MVP-Pfad.
 
 ### AR-012 — Check-Interface
 
-Definiert in `internal/domain/check.go`:
+Definiert in `internal/hexagon/domain/check.go`:
 
 ```go
 package domain
@@ -577,18 +597,19 @@ type CheckSpec interface {
 
 // Bei `CheckRegistry`- und Reconcile-Ebene ist vor dem `Run` zu prüfen,
 // dass `spec.Kind() == check.SpecKind()`. Bei Abweichung: kein Panic,
-// sondern `Unknown` + `Reason=InvalidSpec`.
+// sondern `Unknown` + `Reason=InvalidSpec`. `Run` muss bei
+// Kontextabbruch (`ctx.Done()`) deterministisch terminieren.
 ```
 
 ### AR-013 — Check-Registry
 
-Definiert in `internal/port/checkregistry.go` (Interface) und
+Definiert in `internal/hexagon/port/checkregistry.go` (Interface) und
 implementiert in `internal/adapter/check/registry.go`.
 
 ```go
 package port
 
-import "github.com/pt9912/k-deskflight/internal/domain"
+import "github.com/pt9912/k-deskflight/internal/hexagon/domain"
 
 type CheckRegistry interface {
     Register(c domain.Check)
@@ -624,20 +645,22 @@ Kontrakt:
 
 ### AR-014 — Schweregrad-Aggregation und Conditions-Sortierung
 
-Implementierung in `internal/application/aggregator.go`. Mappt eine
+Implementierung in `internal/hexagon/application/aggregator.go`. Mappt eine
 Liste von `Result` auf die Gesamtphase nach `LH-F-031`-Tabelle.
 Reihenfolge: höchster Schweregrad eines Failed-Results bestimmt die
 Phase. `Unknown`-Results aus `ConnectivityUnknown`-artigen Checks
 (`ADR 0010 §2.3`) führen zu Gesamtphase `Unknown`, sofern kein
 `critical`/`warning`-Fail vorliegt.
 
-**Conditions-Sortierung:** Vor `Status().Update` werden die
-Conditions deterministisch nach `Type` (Condition-Name) alphabetisch
-sortiert — unabhängig von der Ausführungsreihenfolge der Checks
-(`AR-009 §4` Sequenz vs. Parallel) und unabhängig davon, in welcher
-Reihenfolge der Reconciler die Results aggregiert hat. Damit bleibt
-der CR-Status-Diff zwischen Reconcile-Läufen stabil und reflektiert
-nur tatsächliche Zustandsänderungen, nicht Sortierungs-Rauschen.
+**Conditions-Sortierung:** Vor `Status().Update` werden `Conditions`
+zuerst **dedupliziert** und dann deterministisch nach `Type`
+(Condition-Name) alphabetisch sortiert. Bei doppelten Types wird ein
+einziger Eintrag rekonstruiert: zuerst höchste Severity (`critical >
+warning > info`), danach neustes `LastTransition`, bei Gleichstand stabil
+nach `Name`. Unabhängig von der Ausführungsreihenfolge der Checks
+(`AR-009 §4` Sequenz vs. Parallel) bleibt der CR-Status-Diff zwischen
+Reconcile-Läufen stabil und reflektiert nur tatsächliche
+Zustandsänderungen, nicht Sortierungs-Rauschen.
 
 ---
 
@@ -671,9 +694,11 @@ analog `cert-manager`, `metallb-system`, `kube-system`).
 1) **Cluster-Wide Mode (Default):** Reconciliation über alle Namespaces.
    Dafür enthält `AR-015` die vollständigen Rechte inkl. `opendeskpreflightchecks`
    und `/status`.
-2) **Namespace-Scoped Mode (optional):** Reconciliation nur in
-   `k-deskflight-system` über `--namespace=k-deskflight-system` und optional
-   zusätzliche Namespaced-RBAC-Objekte in diesem Namespace.
+2) **Namespace-Scoped Mode (optional):** Scope-Reduktion der automatisch
+   beobachteten CRs auf `k-deskflight-system` über
+   `--namespace=k-deskflight-system`; dies ist ein **Watch-Scope-Modus**.
+   **Kein Sicherheits-Isolationsmodell.**
+   Zusätzliche Namespaced-RBAC-Objekte im Operator-Namespace sind optional.
    **Wichtig:** Viele Checks operieren auf clusterweiten Ressourcen
    (`nodes`, `storageclasses`, `ingressclasses`, `customresourcedefinitions`),  
    daher bleibt für diese Ressourcen die Cluster-Lese-Berechtigung in
@@ -791,9 +816,9 @@ entstehen mit M1.
 
 ### AR-023 — Unit-Tests
 
-- `internal/domain/*` ohne Cluster-Abhängigkeit. Pure Funktionen,
+- `internal/hexagon/domain/*` ohne Cluster-Abhängigkeit. Pure Funktionen,
   hohe Coverage-Zielsetzung (≥ 95 % erreichbar).
-- `internal/application/*` mit Port-Mocks (Tabellengetriebene
+- `internal/hexagon/application/*` mit Port-Mocks (Tabellengetriebene
   Tests, generierte Mocks via `mockery` oder handgeschriebene
   Test-Doubles — Pflichtenheft).
 - Reconcile-spezifische Robustheitsfälle: `defer/recover` im Reconciler,
@@ -847,7 +872,7 @@ ausdrücken kann. Dann eigene Folge-ADR.
 | Kennung | Offener Punkt | Status |
 | ------- | ------------- | ------ |
 | `AR-OP-001` | Konkrete CRD-Spec-Feld-Typen und kubebuilder-Marker (validation, defaulting, printcolumns) | offen — Pflichtenheft (`LH-VM-002`) |
-| `AR-OP-002` | Wahl zwischen `mockery`-generierten Mocks und handgeschriebenen Test-Doubles für `internal/port/*` | offen — Pflichtenheft |
+| `AR-OP-002` | Wahl zwischen `mockery`-generierten Mocks und handgeschriebenen Test-Doubles für `internal/hexagon/port/*` | offen — Pflichtenheft |
 | `AR-OP-004` | Konkrete `+kubebuilder:rbac:...`-Marker-Sets am `Reconcile`-Receiver: genauer Verb-Satz pro Ressource, Marker-Doppelungen bei mehreren API-Gruppen, Konsolidierung mit `AR-015`/`AR-016` (Platzierung in `AR-007` festgelegt) | offen — M2-Slice-Plan |
 | `AR-OP-005` | Anwender-Overridebarkeit des Default-Operator-Namespace `k-deskflight-system` via Kustomize-Overlay (ab MVP) bzw. Helm-Values (ab v0.2, `ADR 0005`) — exakte Override-Mechanik | offen — M1-/M2-Slice-Plan |
 | `AR-OP-006` | OTel-Integration: Tracing-Spans im Reconcile-Pfad ja/nein | offen — v0.2-Slice, koordiniert mit `ADR 0007` |
