@@ -1089,6 +1089,12 @@ Die Kubernetes-API-Gruppe `k-deskflight.geo-terrain.net` (`ADR 0006`) ist an die
 
 Gegenmaßnahme: Domain-Verlängerung als operative Routine sichern (Verantwortung des Projektowners); bei längerfristigem Domainrisiko Migration über `v1alpha2` oder neue API-Gruppe in eigener ADR.
 
+### LH-RISK-008 — Hoster-Abhängigkeit
+
+`ADR 0011` wählt GitHub als Hosting-Plattform (impliziert durch den GHSA-Security-Disclosure-Pfad). Die Bindung an einen US-Hoster steht in Spannung mit der Zielgruppe „behördennahe IT-Dienstleister" (`LH-PK-004`), für die Souveränitätsanforderungen relevant sein können.
+
+Gegenmaßnahme: Migrationspfad zu Codeberg, GitLab.com oder einer EU-gehosteten GitLab-Instanz bleibt jederzeit über eine ablösende ADR möglich. Der Operator selbst ist Hoster-neutral (`LH-NF-018`); betroffen wären nur Repository-Hosting und Issue-/PR-Workflow, nicht die Operator-Funktionalität.
+
 ---
 
 ## 22. Offene Punkte
