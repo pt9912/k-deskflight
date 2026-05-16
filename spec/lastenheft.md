@@ -1104,7 +1104,7 @@ Gegenmaßnahme: Domain-Verlängerung als operative Routine sichern (Verantwortun
 | LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | Geschlossen mit [`ADR 0007`](../docs/plan/adr/0007-prometheus-metrik-scope-im-mvp.md)                                |
 | LH-OP-008 | Entscheidung über Report-Format treffen                                    | Geschlossen mit [`ADR 0008`](../docs/plan/adr/0008-report-format-stack.md)                                          |
 | LH-OP-009 | Projektname finalisieren                                                   | Geschlossen mit [`ADR 0004`](../docs/plan/adr/0004-projektname.md)                                                  |
-| LH-OP-010 | Governance für Open-Source-Beiträge definieren                             | offen                                                                                                               |
+| LH-OP-010 | Governance für Open-Source-Beiträge definieren                             | Geschlossen mit [`ADR 0011`](../docs/plan/adr/0011-governance-und-beitragskonventionen.md)                           |
 | LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren | Geschlossen mit [`ADR 0010`](../docs/plan/adr/0010-externe-dienstpruefungen-und-secret-mechanik.md)                  |
 
 ---
