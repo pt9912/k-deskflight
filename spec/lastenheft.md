@@ -850,6 +850,61 @@ Der Status der Custom Resource muss auch bei Fehlern konsistent bleiben.
 
 ---
 
+## 16a. Quality-Gates
+
+Die operativen Quality-Gates sind verbindlich in `ADR 0012` festgelegt. Dieser Abschnitt führt die Kennungen als normative Anker; die konkreten Tool-Versionen, Schwellen und Skript-Pfade leben in der ADR und im Pflichtenheft (`LH-VM-002`).
+
+### LH-QG-001 — Statisches Linting (Backend Go)
+
+Das Projekt verwendet `golangci-lint` v2 mit den fünf Default-Lintern (`govet`, `errcheck`, `staticcheck`, `unused`, `ineffassign`) und einem 24-Linter-Profil mit SOLID-nahem Charakter gemäß `ADR 0012 §2.2`. `//nolint`-Suppressions sind ausgeschlossen (`LH-QG-010`). Verstöße brechen den Build. Pflicht ab `M1` der Roadmap.
+
+### LH-QG-002 — Automatisierte Tests
+
+Das Projekt muss automatisierte Unit- und Integrationstests bereitstellen. Integrationstests laufen gegen `envtest` oder einen `kind`-Cluster. Test-Pflichten pro Funktion entstehen mit dem Pflichtenheft. Verstöße brechen den Build. Pflicht ab `M2` (Skelett) bzw. `M6` (vollständig).
+
+### LH-QG-003 — Coverage-Gate
+
+Das Projekt führt ein Coverage-Gate mit Default-Schwelle `90 %` Line-Coverage über produktive Pakete; Zielwert `>= 95 %`. Senkung des Defaults ist ADR-pflichtig. Scope-Selektor (Coverage-Range) entsteht mit dem Pflichtenheft. Verstöße brechen den Build. Pflicht ab `M6`.
+
+### LH-QG-004 — Architektur-Boundary-Check
+
+Architektur-Layer-Grenzen werden per `depguard`-Regeln im `golangci-lint`-Profil erzwungen. Das Prinzip ist verbindlich; konkrete Regeln und das Paket-Layout entstehen mit dem Pflichtenheft (`LH-VM-002`). Pflicht ab `M2` (Regeln-Stub) bzw. `M6` (strikt).
+
+### LH-QG-005 — Generated-Drift-Check
+
+Aus den Go-Type-Definitionen abgeleitete Artefakte (CRD-YAML, DeepCopy-Methoden, `controller-gen`-Output) werden bei jedem CI-Lauf regeneriert und gegen den committeten Stand verglichen. Abweichung bricht den Build. Pflicht ab `M2`.
+
+### LH-QG-006 — Vulnerability-Scan (Go-Dependencies)
+
+`govulncheck` läuft als Pflicht-Gate gegen die Go-Vulnerability-Datenbank. Funktionsbasiertes Scanning; nur Treffer in tatsächlich aufgerufenen Funktionen brechen den Build. Versionspin und Vulnignore-Konvention sind in `ADR 0012 §2.8` festgelegt. Pflicht ab `M6`.
+
+### LH-QG-007 — Image-Scan
+
+Das Operator-Container-Image wird mit Trivy gescannt. `CRITICAL` und `HIGH` brechen den Build, `MEDIUM` wird berichtet. Vulnignore-Einträge tragen ein `expires`-Datum (abgelaufen → Generator-Abbruch). Pflicht ab `M7` (Release-Slice).
+
+### LH-QG-008 — Doc-Refs-Linter
+
+Lokale Markdown-Querverweise in `docs/`, `spec/` und den Top-Level-Doku-Dateien (`README.md`, `README.de.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md` sofern vorhanden) werden auf Auflösbarkeit geprüft (Pendant zu `m-trace/scripts/verify-doc-refs.sh`). Damit schließt das Gate zugleich den `ADR 0003 §5` benannten Folge-Trigger. Pflicht ab `M1`.
+
+### LH-QG-009 — Gate-Bündelung (`make gates`, `make security-gates`)
+
+Die Pflicht-Gates werden in zwei Bündeln zusammengefasst:
+
+- `make gates` — Inner-Loop-Bündel (Lint, Tests, Coverage, Boundary-Check, Generated-Drift, Doc-Refs). PR-blockierend.
+- `make security-gates` — externe Gates (`govulncheck`, Image-Scan). PR-blockierend, läuft im CI parallel zu `make gates`.
+
+Beide werden ab `LH-VM-005` (Integrationstest-Phase) in CI-Workflows verankert.
+
+### LH-QG-010 — Suppressions-Verbot
+
+Inline-Suppressions (`//nolint`, `//eslint-disable`, vergleichbare Pragmas) sind im produktiven Code ausgeschlossen. Pro-Scope-Carveouts (z. B. Test-Code, generierte Dateien, dokumentierte Sonderzonen) werden zentral in der Linter-Konfiguration mit Pflicht-Kommentar `Why:` dokumentiert. Sie sind keine Suppressions, sondern bewusste Profil-Entscheidungen.
+
+### LH-QG-011 — Opt-in-Gates (Mutation, Fuzz, Benchmark)
+
+Mutation-Tests (`gremlins`), Fuzz-Tests (`go test -fuzz`) und Benchmarks (`go test -bench`) sind als Pattern verankert, aber nicht MVP-pflichtig. Aktivierung pro Release als Nightly oder On-Demand; Reports werden in Release-Notes ausgewertet, der normale PR-Flow wird nicht blockiert.
+
+---
+
 ## 17. Abnahmekriterien
 
 ### LH-AK-001 — CRD installierbar
