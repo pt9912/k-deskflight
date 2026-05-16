@@ -2,9 +2,9 @@
 
 **Status:** In Progress (Roadmap aktiv; Slices noch nicht gestartet)
 **Eröffnet:** 2026-05-16
-**Bezug:** [Lastenheft `LH-MVP-002`, `LH-PRI-001`, `LH-REL-001`, `LH-VM-004`](../../../../spec/lastenheft.md),
+**Bezug:** [Lastenheft `LH-MVP-002`, `LH-PRI-001`, `LH-REL-001`, `LH-VM-004`, `LH-QG-001..011`](../../../../spec/lastenheft.md),
 [ADR 0001](../../adr/0001-dokumentations-und-planungsstruktur.md),
-[ADRs 0004 – 0011](../../adr/) (alle MVP-relevanten Architekturentscheidungen)
+[ADRs 0004 – 0012](../../adr/) (alle MVP-relevanten Architekturentscheidungen inkl. Quality-Gates)
 
 ---
 
@@ -15,9 +15,13 @@ Diese Roadmap legt die **Slice-Reihenfolge** für den MVP fest — also das
 Detail.
 
 - Das **Pflichtenheft** (`LH-VM-002`) und/oder eine kompakte
-  `spec/architecture.md` entstehen **spätestens mit dem Start von M1**
-  und konkretisieren: Paketstruktur, Go-Modulpfad, Reconciler-Layout,
-  RBAC-Konzept, Build-/Release-Pipeline.
+  `spec/architecture.md` entstehen **spätestens vor Aktivierung von
+  M1** und konkretisieren: Paketstruktur, Go-Modulpfad,
+  Reconciler-Layout, RBAC-Konzept, Build-/Release-Pipeline,
+  konkrete `depguard`-Regeln gemäß `LH-QG-004` und Coverage-Range
+  gemäß `LH-QG-003`. `ADR 0001 §3` verlangt diese Reihenfolge
+  („spätestens vor der ersten Implementierungs-Slice"); M1 ist die
+  erste Implementierungs-Slice.
 - Pro Slice entsteht beim Aktivieren ein eigener
   `in-progress/slice-MX-…md`-Plan mit Detail-Lieferzielen,
   Abnahmekriterien und Test-Schritten. Diese Roadmap wird nicht
@@ -35,11 +39,15 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
   namespaced, gemäß `ADR 0006`).
 - Controller, ausschließlich lesend (`LH-F-035`).
 - MVP-Prüfungen: Kubernetes-Version, StorageClass, IngressClass,
-  cert-manager-Vorhandensein, Cluster-Ressourcen, RBAC-Selbstprüfung.
+  cert-manager-Vorhandensein, Cluster-Ressourcen, RBAC-Selbstprüfung
+  (`LH-F-024`).
 - Status-Conditions, Gesamtphase, Zusammenfassung.
 - Prometheus-`/metrics`-Endpoint mit Framework-Defaults (`ADR 0007`).
 - Raw-Manifeste in `deploy/manifests/` (kein Helm Chart, `ADR 0005`).
 - Container-Image, Beispielmanifest, README-Stand passend zum Release.
+- Quality-Gates aktiv gemäß `ADR 0012` und `LH-QG-001..011`
+  (Linting, Tests, Coverage 90 %, Architektur-Boundary,
+  Generated-Drift, Vulnerability- und Image-Scan, Doc-Refs).
 
 ---
 
@@ -64,23 +72,45 @@ Abhängigkeitsgraph: `M1 → M2 → {M3, M4} → M5 → M6 → M7`.
 ### M1 — Repo & Build-Skeleton
 
 **Lieferziel:** Go-Projektskelett im Repository, lokale Bau- und
-Test-Befehle, Container-Image baut leer, CI-Pipeline-Stub.
+Test-Befehle, Container-Image baut leer, CI-Pipeline-Stub,
+Pflicht-Quality-Gates auf Skelett-Ebene aktiv.
 
 - Go-Modulpfad final entscheiden (Folge zu `ADR 0004 §4`),
   `go.mod`, Verzeichnis-Layout (`cmd/`, `internal/`, `api/`, `deploy/`).
-- `Makefile` mit Targets `build`/`lint`/`test`/`image-build`
-  (m-trace-Pattern als Vorlage, siehe Memory `reference_m_trace_patterns.md`).
-- Multi-Stage `Dockerfile` (`distroless` oder vergleichbares Base).
-- CI-Workflow-Skelett (GitHub Actions; passt zu `ADR 0011` GHSA-Pfad).
+- `Makefile` mit Targets `build`/`lint`/`test`/`image-build` plus
+  Bündel-Targets `gates` und `security-gates` (`LH-QG-009`,
+  m-trace-Pattern als Vorlage — siehe Memory-Hinweis unten).
+- `golangci-lint`-Konfiguration `.golangci.yml` mit den fünf
+  Default-Lintern und dem 24-er SOLID-nahen Profil gemäß
+  `ADR 0012 §2.2` und `LH-QG-001`.
+- `scripts/verify-doc-refs.sh` (adaptiert von m-trace, gemäß
+  `ADR 0012 §2.10` und `LH-QG-008`) als Pflicht-Gate für
+  Markdown-Querverweise — Geltungsbereich: `docs/`, `spec/`,
+  `README.md`, `README.de.md`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, `SECURITY.md`. Schließt zugleich den
+  `ADR 0003 §5`-Folge-Trigger.
+- Multi-Stage `Dockerfile` (`distroless` oder vergleichbares Base);
+  eigene `lint`-Stage analog `m-trace/apps/api/Dockerfile`.
+- CI-Workflow-Skelett (GitHub Actions; passt zu `ADR 0011` GHSA-Pfad)
+  mit zwei Jobs: `gates` und `security-gates` parallel.
 - DCO-Bot-Aktivierung als Folgepflicht (`ADR 0011 §2.4`).
 - `deploy/manifests/`-Verzeichnis angelegt (initial leer oder
   CRD-Stub als Platzhalter; siehe M2).
 - README-Stand bleibt Stand `c3da8ff` (Roadmap und ADRs verlinken
   weiterhin korrekt).
 
+**Memory-Hinweis (intern, für Maintainer):** Die m-trace-Quelldateien
+(`/Development/m-trace/Makefile`, `apps/api/.golangci.yml`,
+`apps/api/Dockerfile`, `scripts/verify-doc-refs.sh`, `docs/user/quality.md`)
+sind die Vorlagen. Für externe Mitwirkende sind die Vorlagen nicht
+sichtbar; das M1-Slice-Plan-Dokument (entsteht beim Aktivieren) führt
+die adaptierten Inhalte direkt im k-deskflight-Repository.
+
 **Lastenheft-Kennungen:** `LH-NF-001` (Go), `LH-NF-014` (lokale
 Entwicklung), `LH-NF-015` (Container-Image), `LH-NF-021` (Sprachregel),
-`LH-NF-019` (Ressourcenverbrauch — Konzept), `LH-PROD-001` (Naming).
+`LH-NF-019` (Ressourcenverbrauch — Konzept), `LH-PROD-001` (Naming),
+`LH-QG-001` (Linting), `LH-QG-008` (Doc-Refs), `LH-QG-009`
+(Gate-Bündelung), `LH-QG-010` (Suppressions-Verbot).
 
 **Architekturartefakte:** Pflichtenheft entsteht parallel oder voraus;
 mindestens Paketstruktur und Go-Modulpfad müssen festliegen, bevor
@@ -104,24 +134,38 @@ M1 ist die Voraussetzung für alle weiteren `LH-AK-*` ab M2.
 
 **Lieferziel:** CRD `OpenDeskPreflightCheck` (`v1alpha1`, namespaced,
 gemäß `ADR 0006`), Controller-Reconciler-Stub, Status-Schema mit
-Conditions und Phase, kein Prüflogik-Inhalt.
+Conditions und Phase, kein Prüflogik-Inhalt; Generated-Drift- und
+depguard-Boundary-Gates aktiv.
 
 - CRD-Schema mit `spec.profile`, `spec.checks.kubernetesVersion`
   (Platzhalter), `status.phase`, `status.summary`,
   `status.conditions` (`LH-F-005`/`LH-F-006`/`LH-F-007`).
+- **Profile-Default-Vorbelegung** im CRD-OpenAPI-Schema:
+  `spec.profile` Default `production`, `kubernetesVersion.min`
+  Default gemäß `ADR 0009 §2.2` (heute `"1.34"`). `LH-PROF-002`/
+  `LH-PROF-003` werden durch die Schema-Defaults vorbereitet, die
+  fachliche Auswertung der Defaults pro Profile passiert in M4.
 - ServiceAccount, ClusterRole, RoleBinding (lesend) im
-  `deploy/manifests/`-Set, gemäß `LH-AK-015` und `ADR 0005`.
+  `deploy/manifests/`-Set, gemäß `LH-AK-015`, `LH-NF-006` und
+  `ADR 0005`.
 - Reconciler reagiert auf CR-Anlage, schreibt `status.phase = Pending`
   → `Running` → `Passed` (mit leerer Summary, weil noch keine
   Prüfung), Conditions: leer.
+- **Generated-Drift-Gate aktiv**: `controller-gen`-Output (CRD-YAML,
+  DeepCopy) gegen Git-Stand prüfen (`LH-QG-005`).
+- **depguard-Regeln im Linter-Profil** (Stub): erste Layer-
+  Definition gemäß Pflichtenheft/`architecture.md` (`LH-QG-004`).
+  Strikte Durchsetzung kommt in M6.
 - Beispielmanifest minimal (CR ohne Inhalt außer Name).
 
 **Lastenheft-Kennungen:** `LH-F-001`, `LH-F-002`, `LH-F-003`,
 `LH-F-004`, `LH-F-005`, `LH-F-006`, `LH-F-007`, `LH-F-009`
 (API-Erreichbarkeit), `LH-F-035` (lesender Betrieb),
 `LH-NF-002` (Kubernetes-Konventionen), `LH-NF-004` (Stabilität),
-`LH-PROD-002` (API-Gruppe), `LH-AK-015` (RBAC), `LH-DAT-002`
-(Status-Speicherung).
+`LH-NF-006` (Minimalrechte-Konzept), `LH-PROD-002` (API-Gruppe),
+`LH-PROF-002`/`LH-PROF-003` (Schema-Defaults), `LH-AK-015` (RBAC),
+`LH-DAT-002` (Status-Speicherung), `LH-QG-004` (Boundary-Stub),
+`LH-QG-005` (Generated-Drift).
 
 **Verifikation:**
 
@@ -207,7 +251,8 @@ Einzelfehlern stabil.
 - Keine destruktiven Aktionen (`LH-SEC-005`).
 
 **Lastenheft-Kennungen:** `LH-F-024`, `LH-F-031`, `LH-NF-004`,
-`LH-NF-005`, `LH-SEC-001`, `LH-SEC-002`, `LH-SEC-005`,
+`LH-NF-005`, `LH-NF-006` (minimal notwendige Berechtigungen —
+operative Verankerung), `LH-SEC-001`, `LH-SEC-002`, `LH-SEC-005`,
 `LH-DAT-007` (Konvention vorbereitet, auch ohne aktiven Use),
 `LH-NF-007` (Datenschutz).
 
@@ -225,7 +270,8 @@ Einzelfehlern stabil.
 
 **Lieferziel:** Prometheus-`/metrics`-Endpoint mit
 controller-runtime-Defaults (`ADR 0007`), Integrationstests gegen
-einen lokalen kind-/k3s-Cluster, vollständige Anwender-Doku.
+einen lokalen kind-/envtest-Cluster, vollständige Anwender-Doku,
+alle MVP-Pflicht-Quality-Gates strikt grün.
 
 - `/metrics`-Endpoint exposed, ServiceAccount-RBAC für Scrape
   passend, Endpoint im Smoketest erreichbar.
@@ -236,18 +282,28 @@ einen lokalen kind-/k3s-Cluster, vollständige Anwender-Doku.
   - CR-Beispiele für `evaluation` und `production`.
   - Conditions-Katalog mit Reason/Severity.
   - Troubleshooting (typische Fehlerbilder).
+- **Coverage-Gate strikt** auf 90 % Line-Coverage über produktive
+  Pakete (`LH-QG-003`); `make coverage-gate` blockt PRs.
+- **`govulncheck` strikt** als Pflicht-Gate (`LH-QG-006`); funktions-
+  basiertes Scanning gegen Go-Vulnerability-Datenbank.
+- **Architektur-Boundary strikt**: alle `depguard`-Regeln aus M2
+  sind aktiv und brechen den Build bei Layer-Verletzung
+  (`LH-QG-004`).
 
 **Lastenheft-Kennungen:** `LH-SST-004` (Prometheus-Format),
 `LH-NF-008` (`/metrics` als Endpoint, eigene Domänen-Metriken
 folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
 (Dokumentation), `LH-QA-002` (reproduzierbare Ergebnisse),
-`LH-QA-004` (transparente Bewertung).
+`LH-QA-004` (transparente Bewertung), `LH-QG-002` (Tests),
+`LH-QG-003` (Coverage), `LH-QG-004` (Boundary strikt),
+`LH-QG-006` (Vulnerability-Scan).
 
 **Verifikation:**
 
 - `LH-AK-013` — Dokumentation vorhanden.
-- Coverage-Gate für Unit- und Integrations-Tests grün
-  (Konkrete Schwelle entsteht im Pflichtenheft).
+- Coverage-Gate grün bei Default-Threshold 90 % (`ADR 0012 §2.5`).
+- `govulncheck`-Lauf ohne Treffer in aufgerufenen Funktionen.
+- Architektur-Boundary-Check ohne `depguard`-Verletzung.
 - Smoketest `/metrics`-Endpoint liefert HTTP 200 mit
   Prometheus-Format.
 
@@ -256,7 +312,8 @@ folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
 ### M7 — Beispielmanifest, Release-Tag v0.1.0
 
 **Lieferziel:** Vollständige Beispielmanifeste, Release-Notes,
-v0.1.0-Tag, Container-Image-Publish auf GHCR.
+v0.1.0-Tag, Container-Image-Publish auf GHCR; Image-Scan-Gate als
+letzte Release-Pflicht.
 
 - Beispielmanifeste konsistent mit `LH-PROD-003a` (MVP-Profil).
 - Release-Notes pro `ADR 0011 §2.5`: SemVer-Tag, Inhalt verlinkt.
@@ -264,18 +321,23 @@ v0.1.0-Tag, Container-Image-Publish auf GHCR.
   vor dem Tag.
 - Container-Image-Publish via `make image-publish`-Pattern aus
   m-trace (Approval-Gate, `ADR 0011 §2.5`).
+- **Trivy Image-Scan** vor Tag (`LH-QG-007`): `CRITICAL`/`HIGH`
+  brechen Release; `MEDIUM` wird in den Release-Notes berichtet.
+  Vulnignore-Einträge (falls vorhanden) tragen `expires`-Datum.
 - v0.1.0-Tag setzen.
 - DCO-Compliance-Check vor Merge der Release-PR.
 
 **Lastenheft-Kennungen:** `LH-REL-001` (Version 0.1), `LH-MVP-002`
 (Vollständigkeit), `LH-AK-014` (Open-Source-Veröffentlichung
 möglich — schließt jetzt vollständig, inkl. README/CONTRIBUTING/
-CODE_OF_CONDUCT/SECURITY und CHANGELOG).
+CODE_OF_CONDUCT/SECURITY und CHANGELOG), `LH-QG-007` (Image-Scan),
+`LH-QG-009` (`make security-gates`).
 
 **Verifikation:**
 
 - v0.1.0-Tag existiert, GHSA-Pfad ist aktiv (Repo öffentlich).
 - Alle `LH-AK-001..016` erfüllt (Traceability-Matrix §20 grün).
+- Trivy-Scan zeigt keinen ungeklärten `CRITICAL`/`HIGH`-Fund.
 - Container-Image `ghcr.io/<owner>/k-deskflight:v0.1.0` läuft auf
   einer der drei aktuellen K8s-Versionen aus `ADR 0009`.
 
