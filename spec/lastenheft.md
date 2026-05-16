@@ -534,7 +534,7 @@ Ein Benutzer soll eine erneute Prüfung durch Änderung der Custom Resource ausl
 
 ### LH-F-027 — Events
 
-Der Operator soll Kubernetes Events für wichtige Zustandsänderungen erzeugen.
+Der Operator soll Kubernetes Events für wichtige Zustandsänderungen erzeugen. Format und Phasenstaffelung sind mit `ADR 0008` festgelegt (Plain-Text gemäß Kubernetes-Event-Konvention; v0.2-Soll-Anforderung gemäß `LH-PRI-002`).
 
 ### LH-F-028 — Report als ConfigMap
 
@@ -1030,6 +1030,7 @@ Jede wesentliche Implementierungsfunktion soll auf mindestens eine Lastenheftken
 | LH-NF-004         | Stabilität                       | LH-AK-010        |
 | LH-NF-005         | Fehlertoleranz                   | LH-AK-010        |
 | LH-NF-013         | Dokumentation                    | LH-AK-013        |
+| LH-SST-004        | Prometheus-Format (Framework-Defaults, ADR 0007) | LH-AK-002 |
 | LH-SEC-001        | Minimalrechte                    | LH-AK-015        |
 | LH-SEC-002        | Keine Secret-Ausgabe             | LH-AK-012        |
 | LH-SEC-005        | Keine destruktiven Aktionen      | LH-AK-010        |
@@ -1074,6 +1075,12 @@ Gegenmaßnahme: Status- und Log-Ausgaben strikt filtern.
 Der Operator könnte unbeabsichtigt nur mit bestimmten Kubernetes-Distributionen funktionieren.
 
 Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische Profile getrennt behandeln.
+
+### LH-RISK-007 — Domain-Verlust der API-Gruppen-Halter-Domain
+
+Die Kubernetes-API-Gruppe `k-deskflight.geo-terrain.net` (`ADR 0006`) ist an die Halter-Domain `geo-terrain.net` gebunden. Ein Verlust der Domain (fehlende Verlängerung, Übertragung an Dritte, Registrar-Problem) würde alle k-deskflight-CRDs invalidieren — analog zu `LH-RISK-006`, hier auf Domain-Ebene.
+
+Gegenmaßnahme: Domain-Verlängerung als operative Routine sichern (Verantwortung des Projektowners); bei längerfristigem Domainrisiko Migration über `v1alpha2` oder neue API-Gruppe in eigener ADR.
 
 ---
 
