@@ -104,6 +104,15 @@ data:
 Key-Namen sind verbindlich (camelCase, ASCII). Andere Key-Namen oder
 zusätzliche Keys werden vom Operator ignoriert.
 
+Wahl der camelCase-Form: Sie folgt der Go-Struct-Tag- und JSON-
+Key-Konvention, die auch der CR-Spec-Stil aus `ADR 0006` verwendet,
+und hält Secret-Keys und Spec-Felder typografisch konsistent. Das
+AWS-Env-Variable-Format (`AWS_ACCESS_KEY_ID`) wird bewusst nicht
+repliziert, weil Secret-Keys keine Shell-Variablen sind. Anwender
+mit abweichendem Naming aus External-Secrets-Operator-,
+Vault-Sekret-Templates oder Bitnami-Charts mappen es im
+Bereitstellungs-Workflow auf das hier festgelegte Schema.
+
 ### 2.3 Failure-Conditions
 
 Pro extern geprüftem Dienst veröffentlicht der Operator höchstens
@@ -114,15 +123,16 @@ abgebrochen beim ersten Fehler):
 | -------------- | ------ | ------ | -------- | --------- |
 | `SecretMissing` | `False` | `SecretNotFound` | `critical` | `secretRef` zeigt auf nicht-existentes Secret |
 | `SecretMalformed` | `False` | `SecretKeyMissing` oder `SecretKeyEmpty` | `critical` | Pflicht-Key fehlt oder ist leer |
-| `ConnectivityUnknown` | `Unknown` | `Timeout` oder `NetworkUnreachable` | `warning` | TCP-Verbindung scheitert vor Auth |
+| `ConnectivityUnknown` | `Unknown` | `Timeout` oder `NetworkUnreachable` | — | TCP-Verbindung scheitert vor Auth |
 | `AuthFailed` | `False` | `AuthenticationFailed` | `critical` | Verbindung steht, Auth schlägt fehl |
 | `ConnectionVerified` | `True` | `ConnectionEstablished` | — | Auth erfolgreich, Verbindung steht |
 
 Die Schweregrade entsprechen `LH-F-031`: ein `critical`-Fail führt
 zur Gesamtphase `Failed`, ein `warning` zu `Warning`, `Unknown`
-ist nicht ermittelbar. `ConnectivityUnknown` bewusst nicht
-`critical`: ein temporärer Netzwerk-Aussetzer soll keine Cluster-
-Bereitschafts-Aussage hart umstoßen.
+ist nicht ermittelbar. `ConnectivityUnknown` trägt deshalb keinen
+Schweregrad: über `Status: Unknown` führt es zur Gesamtphase
+`Unknown` gemäß `LH-F-031`. Damit erzwingt ein temporärer Netzwerk-
+Aussetzer keine wertende Aussage über Cluster-Bereitschaft.
 
 ### 2.4 TLS-Vertrauensstellung
 
