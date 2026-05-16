@@ -899,9 +899,21 @@ Beide werden ab `LH-VM-005` (Integrationstest-Phase) in CI-Workflows verankert.
 
 Inline-Suppressions (`//nolint`, `//eslint-disable`, vergleichbare Pragmas) sind im produktiven Code ausgeschlossen. Pro-Scope-Carveouts (z. B. Test-Code, generierte Dateien, dokumentierte Sonderzonen) werden zentral in der Linter-Konfiguration mit Pflicht-Kommentar `Why:` dokumentiert. Sie sind keine Suppressions, sondern bewusste Profil-Entscheidungen.
 
-### LH-QG-011 — Opt-in-Gates (Mutation, Fuzz, Benchmark)
+### LH-QG-011 — Opt-in-Gates (Sammel-Kennung)
 
-Mutation-Tests (`gremlins`), Fuzz-Tests (`go test -fuzz`) und Benchmarks (`go test -bench`) sind als Pattern verankert, aber nicht MVP-pflichtig. Aktivierung pro Release als Nightly oder On-Demand; Reports werden in Release-Notes ausgewertet, der normale PR-Flow wird nicht blockiert.
+Die folgenden Sub-Kennungen führen die drei Opt-in-Capabilities separat, damit Aktivierung und spätere Schwellen-Hebung pro Capability einzeln verfolgt werden können. Jede Sub-Kennung ist bei Aktivierung eigenständig ADR-pflichtig (`ADR 0012 §2.12` bzw. Folge-ADR).
+
+### LH-QG-011a — Mutation-Tests
+
+Mutation-Tests (`gremlins` für Go) sind als Pattern verankert, aber nicht MVP-pflichtig. Aktivierung pro Release als Nightly oder On-Demand; Reports werden in Release-Notes ausgewertet, der normale PR-Flow wird nicht blockiert. Mutation-Score-Ziel entsteht mit der Aktivierungs-ADR.
+
+### LH-QG-011b — Benchmarks
+
+Benchmarks (`go test -bench` auf Hot-Path-Funktionen) sind als Pattern verankert, aber nicht MVP-pflichtig. Performance-Budget pro Bench entsteht mit der Aktivierungs-ADR und richtet sich an `LH-NF-019` (Ressourcenverbrauch).
+
+### LH-QG-011c — Fuzz-Tests
+
+Fuzz-Tests (`go test -fuzz` auf eingangsverarbeitenden Funktionen) sind als Pattern verankert, aber nicht MVP-pflichtig. Fuzz-Budget pro Target entsteht mit der Aktivierungs-ADR und richtet sich an `LH-NF-004` (Stabilität).
 
 ---
 

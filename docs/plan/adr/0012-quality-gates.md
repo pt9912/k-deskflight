@@ -68,9 +68,10 @@ m-trace entfallen mangels Workspace.
 | Image-Scan | Trivy gegen Container-Image (CRITICAL+HIGH brechen) | M7 | ja | `LH-QG-007`, `LH-NF-006` |
 | Doc-Refs-Linter | `verify-doc-refs.sh` (m-trace-Adaption) | M1 | ja | `LH-QG-008`, `ADR 0003 §5` |
 | Gate-Bündelung | `make gates` (Pflicht) und `make security-gates` (Pflicht, parallel im CI) | M1 (Targets angelegt) → M6 (vollständig) | ja | `LH-QG-009` |
-| Mutation-Tests | `gremlins` | später, opt-in | nein | `LH-QG-011` |
-| Benchmarks | `go test -bench` | später, opt-in | nein | `LH-QG-011`, `LH-NF-019` |
-| Fuzz-Tests | `go test -fuzz` | später, opt-in | nein | `LH-QG-011`, `LH-NF-004` |
+| Suppressions-Verbot | Konfigurations-Konvention in `.golangci.yml issues.exclude-rules` (`//nolint`-Pragmas verboten, §2.4) | M1 (Konvention etabliert) | ja | `LH-QG-010` |
+| Mutation-Tests | `gremlins` | später, opt-in | nein | `LH-QG-011a` |
+| Benchmarks | `go test -bench` | später, opt-in | nein | `LH-QG-011b`, `LH-NF-019` |
+| Fuzz-Tests | `go test -fuzz` | später, opt-in | nein | `LH-QG-011c`, `LH-NF-004` |
 
 Pflicht-Gates brechen den CI-Build und werden vor Merge in `main`
 erzwungen (`ADR 0011 §2.7`). Opt-in-Gates laufen ggf. als Nightly
@@ -103,8 +104,8 @@ Verbindlich für allen produktiven Go-Code unter dem Operator-Modul:
 | `gochecknoglobals` | Keine globalen Variablen | DIP |
 | `gochecknoinits` | Keine `init()`-Funktionen | DIP |
 | `gocognit` | Kognitive Komplexität | SRP |
-| `gocyclo` | Zyklomatische Komplexität (Fallback) | SRP |
-| `gomodguard` | Modul-Allow-/Blocklist | DIP |
+| `gocyclo` | Zyklomatische Komplexität (älteres, einfacheres Maß; ergänzt `cyclop` mit pragmatischen Schwellen) | SRP |
+| `gomodguard_v2` | Modul-Allow-/Blocklist (golangci-lint-v2-API-konforme Variante; ersetzt das ältere `gomodguard`-Plugin) | DIP |
 | `iface` | Interface-Pollution vermeiden | ISP |
 | `inamedparam` | Interface-Parameter benennen | ISP |
 | `interfacebloat` | Zu große Interfaces | ISP |
@@ -181,20 +182,29 @@ Damit ist die Quelle der Wahrheit (Go-Types) und das Konsumformat
 
 ### 2.8 Vulnerability-Scan
 
-`govulncheck` (Pin: aktuelle Stable-Version, derzeit `v1.1.4`
-analog m-trace) läuft im CI-Job `security-gates` separat von
+`govulncheck` läuft im CI-Job `security-gates` separat von
 `make gates`. Funktionsbasiertes Scanning: nur tatsächlich
 aufgerufene Vulnerable-Funktionen brechen den Build. Findings ohne
 Fix-Plan werden über eine zentral kommentierte Vulnignore-Konfig
 zeitlich befristet (`expires`-Datum); abgelaufene Einträge brechen
 den Generator (Pendant zu `m-trace/scripts/render-trivyignore.sh`).
 
+Versionspin: bei ADR-Erstellung `v1.1.4` (analog m-trace). Pin-Hebung
+ist Routine und wird im Pflichtenheft (`LH-VM-002`) bzw. im
+`Makefile`/CI-Workflow gepflegt, **ohne ADR**. Eine inhaltliche
+Änderung der Scan-Politik (z. B. fail-open statt fail-closed, andere
+Vuln-DB) wäre weiterhin ADR-pflichtig.
+
 ### 2.9 Image-Scan
 
-Trivy (Pin: aktuelle Stable-Version, derzeit `aquasec/trivy:0.59.1`
-analog m-trace) scannt das Operator-Container-Image. Policy:
-`CRITICAL` und `HIGH` brechen den Build, `MEDIUM` wird berichtet.
+Trivy scannt das Operator-Container-Image. Policy: `CRITICAL` und
+`HIGH` brechen den Build, `MEDIUM` wird berichtet.
 Pro-Image-Vulnignore-Liste mit `expires`-Pflicht analog §2.8.
+
+Versionspin: bei ADR-Erstellung `aquasec/trivy:0.59.1` (analog
+m-trace). Pin-Hebung ist Routine analog §2.8 — ohne ADR. Politik-
+Änderungen (z. B. Schwellen-Anpassung von `HIGH` auf `MEDIUM` als
+Build-Brecher) bleiben ADR-pflichtig.
 
 ### 2.10 Doc-Refs-Linter
 
@@ -257,7 +267,9 @@ nicht.
 ## 3. Konsequenzen
 
 - **Lastenheft** bekommt einen neuen Abschnitt `§16a Quality-Gates`
-  mit Kennungen `LH-QG-001` bis `LH-QG-011` (gemäß §2.1-Tabelle und
+  mit Kennungen `LH-QG-001` bis `LH-QG-010` sowie Sub-Kennungen
+  `LH-QG-011a` (Mutation), `LH-QG-011b` (Benchmarks), `LH-QG-011c`
+  (Fuzz) gemäß §2.1-Tabelle und
   §2.12 für Opt-in). Die Kennungen sind ab Acceptance dieser ADR
   normativ.
 - **Roadmap** `docs/plan/planning/in-progress/roadmap.md` wird
