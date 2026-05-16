@@ -269,8 +269,13 @@ die **Struktur-Schichten**:
   der zuletzt vollständig ausgeführte Reconcile bezieht.
 - `Status.Summary`: Aggregat (`LH-F-007`) mit den Feldern `passed`,
   `warning`, `failed`, `unknown`, `checksTotal` sowie `lastChecked`.
-- `Status.Conditions`: Standard-Kubernetes-Conditions-Liste
-  (`LH-F-005`); Reason/Severity/Message gemäß `LH-F-031`/`LH-F-032`.
+- `Status.Conditions`: Kubernetes-ähnliche Condition-Liste mit
+  `Type`/`Status`/`Reason`/`Message`/`LastTransitionTime`
+  und explizitem `Severity`-Feld (`info|warning|critical`) für die
+  Check-Schweregrad-Auswertung. `Severity` ist Pflichtfeld (Default `info`,
+  wenn der Produzent nichts setzt).
+  `Reason`/`Severity`/`Message` folgt
+  `LH-F-031`/`LH-F-032`.
 
 ### AR-007 — Generated-Drift-Mechanik
 
@@ -358,7 +363,7 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
    `CheckRegistry` (`AR-013`) auflösen.
    - Die Auflösung ist strict: sind in `Spec.Checks` unbekannte Check-Namen
      eingetragen oder ist ein Check nicht im aktivierten Profil erlaubt,
-     wird `Resolve`/`ListByProfile` als invalidiert betrachtet.
+     gilt der Auswahlschritt als ungültig.
    - Die betroffenen Namen werden vor der Fehlerausgabe als eindeutige,
      alphabetisch sortierte Liste verarbeitet.
    - Für unbekannte Namen wird `Reason: UnknownCheck` gesetzt.
@@ -369,6 +374,11 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 4. **Execute Checks** — basierend auf der Registry-Auflösung werden die
    Check-spezifischen Werte in `CheckSpec`-Instanzen transformiert und via
    `spec.Kind()` gegen `Check.SpecKind()` validiert.
+   - Die gesamte Check-Pre-Execution- und Execution-Pipeline ist panic-härtet:
+     `ListByProfile`-Ergebnis, `CheckSpec`-Transformation, `CheckSpec.Validate`
+     und `Check.Run` laufen hinter einem gemeinsamen Panic-Boundary (`defer/recover`).
+     Bei Panics in diesem Pfad entstehen ein deterministischer Result-Eintrag
+     `Status: Unknown`, `Reason: InternalError` und `Message` ohne Status-Datenleck.
    Danach wird die Ausführung durch ein verbindliches Worker-Pool-Modell
    bestimmt (Pflichtenheft-Detail):
    - **Timeout-Vertrag (MVP):**
@@ -397,13 +407,17 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
          - `Reason=K8SApiBurstConfig` bei Anpassung von `K8S_BURST`.
          - `Reason=WorkerPoolSizeConfig` bei Anpassung von `WORKER_POOL_SIZE`.
          - `Reason=LeaderReadinessGraceConfig` bei Anpassung von `leaderReadinessGrace`.
-         - `Reason=LeaderReadLeaseErrorToleranceConfig` bei Anpassung von
+        - `Reason=LeaderReadLeaseErrorToleranceConfig` bei Anpassung von
            `leaderReadLeaseErrorTolerance`.
        - Optional: `OPERATOR_STRICT_CONFIG=true` verwandelt solche
-         Normalisierungen in ein Start-Blocking (Operator-Start abgebrochen,
+         Normalisierungen in ein Start-Blocking für Operator-Startkonfigurationen
+         (z. B. Umgebungs- oder Flag-Parameter, nicht für `Spec.Interval`):
+         Operator-Start abgebrochen,
          klarer Startfehler bis die Konfiguration korrigiert ist).
-       - `OPERATOR_STRICT_CONFIG=true` gilt zusätzlich auf alle Konfigurationspfade,
-         inkl. der oben beschriebenen Cross-Constraint-Korrektur.
+        - `OPERATOR_STRICT_CONFIG=true` gilt zusätzlich auf alle Konfigurationspfade,
+         inkl. der oben beschriebenen Cross-Constraint-Korrektur, jedoch nur für
+         Operator-Laufzeitkonfiguration (nicht für CR-Inline-Konfigurationen wie
+         `Spec.Interval`).
      - Normalisierung/Parsefehler erzeugen `Status=Warning +
        Condition=ConfigurationInvalid`, den beschriebenen feldspezifischen
        Reason-Code und die gewählte Normalisierung.
@@ -421,7 +435,7 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
          keine Ressourcen leaken. `domain.Check`-Implementierungen,
          die den Kontext nach Timeout systematisch ignorieren, sind Architekturverstoß
          und werden als `Unknown` + `Reason: Timeout` bewertet; zusätzlich wird
-         `deskflight_check_internal_error_total{check_name,kind=noncooperative}` inkrementiert.
+         `deskflight_check_internal_error_total{check_name,kind="noncooperative"}` inkrementiert.
        - **Check-Kontrakt gegen Resource-Leaks (verbindlich):**
          - `domain.Check`-Implementierungen müssen `ctx.Done()` deterministisch
            beachten (inkl. API-/I/O-Calls mit Kontext).
@@ -504,8 +518,11 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
        nachgefüllt und in `timedOutTaskIDs` markiert.
      - `allResultsReceived` ist erfüllt, wenn
        `len(resultTaskIDs) + len(timedOutTaskIDs) == expectedResults`.
-     - Der Ergebnis-Kanal wird geschlossen, wenn alle Ergebnisse erfasst sind oder
-       der Run-Deadline- oder Kontextpfad auslöst.
+     - Der Ergebnis-Kanal wird nicht primär zur Laufzeitsteuerung geschlossen.
+       Der Reconciler beendet die Ergebnisaufnahme deterministisch über das
+       Zusammenspiel aus `allResultsReceived` und
+       `runCtx.Done()`/`resultLimitCh`; offene Worker-Kanäleignisse nach
+       Abschluss werden verworfen.
    - Alle Worker und Kanäle werden mit demselben Reconcile-`runCtx`
      orchestriert: Bei `runCtx.Done()` brechen sie frühzeitig ab, geben
      `Unknown`/`Reason=ContextCancelled` zurück und beenden sich deterministisch.
@@ -561,8 +578,8 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 `Spec.Interval` (Default Pflichtenheft, vorgeschlagener Startwert
 `5m`) steuert `RequeueAfter` am Ende des Reconcile-Laufs.
 
-  - `Interval` ist als Duration (z. B. `5m`, `30s`, `1h`) in der Spec
-    vorgesehen und wird wie folgt normalisiert:
+- `Interval` ist als Duration (z. B. `5m`, `30s`, `1h`) in der Spec
+  vorgesehen und wird wie folgt normalisiert:
   - Default `5m`, wenn Feld leer ist.
   - `min=30s`, `max=24h`.
   - Nicht parsebare Werte und Werte außerhalb des Bereichs werden auf den
@@ -574,6 +591,30 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
     lauffähig; die normale Normalisierung wird verwendet.
   - Ein ungültiger `Spec.Interval` verhindert keinen Lauf; der normalisierte Wert
     wird deterministisch verwendet.
+  - `OPERATOR_STRICT_CONFIG` blockiert nur harte Fehler in der
+    Operator-Laufzeitkonfiguration (ENV/Flags, Start-Guards, Client-/Worker-
+    Limits); CR-Ebene (insbesondere `Spec.Interval`) bleibt nicht start-blockierend.
+
+#### AR-010.1 — Konfigurationsklassifizierung und Fehler-Scoping
+
+- **Runtime-Konfiguration (`Operator-Kontext`):** `RECONCILE_TIMEOUT_SECONDS`,
+  `CHECK_TIMEOUT_SECONDS`, `K8S_QPS`, `K8S_BURST`, `WORKER_POOL_SIZE`,
+  `LEADER_READINESS_GRACE`, `LEADER_READ_LEASE_ERROR_TOLERANCE`,
+  `OPERATOR_EXPECTED_REPLICA_COUNT`, `--expected-replica-count`,
+  `--leader-elect`, Single-Pod-Topologie-Guard.
+  - Parse-/Clamp-Fehler werden als `ConfigurationInvalid` gemeldet.
+  - Bei `OPERATOR_STRICT_CONFIG=true` und harter Fehlersituation wird der
+    Operatorstart blockiert.
+- **CR-konfigurationswerte (`Spec`-Scope):** `Spec.Interval`, `Spec.Profile`,
+  `Spec.Checks` und check-spezifische Felder.
+  - Parse-/Clamp-Fehler bleiben liveness-sicher: der Reconcile läuft mit
+    normalisiertem Wert weiter.
+  - Sie führen nie zu einem Operatorstart-Abbruch; stattdessen werden
+    `SpecInvalid`/`ConfigurationInvalid` deterministisch im Reconcile-Status
+    ausgedrückt.
+
+Diese Trennung ist verpflichtend für Reason-zu-Status-Mapping und die
+Interpretation von `OPERATOR_STRICT_CONFIG`.
 
 Auslösung (`LH-F-026`) erfolgt weiterhin durch Anwender-Edit am CR
 (Annotation-Bump oder Spezifikationsänderung) — zusätzlich zu den
@@ -594,6 +635,7 @@ andere Checks nicht stoppen. Konkrete Mechanik:
 - Reconciler selbst hat einen äußeren `defer/recover` für
   unerwartete Panics; bei einem solchen wird Phase `Unknown` mit
   Condition `ReconcileError` gesetzt.
+  - Fehlerpräzedenz ist verbindlich: `ReconcileTimeout` hat absolute Priorität.
   - Primäre Fehlerursache gewinnt:
     - Ist der Lauf bereits in `Reason=ReconcileTimeout` (durch `runCtx.Done()` oder
       `resultLimitCh`) gefallen, bleibt diese `Reason` erhalten.
@@ -636,6 +678,15 @@ Damit gilt:
     - Werte >1 sind im deaktivierten Leader-Modus ein harter Konfigurationsfehler:
       Start der Operator-Prozesse wird mit Fehler abgebrochen.
     - Der Start-Guard wird in `cmd/operator/main.go` zentral durchgesetzt.
+    - Zusätzlich erfolgt eine Topologieprüfung der tatsächlich laufenden Pods:
+      - Ermittlung der Operator-Pods über Namespace + identische Pod-/Deployment-
+        Label, optional über Deployment-Namenderivation.
+      - Bei `OPERATOR_EXPECTED_REPLICA_COUNT=1` und aktivem `--leader-elect=false`
+        darf die laufende aktive Pod-Anzahl nicht >1 sein.
+      - Andernfalls bricht der Start mit `Reason=SinglePodTopologyMismatch`
+        und Operator-NotReady auf.
+      - Der Guard wird beim Start geprüft und regelmäßig revalidiert (Debounce,
+        um Start-Flapping zu vermeiden).
   - Die Kombination aus `--leader-elect=false` + `OPERATOR_EXPECTED_REPLICA_COUNT=1`
     ist ein optionaler Single-Pod-Modus für Debug/isolierte Test-Deployments und
     kein aktives HA-Vorhaben.
@@ -699,14 +750,18 @@ beide Probes:
   meldet.
   Damit bleiben Standby-Pods bei `replicas>1` unready.
   Die Readiness-Read-Logik ist verbindlich:
-  - Der Operator registriert einen benannten Readiness-Check (z. B.
+   - Der Operator registriert einen benannten Readiness-Check (z. B.
     über `mgr.AddReadyzCheck("leader", ...)`), der auf den aktuellen
     Leader-Status (`LeaderElection`) prüft.
-    - Der `leader`-Check ist verbindlich auf ein internes Flag `isLeader()` gemappt.
-      Für MVP gilt eine eindeutige Implementierung:
+      - Der `leader`-Check ist verbindlich auf ein internes Flag `isLeader()` gemappt.
+        Für MVP gilt eine eindeutige Implementierung:
+      - `cacheSyncReady` ist ein internes Runtime-Flag:
+        initial `false`, wird auf `true` gesetzt, sobald der Controller-Manager-Cache
+        mindestens einmal erfolgreich synchronisiert wurde.
       - Ein kleiner `leaderWatcher`-Runnable liest periodisch den Lease-Eintrag
         des Operator-Lease-Namens im Operator-Namespace.
-      - `isLeader()` ist `true`, wenn `lease.spec.holderIdentity == POD_NAME`
+      - `isLeader()` ist `true`, wenn der Manager den Cache-Sync abgeschlossen hat,
+        `lease.spec.holderIdentity == POD_NAME`
       und `lease.status.renewTime` innerhalb der Readiness-Frischheit liegt:
       `now - renewTime <= leaderReadinessSlack`, wobei
       `leaderReadinessSlack = leaseDuration + leaderReadinessGrace` gilt.
@@ -736,7 +791,8 @@ beide Probes:
         `LEADER_READ_LEASE_ERROR_TOLERANCE`): Default `2`, Min `1`, Max `10`.
       - Parser-/Clamp-Verstoß dokumentiert als `ConfigurationInvalid`; bei
         `OPERATOR_STRICT_CONFIG=true` wird der Operatorstart blockiert.
-      - `leader` liefert nur dann `true`, wenn der Lease-Test positiv ist.
+      - `leader` liefert nur dann `true`, wenn `cacheSyncReady == true`
+        und der Lease-Test positiv ist.
       Bei deaktivierter Leader-Election (`--leader-elect=false`) ist der Lease-Check
       nicht aktiv.
       - Readiness ist dann aktivitätsabhängig auf den Controller-Startup:
@@ -771,9 +827,16 @@ gewährleisten, ist im MVP mindestens Folgendes verpflichtend:
   - `deskflight_reconcile_total{result_phase="pending|running|passed|warning|failed|unknown",namespace_scope="cluster|namespace"}`
   - `deskflight_reconcile_duration_seconds` (Histogramm)
   - `deskflight_status_update_retries_total` (für resourceVersion-Konflikte)
-  - `deskflight_check_result_total{check_name, reason, status}`
-  - `deskflight_check_timeout_total{check_name}`
-  - `deskflight_check_internal_error_total{check_name}`
+- `deskflight_check_result_total{check_name, reason, status}`
+  - `check_name` ist auf die registrierten Check-Namen beschränkt.
+  - `reason` ist auf die in AR-009/AR-011 definierte Reason-Taxonomie begrenzt.
+    Unbekannte oder unvollständige Werte werden auf neutrale Reason-Codes
+    normalisiert, um Metrik-Kardinalität stabil zu halten.
+- `deskflight_check_timeout_total{check_name}`
+- `deskflight_check_internal_error_total{check_name, kind}`
+- `kind` bei `deskflight_check_internal_error_total` kennt mindestens die Werte:
+  `noncooperative` (nicht-kooperatives Kontextverhalten), `panic`,
+  `internal` (allg. Laufzeitfehler).
 - Log-Kontrakt:
   - Pro Reconcile ein stabiler `reconcileRequestID` (z. B. aus Namespaced Name
     + generation), inkl. Ergebnis-Phase.
@@ -894,10 +957,14 @@ Phase. `Unknown`-Results aus `ConnectivityUnknown`-artigen Checks
 
 **Conditions-Sortierung:** Vor `Status().Update` werden `Conditions`
 zuerst **dedupliziert** und dann deterministisch nach `Type`
-(Condition-Name) alphabetisch sortiert. Bei doppelten Types wird ein
-einziger Eintrag rekonstruiert: zuerst höchste Severity (`critical >
-warning > info`), danach neustes `LastTransition`, bei Gleichstand stabil
-nach `Name`. Unabhängig von der Ausführungsreihenfolge der Checks
+  (Condition-Name) alphabetisch sortiert. Bei doppelten Types wird ein
+  einziger Eintrag rekonstruiert: zuerst höchste Severity
+  (`critical > warning > info`), danach neustes `LastTransition`, bei
+  Gleichstand stabil nach `Name`.
+  - `Severity` ist ein verpflichtendes Eingangs-Contract (`info|warning|critical`) für
+    den Aggregatorpfad. Ein leerer/ungültiger Wert muss vor der Übergabe
+    normalisiert (in der Producer-Pipeline) werden.
+  - Unabhängig von der Ausführungsreihenfolge der Checks
 (`AR-009 §4` Sequenz vs. Parallel) bleibt der CR-Status-Diff zwischen
 Reconcile-Läufen stabil und reflektiert nur tatsächliche
 Zustandsänderungen, nicht Sortierungs-Rauschen.
@@ -1072,10 +1139,16 @@ entstehen mit M1.
         inkl. Clamp-/Strict-Verhalten und `--leader-elect=false`-Modus.
       - `OPERATOR_EXPECTED_REPLICA_COUNT` als harte Single-Replica-Guard im
         `--leader-elect=false`-Profil und dessen fehlerhafte Konfiguration.
-- `AR-009`-Invarianten explizit:
+      - `--leader-elect=false` + unerwartetes Replica-Set-Scaling (`replicas > 1`)
+        als harte Topologieabweichung im laufenden Betrieb.
+      - `SinglePodTopologyMismatch` beim Liveness/Readiness-Verhalten.
+  - `AR-009`-Invarianten explizit:
   - harte Abschlussbedingung `allResultsReceived`,
   - runID-/taskID-Guards gegen späte/veraltete Worker-Sends,
   - deterministische finalisierte Abschlusslogik bei `runCtx.Done()`/`resultLimitCh`.
+  - `AR-018`-Pfadfälle: Fehler von `SelfSubjectAccessReview` und
+    `SelfSubjectRulesReview` werden deterministisch auf Status/Condition
+    abgebildet.
 - Reconcile-spezifische Robustheitsfälle: `defer/recover` im Reconciler,
   `context`-Timeouts bei Check-Ausführung, `Unknown`-Ergebnisse bei
   Ausführungsfehlern sowie Condition/Phase-Mapping bei diesen Fehlern.
@@ -1091,6 +1164,10 @@ entstehen mit M1.
   Retry-Verhalten im Reconciler.
 - Integrationstest für `workerPoolSize`-Grenzfälle (Fallback auf Sequenz,
   Begrenzung der Parallelität, sauberer Abbruch bei Timeout/Ctx-Cancel).
+- Integrationstest für `--leader-elect=false` bei mehrfacher Pod-Instanz in derselben
+  Deployment-Scope (fehlerhafte Topologie) mit erwarteter Guard-Blockade.
+- Integrations- oder Chaos-Test für `SelfSubjectAccessReview`/`RulesReview` ohne
+  Rechte (erwartetes `Spec`-/`ConfigurationInvalid`-Mapping).
 - Laufzeit: erträglich (Sekunden bis wenige Minuten); Teil von
   `make test` / `make gates`.
 
