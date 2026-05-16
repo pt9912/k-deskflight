@@ -936,6 +936,7 @@ Für das MVP gelten folgende Anforderungen als zwingend:
 - LH-NF-005
 - LH-NF-006
 - LH-NF-013
+- LH-SST-004 (Prometheus-Format, Framework-Defaults gemäß ADR 0007)
 - LH-SEC-001
 - LH-SEC-002
 - LH-SEC-005
@@ -952,7 +953,7 @@ Für Version 0.2 sind vorgesehen:
 - ClusterIssuer-Prüfung (LH-F-014)
 - Events (LH-F-027)
 - Report als ConfigMap (LH-F-028)
-- Prometheus Metrics (LH-NF-008, LH-SST-004)
+- Eigene Domänen-Metriken (LH-NF-008) — Prometheus-Format (LH-SST-004) bereits im MVP erfüllt gemäß `ADR 0007`
 - Helm Chart (LH-NF-016, LH-SST-010) — aus MVP ausgeklammert mit `ADR 0005`
 
 ### LH-PRI-003 — Kann-Anforderungen für spätere Versionen
@@ -1086,7 +1087,7 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 | LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | offen                                                                                                               |
 | LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |
 | LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | Geschlossen mit [`ADR 0005`](../docs/plan/adr/0005-helm-chart-nicht-im-mvp.md)                                       |
-| LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | offen                                                                                                               |
+| LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | Geschlossen mit [`ADR 0007`](../docs/plan/adr/0007-prometheus-metrik-scope-im-mvp.md)                                |
 | LH-OP-008 | Entscheidung über Report-Format treffen                                    | offen                                                                                                               |
 | LH-OP-009 | Projektname finalisieren                                                   | Geschlossen mit [`ADR 0004`](../docs/plan/adr/0004-projektname.md)                                                  |
 | LH-OP-010 | Governance für Open-Source-Beiträge definieren                             | offen                                                                                                               |
@@ -1119,6 +1120,7 @@ Das MVP umfasst:
 - einfache Dokumentation
 - Container-Image
 - Beispielmanifest
+- Prometheus-`/metrics`-Endpoint mit controller-runtime-Defaults (LH-SST-004 gemäß ADR 0007)
 
 ### LH-MVP-003 — Nicht Bestandteil des MVP
 
