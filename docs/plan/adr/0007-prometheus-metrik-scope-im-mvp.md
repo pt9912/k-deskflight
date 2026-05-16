@@ -6,9 +6,6 @@
 [ADR 0001](0001-dokumentations-und-planungsstruktur.md),
 [ADR 0002](0002-adr-lifecycle.md),
 [ADR 0005](0005-helm-chart-nicht-im-mvp.md)
-**Schärft:** `LH-PRI-001` (Aufnahme von `LH-SST-004`),
-`LH-PRI-002` (Verfeinerung des Metrik-Eintrags),
-`LH-MVP-002` (Aufnahme des `/metrics`-Endpoints).
 
 ---
 
@@ -39,6 +36,13 @@ Damit zerfällt `LH-NF-008`/`LH-SST-004` in zwei Teilfragen:
    kostenlos.
 2. Eigene Domänenmetriken vorhanden? — Eigener Design-Aufwand mit
    Schema-Stabilität als Voraussetzung.
+
+**Begleitende Lastenheft-Anpassungen** (im selben Commit):
+`LH-PRI-001` wird um `LH-SST-004` ergänzt (Prometheus-Format zieht
+in die MVP-Muss-Liste), `LH-PRI-002` Eintrag wird verfeinert
+(Metrik-Format ist nicht mehr v0.2-Inhalt, nur eigene Domänen-
+Metriken bleiben dort), und `LH-MVP-002` wird um den
+`/metrics`-Endpoint ergänzt.
 
 ---
 
@@ -116,8 +120,8 @@ Anwender-Dokumentation beschreibt, welches Metrik-Set erwartbar ist
   hätten Schema-Design und Stabilisierungsaufwand bedeutet; Option C
   hält den MVP-Scope klein und liefert dennoch frühe
   Beobachtbarkeit.
-- `LH-OP-007` wird in §22 als geschlossen mit dieser ADR markiert
-  (`ADR 0002 §7` Formelhilfe).
+- `LH-OP-007` wird im Lastenheft als geschlossen mit dieser ADR
+  markiert (Formelhilfe aus `ADR 0002`).
 
 ---
 

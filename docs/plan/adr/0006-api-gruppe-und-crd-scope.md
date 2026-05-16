@@ -5,10 +5,6 @@
 **Bezug:** [Lastenheft](../../../spec/lastenheft.md),
 [ADR 0001](0001-dokumentations-und-planungsstruktur.md),
 [ADR 0002](0002-adr-lifecycle.md)
-**Schärft:** `LH-PROD-002`, `LH-PROD-003a`, `LH-PROD-003b` —
-die dortigen Beispielwerte (`preflight.k-deskflight.dev`) waren
-Platzhalter ohne gesicherte Domain und werden im selben Commit auf
-den hier beschlossenen Stand gehoben.
 
 ---
 
@@ -27,6 +23,12 @@ Domain-Klärung aufgehoben.
 Zusätzlich klärt diese ADR den **CRD-Scope** (cluster-scoped vs.
 namespaced), den `LH-PROD-002` und `LH-PROD-003a`/`-b` bisher nicht
 festgelegt haben.
+
+**Begleitende Lastenheft-Anpassungen** (im selben Commit):
+`LH-PROD-002`, `LH-PROD-003a` und `LH-PROD-003b` werden auf den hier
+beschlossenen Stand gehoben. Die dortigen Beispielwerte
+(`preflight.k-deskflight.dev`) waren Platzhalter ohne gesicherte
+Domain.
 
 ---
 
@@ -91,8 +93,8 @@ Die CRD `OpenDeskPreflightCheck` ist **namespaced**. Begründung:
 
 - `LH-PROD-002`, `LH-PROD-003a` und `LH-PROD-003b` werden im selben
   Commit auf `k-deskflight.geo-terrain.net/v1alpha1` aktualisiert.
-- `LH-OP-002` wird in §22 als geschlossen mit dieser ADR markiert
-  (`ADR 0002 §7` Formelhilfe).
+- `LH-OP-002` wird im Lastenheft als geschlossen mit dieser ADR
+  markiert (Formelhilfe aus `ADR 0002`).
 - Der Vorklärungs-Trigger wandert aus `docs/plan/planning/open/` nach
   `docs/archive/` mit einer Closure-Notiz (überholt, weil entschieden,
   `ADR 0001 §3`). `done/` bleibt für abgeschlossene Pläne und Slices

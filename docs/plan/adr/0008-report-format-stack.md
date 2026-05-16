@@ -7,8 +7,6 @@
 [ADR 0002](0002-adr-lifecycle.md),
 [ADR 0005](0005-helm-chart-nicht-im-mvp.md),
 [ADR 0007](0007-prometheus-metrik-scope-im-mvp.md)
-**Schärft:** `LH-F-028` (ConfigMap-Format), `LH-PRI-002`
-(Format-Konkretisierung der v0.2-Soll-Anforderung).
 
 ---
 
@@ -30,6 +28,10 @@ Die einzige format-offene Stelle ist der ConfigMap-Report aus
 `LH-F-028`. Diese ADR beantwortet die Frage und macht den gesamten
 Format-Stack einmalig explizit, damit für künftige Diskussionen ein
 klarer Anker existiert.
+
+**Begleitende Lastenheft-Anpassungen** (im selben Commit):
+`LH-F-028` wird auf das zwei-Keys-Layout präzisiert, `LH-PRI-002`
+Eintrag wird um die Format-Konkretisierung ergänzt.
 
 ---
 
@@ -117,8 +119,8 @@ verhindert Drift und reduziert Generator-Komplexität.
   geschärft (zwei Keys statt eine pauschale „menschenlesbar"-Aussage).
 - `LH-PRI-002` Eintrag „Report als ConfigMap (`LH-F-028`)" wird
   konkretisiert: Format YAML + Markdown gemäß `ADR 0008`.
-- `LH-OP-008` wird in §22 als geschlossen mit dieser ADR markiert
-  (`ADR 0002 §7` Formelhilfe).
+- `LH-OP-008` wird im Lastenheft als geschlossen mit dieser ADR
+  markiert (Formelhilfe aus `ADR 0002`).
 - Pflichtenheft (`LH-VM-002`) konkretisiert: Spec-Felder für die
   Aktivierung der ConfigMap, exaktes YAML-Schema, Markdown-Layout
   (Heading-Hierarchie, Tabellen-Schema).

@@ -72,8 +72,8 @@ Helm-Repository vs. OCI-Registry) ist nicht Gegenstand dieser ADR
 - Anwender, die im MVP zwingend Helm benötigen, können das Manifest-Set
   über `kubectl apply -k` (Kustomize) oder eigene Wrapper installieren
   — innerhalb des Lastenheftrahmens.
-- `LH-OP-006` wird im Lastenheft §22 als geschlossen mit dieser ADR
-  markiert (`ADR 0002 §7` Formelhilfe).
+- `LH-OP-006` wird im Lastenheft als geschlossen mit dieser ADR
+  markiert (Formelhilfe aus `ADR 0002`).
 
 ---
 
