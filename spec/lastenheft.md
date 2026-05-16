@@ -774,6 +774,8 @@ Zugangsdaten zur Prüfung externer Dienste (z. B. PostgreSQL, S3-kompatibler Obj
 
 Solche Zugangsdaten müssen ausschließlich über `secretRef`-Felder auf bestehende Kubernetes-Secrets im selben Namespace referenziert werden. Der Operator soll die referenzierten Secrets nur zur Laufzeit lesen und ihre Werte weder im Status, in Events, in Logs noch in Reports ausgeben.
 
+Key-Konventionen pro Dienst, Failure-Conditions, TLS-Vertrauensstellung und erlaubte Auth-Methoden sind in `ADR 0010` festgelegt.
+
 ---
 
 ## 15. Sicherheitsanforderungen
@@ -953,6 +955,7 @@ Für Version 0.2 sind vorgesehen:
 
 - DNS-Prüfung (LH-F-018)
 - TLS-Prüfung (LH-F-019)
+- Netzwerk-Reachability (LH-F-022) — gemäß `ADR 0010` ohne-Auth-Block
 - Node-Anzahl- und Zustandsprüfung (LH-F-016, LH-F-017)
 - ClusterIssuer-Prüfung (LH-F-014)
 - Events (LH-F-027)
@@ -964,8 +967,8 @@ Für Version 0.2 sind vorgesehen:
 
 Für spätere Versionen sind möglich:
 
-- PostgreSQL-Prüfung
-- Object-Storage-Prüfung
+- PostgreSQL-Prüfung (LH-F-020) — mit-Auth-Block gemäß `ADR 0010`; Aktivierung frühestens v0.3 in eigener Folge-ADR
+- Object-Storage-Prüfung (LH-F-021) — mit-Auth-Block gemäß `ADR 0010`; Aktivierung frühestens v0.3 in eigener Folge-ADR
 - vordefinierte Plattformprofile
 - HTML-Report
 - kubectl Plugin
@@ -1096,13 +1099,13 @@ Gegenmaßnahme: Domain-Verlängerung als operative Routine sichern (Verantwortun
 | LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                | Geschlossen mit [`ADR 0006`](../docs/plan/adr/0006-api-gruppe-und-crd-scope.md) (Vorklärung archiviert unter [`docs/archive/api-gruppe-domain.md`](../docs/archive/api-gruppe-domain.md)) |
 | LH-OP-003 | Lizenz auswählen                                                           | entfallen mit Commit `3be7b28` (MIT-Entscheidung; vor Einführung des ADR-Lifecycles)                                |
 | LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | Geschlossen mit [`ADR 0009`](../docs/plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md)             |
-| LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |
+| LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | Geschlossen mit [`ADR 0010`](../docs/plan/adr/0010-externe-dienstpruefungen-und-secret-mechanik.md)                  |
 | LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | Geschlossen mit [`ADR 0005`](../docs/plan/adr/0005-helm-chart-nicht-im-mvp.md)                                       |
 | LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | Geschlossen mit [`ADR 0007`](../docs/plan/adr/0007-prometheus-metrik-scope-im-mvp.md)                                |
 | LH-OP-008 | Entscheidung über Report-Format treffen                                    | Geschlossen mit [`ADR 0008`](../docs/plan/adr/0008-report-format-stack.md)                                          |
 | LH-OP-009 | Projektname finalisieren                                                   | Geschlossen mit [`ADR 0004`](../docs/plan/adr/0004-projektname.md)                                                  |
 | LH-OP-010 | Governance für Open-Source-Beiträge definieren                             | offen                                                                                                               |
-| LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren | offen                                                                                                               |
+| LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren | Geschlossen mit [`ADR 0010`](../docs/plan/adr/0010-externe-dienstpruefungen-und-secret-mechanik.md)                  |
 
 ---
 
