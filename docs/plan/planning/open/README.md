@@ -17,6 +17,7 @@ Einträge wandern entweder:
 | Datei | Trigger für | Kurzbeschreibung |
 | ----- | ----------- | ---------------- |
 | [`api-gruppe-domain.md`](api-gruppe-domain.md) | `LH-OP-002` | Domain-Klärung als Vorbedingung für die finale Wahl der Kubernetes-API-Gruppe. |
+| [`changelog.md`](changelog.md) | `LH-REL-001` | CHANGELOG-Format und -Pflegekonvention vor dem ersten Release-Tag. |
 
 Die kanonische Liste offener fachlicher Punkte lebt im Lastenheft
 unter §22 (`LH-OP-*`). Einträge in diesem Verzeichnis sind die

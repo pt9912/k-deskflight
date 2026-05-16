@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Datum:** 2026-05-16
-**Bezug:** [Lastenheft `LH-OP-009`, `LH-PROD-001`](../../../spec/lastenheft.md),
+**Bezug:** [Lastenheft](../../../spec/lastenheft.md),
 [ADR 0001](0001-dokumentations-und-planungsstruktur.md),
 [ADR 0002](0002-adr-lifecycle.md)
 
@@ -40,6 +40,11 @@ Er gilt einheitlich für die folgenden Artefakte:
 | Container-Image-Name (Kurzform)   | `k-deskflight`             |
 | Helm-Chart-Name                   | `k-deskflight`             |
 | Go-Modulname (Suffix)             | `k-deskflight`             |
+
+Der Wert „Suffix" in der Zeile „Go-Modulname (Suffix)" bezeichnet den
+letzten Pfadbestandteil des Modulnamens. Der vollständige Modulpfad
+(`<host>/<owner>/k-deskflight`) ist nicht Gegenstand dieser ADR (siehe
+§4) und wird mit dem Pflichtenheft (`LH-VM-002`) festgelegt.
 
 Die fachliche Produktbeschreibung lautet:
 
@@ -79,8 +84,10 @@ bekräftigt.
   Pflichtenheft (`LH-VM-002`).
 - **Container-Registry-Pfad** (`<registry>/<owner>/k-deskflight:<tag>`)
   und **Helm-Repository-URL** — operative Folgearbeit.
-- **Namens- oder Markenklärung mit dem OpenDesk-Projekt**. Die
-  deskriptive Nutzung des Begriffs „OpenDesk" in der fachlichen
-  Produktbeschreibung bleibt von dieser ADR unberührt. Sollte sich
-  Klärungsbedarf ergeben, wird er als eigener `planning/open/`-Eintrag
-  oder ADR geführt.
+- **Namens- oder Markenklärung mit dem OpenDesk-Projekt** sowie
+  generische Namensverfügbarkeit (Verfügbarkeit der GitHub-Organisation,
+  Container-Registry-Namensraum, allgemeine Markenrecherche zu
+  „deskflight"). Die deskriptive Nutzung des Begriffs „OpenDesk" in der
+  fachlichen Produktbeschreibung bleibt von dieser ADR unberührt. Sollte
+  sich Klärungsbedarf ergeben, wird er als eigener
+  `planning/open/`-Eintrag oder ADR geführt.

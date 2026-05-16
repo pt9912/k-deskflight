@@ -47,6 +47,7 @@ auf den Wert festschreiben — ein späterer Domainwechsel wäre dann nur
 | `k-deskflight.io` registrieren | etabliertes Tech-TLD | höhere Kosten, Verfügbarkeit prüfen |
 | Subdomain unter Halterdomain (z. B. `preflight.<halter>.example`) | keine zusätzliche Registrierung | API-Gruppe ist an Halter gebunden; bei Trägerwechsel kostet Migration einen API-Gruppenwechsel |
 | `preflight.k-deskflight.dev` ohne Registrierung | passt zu LH-PROD-002 | Konventionsbruch (Domain nicht kontrolliert) — bei späterer Fremdregistrierung droht Konflikt |
+| Subdomain unter `*.k8s.io` (z. B. `preflight.k8s.io`) | kanonischer Kubernetes-Namensraum | kuratiert durch Kubernetes-SIG; nur für offizielle Kubernetes-Subprojekte zugänglich — für Drittprojekte nicht möglich, daher hier nur als ausdrücklich ausgeschlossene Option aufgeführt |
 
 Die Tabelle ist Diskussionsgrundlage, keine Vorentscheidung. Eine ADR
 schließt `LH-OP-002` erst, wenn der Halter und der konkrete Wert
