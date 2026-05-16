@@ -1,38 +1,40 @@
 # k-deskflight
 
-**OpenDesk Preflight Operator** — Kubernetes-Operator zur Vorabprüfung von
-Cluster-Voraussetzungen für [OpenDesk](https://docs.opendesk.eu/)-Installationen.
+**OpenDesk Preflight Operator** — Kubernetes operator that performs preflight
+checks on a cluster before an [OpenDesk](https://docs.opendesk.eu/) installation.
+
+> **Sprachversion:** Die deutsche Variante dieses README liegt unter
+> [`README.de.md`](README.de.md).
 
 ## Status
 
-Das Projekt befindet sich in der **Spezifikationsphase** des V-Modells
-(`LH-VM-001`). Es gibt noch keinen Code — die Anforderungen sind
-dokumentiert, alle Architekturentscheidungen für den MVP-Scope sind getroffen,
-die Implementierung beginnt mit `LH-VM-004`.
+The project is in the **specification phase** of the V-model (`LH-VM-001`).
+There is no code yet — the requirements are documented, every architecture
+decision for the MVP scope is taken, and implementation begins with
+`LH-VM-004`.
 
-| Phase | Status | Quelle |
+| Phase | Status | Source |
 | ----- | ------ | ------ |
-| Lastenheft (`LH-VM-001`) | Entwurf 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
-| Architekturentscheidungen | 11 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
-| Pflichtenheft (`LH-VM-002`) | offen | folgt |
-| Implementierung (`LH-VM-004`) | offen | folgt |
+| Lastenheft (`LH-VM-001`) | Draft 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
+| Architecture decisions | 11 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
+| Pflichtenheft (`LH-VM-002`) | open | follows |
+| Implementation (`LH-VM-004`) | open | follows |
 
-## Was der Operator tun soll
+## What the operator does
 
-Der Operator stellt die Custom Resource Definition `OpenDeskPreflightCheck`
-(API-Gruppe `k-deskflight.geo-terrain.net/v1alpha1`, namespaced) bereit.
-Anwender legen damit deklarativ fest, welche Cluster-Voraussetzungen geprüft
-werden sollen — z. B. Kubernetes-Mindestversion, IngressClass,
-StorageClasses, cert-manager-Verfügbarkeit, Ressourcen-Mindestgrenzen. Das
-Ergebnis erscheint strukturiert im Status der CR (`LH-F-007`/`LH-F-032`) und
-optional ab v0.2 zusätzlich als ConfigMap-Report mit YAML- und Markdown-Key
-(`LH-F-028`, `ADR 0008`).
+The operator ships a Custom Resource Definition `OpenDeskPreflightCheck`
+(API group `k-deskflight.geo-terrain.net/v1alpha1`, namespaced). Operators
+declare which cluster preconditions to check — e.g. Kubernetes minimum
+version, IngressClass, StorageClasses, cert-manager availability, resource
+floors. Results land structured in the CR status (`LH-F-007` / `LH-F-032`)
+and, from v0.2 onward, optionally as a ConfigMap report with a YAML and a
+Markdown key (`LH-F-028`, `ADR 0008`).
 
-Der Operator beschränkt sich auf **lesende** Cluster-Inspektion (`LH-F-035`):
-er installiert OpenDesk nicht, verändert keine OpenDesk-Komponenten und führt
-keine destruktiven Aktionen aus (`LH-SYS-002..006`).
+The operator is **read-only** with respect to the cluster (`LH-F-035`):
+it does not install OpenDesk, does not change OpenDesk components, and
+does not perform destructive actions (`LH-SYS-002..006`).
 
-### Beispiel — MVP-Profil
+### Example — MVP profile
 
 ```yaml
 apiVersion: k-deskflight.geo-terrain.net/v1alpha1
@@ -58,56 +60,57 @@ spec:
       minMemory: "64Gi"
 ```
 
-Weitere Beispiele und Zielbilder unter `LH-PROD-003a` / `LH-PROD-003b` im
-Lastenheft.
+More examples and the target picture are in `LH-PROD-003a` / `LH-PROD-003b`
+of the Lastenheft.
 
-## Phasen-Roadmap (Stand der ADRs)
+## Phase roadmap (state of the ADRs)
 
-| Version | Inhalt | Quelle |
-| ------- | ------ | ------ |
-| v0.1 (MVP) | CRD, Controller, K8s-Version-/StorageClass-/IngressClass-/cert-manager-/Ressourcen-/RBAC-Prüfung, Container-Image, Beispielmanifeste (`deploy/manifests/`), Prometheus-`/metrics`-Endpoint mit Framework-Defaults | `LH-MVP-002`, `ADR 0005`, `ADR 0007` |
-| v0.2 | DNS-, TLS-, Netzwerk-Reachability-Prüfung; Events; ConfigMap-Report; eigene Domänen-Metriken; Helm Chart | `LH-PRI-002`, `ADR 0005`, `ADR 0007`, `ADR 0008`, `ADR 0010` |
-| v0.3+ | PostgreSQL-/S3-Erreichbarkeit (mit-Auth), HTML-Report, weitere Profile, kubectl-Plugin | `LH-PRI-003`, `ADR 0010` (mit-Auth-Block), Folge-ADR offen |
+| Version | Content | Source |
+| ------- | ------- | ------ |
+| v0.1 (MVP) | CRD, controller, K8s-version / StorageClass / IngressClass / cert-manager / resource / RBAC checks, container image, example manifests (`deploy/manifests/`), Prometheus `/metrics` endpoint with framework defaults | `LH-MVP-002`, `ADR 0005`, `ADR 0007` |
+| v0.2 | DNS / TLS / network reachability checks; events; ConfigMap report; own domain metrics; Helm chart | `LH-PRI-002`, `ADR 0005`, `ADR 0007`, `ADR 0008`, `ADR 0010` |
+| v0.3+ | PostgreSQL / S3 reachability (with auth), HTML report, additional profiles, kubectl plugin | `LH-PRI-003`, `ADR 0010` (with-auth block), follow-up ADR open |
 
-## Unterstützte Kubernetes-Versionen
+## Supported Kubernetes versions
 
-Rolling-Window über die drei jeweils aktuellen Kubernetes-Minor-Versionen mit
-aktivem Patch-Support (`ADR 0009`). Stand der ADR (2026-05-16): 1.34, 1.35,
-1.36. Die jeweils aktuelle Matrix wird pro Operator-Release im Release-Note
-dokumentiert.
+Rolling window over the three current Kubernetes minor versions with active
+patch support (`ADR 0009`). State as of the ADR (2026-05-16): 1.34, 1.35,
+1.36. The current matrix per operator release is documented in the release
+note.
 
-## Projektartefakte und Sprachen
+## Project artefacts and languages
 
-| Pfad | Inhalt | Sprache |
-| ---- | ------ | ------- |
-| `spec/lastenheft.md` | normatives Lastenheft mit `LH-*`-Kennungen | Deutsch |
-| `docs/plan/adr/` | Architekturentscheidungen (ADRs) | Deutsch |
-| `docs/plan/planning/` | Roadmap, offene Trigger, abgeschlossene Slices | Deutsch |
-| `docs/archive/` | überholte oder verworfene Ideenskizzen | Deutsch |
-| `README.md` (diese Datei) | Projektüberblick | Deutsch |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), [`SECURITY.md`](SECURITY.md) | Open-Source-Konventionen | Englisch |
-| Code, Commit-Messages, Issues, Pull Requests (ab `LH-VM-004`) | Implementierung und Community-Workflow | Englisch |
+| Path | Content | Language |
+| ---- | ------- | -------- |
+| `spec/lastenheft.md` | normative Lastenheft with `LH-*` identifiers | German |
+| `docs/plan/adr/` | architecture decision records (ADRs) | German |
+| `docs/plan/planning/` | roadmap, open triggers, completed slices | German |
+| `docs/archive/` | superseded or rejected sketches | German |
+| `README.md` (this file) | default project overview | English |
+| `README.de.md` | German translation of `README.md` | German |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), [`SECURITY.md`](SECURITY.md) | open-source conventions | English |
+| Code, commit messages, issues, pull requests (from `LH-VM-004`) | implementation and community workflow | English |
 
-Begründung der Sprachstaffelung: `LH-NF-021` — die fachliche Spezifikation
-richtet sich an behördennahe deutschsprachige Betreiber (`LH-PK-004`), der
-Code-Workflow an internationale Mitwirkende.
+Language policy lives in `LH-NF-021`. The German specification serves the
+audience of public-sector and German-speaking operators (`LH-PK-004`); the
+English README, code, and community workflow open the project to international
+contributors.
 
-## Lizenz
+## License
 
 [MIT](LICENSE).
 
-## Beitragen
+## Contributing
 
-Beiträge sind willkommen. Konventionen, DCO-Sign-off (`git commit -s`),
-Conventional-Commits-Format und Sprachregel stehen in
+Contributions are welcome. Conventions, DCO sign-off (`git commit -s`),
+Conventional Commits format and the language policy are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-Sicherheitslücken und Verstöße gegen den
-[Code of Conduct](CODE_OF_CONDUCT.md) bitte über [`SECURITY.md`](SECURITY.md)
-melden.
+Security vulnerabilities and Code of Conduct violations: please use
+[`SECURITY.md`](SECURITY.md).
 
-## Verwandte Quellen
+## Related sources
 
-- OpenDesk-Projekt: https://docs.opendesk.eu/
-- Kubernetes-Releases: https://kubernetes.io/releases/
+- OpenDesk project: https://docs.opendesk.eu/
+- Kubernetes releases: https://kubernetes.io/releases/
 - Contributor Covenant: https://www.contributor-covenant.org/version/2/1/

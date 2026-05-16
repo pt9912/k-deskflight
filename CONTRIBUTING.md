@@ -41,13 +41,16 @@ Per `LH-NF-021`:
 
 - **English** — source code, identifiers, code comments, issues, pull
   requests, commit messages, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
-  `SECURITY.md`, user-visible operator output (conditions, reasons, messages,
-  events, logs).
-- **German** — `README.md`, `Lastenheft`, `Pflichtenheft`, technical
-  specification documents in `spec/`, ADR contents in `docs/plan/adr/`.
+  `SECURITY.md`, `README.md` (default entry point), user-visible operator
+  output (conditions, reasons, messages, events, logs).
+- **German** — `README.de.md` (German translation of `README.md`, kept
+  1:1 symmetric in structure and detail), `Lastenheft`, `Pflichtenheft`,
+  technical specification documents in `spec/`, ADR contents in
+  `docs/plan/adr/`, planning artefacts in `docs/plan/`.
 
 If you change a German specification document, the commit message stays
-English.
+English. If you change `README.md`, mirror the change in `README.de.md`
+in the same pull request.
 
 ## Commit Convention
 

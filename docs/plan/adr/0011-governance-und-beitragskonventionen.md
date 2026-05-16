@@ -148,20 +148,22 @@ nicht erforderlich.
 - `LH-AK-014` (Open-Source-Veröffentlichung möglich) wird zum
   MVP-Release (v0.1, `LH-REL-001`) durch folgende Dateien im
   Repository-Root erfüllt:
-  - `README.md` — Englisch (`LH-NF-021` Ausnahme: README explizit
-    Deutsch — Klarstellung folgt im Konsequenz-Punkt unten).
+  - `README.md` — Englisch, Default-Entry-Point auf GitHub.
+  - `README.de.md` — Deutsche Übersetzung des `README.md`,
+    1:1-symmetrisch in Struktur und Detailgrad. Bedient die
+    Zielgruppe `LH-PK-004`.
   - `CONTRIBUTING.md` — Englisch, beschreibt DCO, Conventional
     Commits, Branch-Workflow.
   - `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1, Englisch.
   - `SECURITY.md` — Englisch, GHSA-Pfad, 90-Tage-Frist.
   - `LICENSE` — MIT (✓ bereits vorhanden).
-- **README-Sprache:** `LH-NF-021` listet README explizit als
-  Deutsch. Das steht in Spannung mit der Open-Source-Norm
-  (englisches README für internationale Beitragende). Auflösung:
-  README liegt **deutsch** vor (Konformität mit `LH-NF-021`,
-  Zielgruppe sind behördennahe Betreiber, `LH-PK-004`); ein
-  optionales `README.en.md` kann später ergänzt werden, ist aber
-  nicht Pflicht. Diese ADR verändert `LH-NF-021` nicht.
+- **README-Sprachpolitik:** `LH-NF-021` wird im selben Commit
+  geschärft. `README.md` ist Englisch (Default-Entry-Point für
+  GitHub-Discoverability und internationale Mitwirkende),
+  `README.de.md` enthält die deutsche Übersetzung für die
+  Zielgruppe `LH-PK-004`. Pflege beider Versionen ist
+  Beitragenden-Pflicht: inhaltliche Änderungen landen in beiden
+  Files im selben Pull Request.
 - `LH-NF-021` wird ab Akzeptanz dieser ADR strikt angewendet — auch
   Spec-/Plan-Commits sind ab jetzt Englisch. Die Bruchkante ist
   diese ADR (genauer: der ADR-0011-Closure-Commit). Bisherige

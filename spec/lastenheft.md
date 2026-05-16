@@ -691,10 +691,12 @@ Die Sprache der Projektartefakte ist wie folgt festgelegt:
 - Quellcode, Bezeichner, Codekommentare: Englisch
 - Issues, Pull Requests, Commit Messages: Englisch
 - Benutzersichtbare Operator-Ausgaben (Conditions, Reasons, Messages, Events, Logs): Englisch
-- CONTRIBUTING, Code of Conduct: Englisch
-- README.md, Lastenheft, Pflichtenheft, fachliche Spezifikationsdokumente: Deutsch
+- CONTRIBUTING, Code of Conduct, SECURITY: Englisch
+- `README.md` (Default-Entry-Point auf der Hosting-Plattform): Englisch
+- `README.de.md` (deutsche Übersetzung des `README.md`, 1:1-symmetrisch in Struktur und Detailgrad): Deutsch
+- Lastenheft, Pflichtenheft, fachliche Spezifikationsdokumente in `spec/`, ADR-Inhalte und Plan-Artefakte in `docs/plan/`: Deutsch
 
-Begründung: Englisch für Code und Community-Artefakte ermöglicht internationale Mitwirkende; Deutsch für die fachlichen Spezifikationsdokumente entspricht der Zielgruppe behördennaher und deutschsprachiger Betreiber (siehe LH-PK-004).
+Begründung: Englisch für Code, README-Default und Community-Artefakte ermöglicht GitHub-Discoverability und internationale Mitwirkende; Deutsch für die fachlichen Spezifikationsdokumente und die `README.de.md`-Übersetzung entspricht der Zielgruppe behördennaher und deutschsprachiger Betreiber (siehe LH-PK-004). Pflege beider README-Versionen ist Beitragenden-Pflicht — inhaltliche Änderungen landen in beiden Files im selben Pull Request.
 
 ---
 
