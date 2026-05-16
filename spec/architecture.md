@@ -83,7 +83,7 @@ Halterung GitHub-Org/-Account `pt9912` (konsistent mit
   `controller-gen object`, `controller-gen crd` direkt.
 - **Innen Hexagonal** unter `internal/` für fachliche Logik-
   Trennung: `hexagon/domain/`, `hexagon/application/`, `hexagon/port/`,
-  `adapter/`. Damit
+  `internal/adapter/`. Damit
   bleibt die Domänenlogik unabhängig von der Kubernetes-API und
   testbar ohne Cluster.
 
@@ -173,9 +173,11 @@ domain  ← application  ↔  port
   (für Result/Severity-Typen). Importiert **nicht** `application`.
 - `cmd/operator` ist die Wiring-Schicht: importiert
   `internal/hexagon/application` und `internal/adapter`, instanziiert
-  konkrete Adapter und injiziert sie in den Reconciler. Diese Schicht
-  ist nicht testpflichtig
-(Coverage-Range-Selektor schließt sie aus, `LH-QG-003`).
+  konkrete Adapter und injiziert sie in den Reconciler. Der fachliche
+  Coverage-Scope (`LH-QG-003`) fokussiert auf `internal`-Layer; die
+  Konfigurations- und Bootstrap-Pfade in `cmd/operator` (env/flag-Parsing,
+  Start-Guards, Strict-Modus) werden zusätzlich über gezielte
+  Startup-/Smoke-Tests abgesichert.
 - `api/v1alpha1` ist Spec-Definition; importiert nur Kubernetes-
   Standard-Typen und kubebuilder-Markers.
 
@@ -263,10 +265,10 @@ die **Struktur-Schichten**:
   resources, rbac). MVP-Set siehe `LH-PRI-001`.
 - `Status.Phase`: Enum (`LH-F-006`: `Pending`/`Running`/`Passed`/
   `Warning`/`Failed`/`Unknown`).
-- `Status.Summary`: Aggregat (`LH-F-007`: passed/warning/failed/
-  lastChecked).
 - `Status.ObservedGeneration`: Kopie von `metadata.generation`, auf die sich
   der zuletzt vollständig ausgeführte Reconcile bezieht.
+- `Status.Summary`: Aggregat (`LH-F-007`) mit den Feldern `passed`,
+  `warning`, `failed`, `unknown`, `checksTotal` sowie `lastChecked`.
 - `Status.Conditions`: Standard-Kubernetes-Conditions-Liste
   (`LH-F-005`); Reason/Severity/Message gemäß `LH-F-031`/`LH-F-032`.
 
@@ -325,8 +327,23 @@ Versionssprung im MVP-Zeitfenster wird über CR-Re-Apply gelöst, nicht
 Der Reconciler lebt in `internal/hexagon/application/reconciler.go` und
 folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 
-1. **Fetch** — CR über `client.Get` lesen. Bei `NotFound`: kein
-   Requeue (CR gelöscht).
+1. **Initialize Run Context + Fetch** — Für jeden Reconcile-Lauf wird ein
+   Kinder-Kontext `runCtx` erzeugt, der hart durch
+   `RECONCILE_TIMEOUT_SECONDS` gedeckelt ist (nach den Normalisierungsregeln
+   aus dieser Architektur). Der Reconcile verarbeitet den CR ausschließlich in
+   diesem Kontext.
+   - `runCtx` wird als `context.WithTimeout(ctx, reconcileTimeout)` aufgebaut,
+     daraus wird `runDeadline, hasDeadline := runCtx.Deadline()` verwendet.
+   - Die Architektur nimmt `hasDeadline=true` als Normfall an.
+   - Falls `hasDeadline=false` auftritt (Sollbruch), wird deterministisch
+     `runDeadline = time.Now().Add(reconcileTimeout)` gesetzt, damit `resultLimitCh`
+     und Folgepfade nicht mit einem ungültigen Zeitfenster arbeiten.
+   CR über `client.Get` lesen. Bei `NotFound`: kein Requeue (CR gelöscht).
+   Fällt der Laufkontext durch Zeitüberschreitung aus, endet der Reconcile
+   deterministisch mit `Phase: Unknown`, `Condition: ReconcileError`,
+   `Reason: ReconcileTimeout`. Diese Beendigung hat Präzedenz vor der
+   normalisierten Check-Aggregation. Nicht verarbeitete Checks werden als
+   `Unknown`/`Timeout` in die Result-Sammlung übernommen.
 2. **Cross-Field-Validate** — OpenAPI-Constraints (Enum-Werte,
    Range-Constraints, Pflicht-Felder) werden bereits beim
    `kubectl apply` von der CRD-Schema-Validation geprüft (siehe
@@ -361,31 +378,80 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
      - `CHECK_TIMEOUT_SECONDS`:
        Default `30`, Min `1`, Max `120`; begrenzt die Laufzeit pro Check
        (`domain.Check.Run`).
+     - **Cross-Constraint:** `CHECK_TIMEOUT_SECONDS` darf nie die aktuelle gültige
+       Reconcile-Laufzeit überschreiten. Falls nach Normalisierung
+       `CHECK_TIMEOUT_SECONDS > RECONCILE_TIMEOUT_SECONDS`, wird `CHECK_TIMEOUT_SECONDS`
+       auf `RECONCILE_TIMEOUT_SECONDS` gekappt und als
+       `Status=Warning + Condition=ConfigurationInvalid` dokumentiert.
      - Konfigurationen werden strikt geparst:
        - parsefaule Werte (leer, nicht-zahlbar, negative Werte) werden auf die
          Defaults normalisiert.
        - Werte `<= 0` werden auf den Default normalisiert.
        - Werte `> Max` werden auf `Max`, Werte `< Min` auf `Min` normalisiert.
+       - Für jede betroffene Konfigurationsvariante gilt ein feldspezifischer
+         `Reason` für den Status-Condition-Eintrag:
+         - `Reason=ReconcileTimeoutConfig` bei Anpassung von `RECONCILE_TIMEOUT_SECONDS`.
+         - `Reason=CheckTimeoutConfig` bei Anpassung von `CHECK_TIMEOUT_SECONDS`
+           inkl. Cross-Constraint-Korrektur.
+         - `Reason=K8SApiQPSConfig` bei Anpassung von `K8S_QPS`.
+         - `Reason=K8SApiBurstConfig` bei Anpassung von `K8S_BURST`.
+         - `Reason=WorkerPoolSizeConfig` bei Anpassung von `WORKER_POOL_SIZE`.
+         - `Reason=LeaderReadinessGraceConfig` bei Anpassung von `leaderReadinessGrace`.
+         - `Reason=LeaderReadLeaseErrorToleranceConfig` bei Anpassung von
+           `leaderReadLeaseErrorTolerance`.
        - Optional: `OPERATOR_STRICT_CONFIG=true` verwandelt solche
          Normalisierungen in ein Start-Blocking (Operator-Start abgebrochen,
          klarer Startfehler bis die Konfiguration korrigiert ist).
+       - `OPERATOR_STRICT_CONFIG=true` gilt zusätzlich auf alle Konfigurationspfade,
+         inkl. der oben beschriebenen Cross-Constraint-Korrektur.
      - Normalisierung/Parsefehler erzeugen `Status=Warning +
-       Condition=ConfigurationInvalid`, ein `Reason=TimeoutConfig` und die
-       gewählte Normalisierung.
-     - `Result`-Ausgabe bei Überschreitung bleibt: `Unknown` + `Reason: Timeout`.
-     - Jede Check-Ausführung läuft zusätzlich über einen hart begrenzten
-       `runCheckWithTimeout`-Ausführungspfad: `Check.Run(ctx, spec)` wird in einem
-       separaten Goroutine gestartet, der Reconciler wartet auf Ergebnis,
-       `ctx.Done()` oder Check-Timeout. Bei Timeout wird sofort `Unknown` +
-       `Reason: Timeout` gemappt und die Check-Execution wird als abgeschlossen
-       markiert.
+       Condition=ConfigurationInvalid`, den beschriebenen feldspezifischen
+       Reason-Code und die gewählte Normalisierung.
+      - `Result`-Ausgabe bei Überschreitung bleibt: `Unknown` + `Reason: Timeout`.
+       - Jede Check-Ausführung läuft zusätzlich über einen hart begrenzten
+         `runCheckWithTimeout`-Ausführungspfad: `Check.Run(runCtx, spec)` wird in
+         einem separaten Goroutine gestartet, der Reconciler wartet auf Ergebnis,
+         `runCtx.Done()` oder Check-Timeout. Bei Timeout wird sofort `Unknown` +
+         `Reason: Timeout` gemappt und die Check-Execution wird als abgeschlossen
+         markiert.
        - Nicht-kooperative Implementierungen werden über Adapter-Hardening abgefangen:
          cancelbare API-Clients, begrenzte I/O-Timeouts und zentrale Fehlerpfade.
        - Die Timeout-Guards verhindern Blockade des Reconcile-Laufes; ein
          eventuell weiterlaufender Worker wird nicht mehr beobachtet und darf
-         keine Ressourcen leaken.
-     - **MVP-Entscheidung:** bounded parallel über Worker-Pool (`workerPoolSize`
-      konfigurierbar), fallback auf sequenziell bei `workerPoolSize <= 1`.
+         keine Ressourcen leaken. `domain.Check`-Implementierungen,
+         die den Kontext nach Timeout systematisch ignorieren, sind Architekturverstoß
+         und werden als `Unknown` + `Reason: Timeout` bewertet; zusätzlich wird
+         `deskflight_check_internal_error_total{check_name,kind=noncooperative}` inkrementiert.
+       - **Check-Kontrakt gegen Resource-Leaks (verbindlich):**
+         - `domain.Check`-Implementierungen müssen `ctx.Done()` deterministisch
+           beachten (inkl. API-/I/O-Calls mit Kontext).
+         - Der `adapter/check`-Layer MUSS interne API-Clients mit harten
+           I/O-/Dial-Timeouts ausstatten.
+         - Nicht-kooperative Checks sind Architekturverstoß; CI prüft das über
+           einen Injected-Check mit absichtlich ignorierten Kontextsignalen.
+         - Worker, die ihre Task nicht abschließen, können nach Run-Deadline
+           nicht blockierend weiterlaufen. Sie haben keinen unbounded Einfluss auf
+           Ressourcenkonsum; Drops auf Write-Pfaden erfolgen nur, wenn der
+           Run nicht mehr aktiv ist oder die `taskID`/`runID` veraltet ist.
+       - Der Check-Worker darf daher niemals blockierend auf `resultCh` schreiben.
+         Er schickt Ergebnisse nur per `select`:
+         - auf das Task-Abbruchsignal (`taskDoneCh`),
+         - auf `runCtx.Done()`-Abbruch,
+         - auf die Ergebnis-Zeitschranke (`resultLimitCh`) und
+         - auf den Ergebniskanal (`resultCh`-Write),
+         - ansonsten über `default` bei veralteter `runID`/`taskID` oder nach Abschluss
+           des Runs (`runCtx.Done()`/`resultLimitCh` bereits signalisiert).
+         Späte Results nach Timeout werden verworfen, nicht weiter verarbeitet
+         und dürfen den Worker nicht blockieren.
+       - Der Reconciler wartet nicht auf die echte Rückkehr eines bereits
+         time-outed Workers; dieser Worker bleibt isoliert. Er darf kurzfristig
+         weiterlaufen, ohne den Reconcile-Run zu blockieren.
+         Späte Ergebnisse werden verworfen; Run-Abschluss bleibt deterministisch.
+       - Nicht-kooperative Checks müssen zusätzlich als `Unknown` + `Reason:
+         Timeout`/`ContextCancelled` abgefangen werden und deterministisch in den
+         Reconcile-Status einfließen.
+   - **MVP-Entscheidung:** bounded parallel über Worker-Pool (`workerPoolSize`
+     konfigurierbar), fallback auf sequenziell bei `workerPoolSize <= 1`.
      Der Wert stammt aus dem Operator-Config (`WORKER_POOL_SIZE` / Flag) mit
      Default `4` und wird in `Fetch` validiert:
      - `< 1` wird auf `1` normalisiert.
@@ -395,30 +461,86 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
      Jede Normalisierung wird als Konfigurationsfehler mit `Status=Warning`
      und `Condition=ConfigurationInvalid` in den Status geschrieben; die
      Ausführung läuft mit dem normalisierten Wert weiter.
-   - Der Reconciler erzeugt pro aktivem Check eine immutable
-     Task-Repäsentation und pusht diese in ein **gepuffertes Task-Channel**.
-     Die Puffergröße ist mindestens `len(activeChecks)`; damit bleiben Produzenten
-     nicht blockiert, solange Worker noch starten.
-    - Resultate laufen ausschließlich über ein **gepuffertes Ergebnis-Channel**
-     (`domain.Result` + Check-Name), konsumiert durch einen
-     single-threaded Aggregator im Reconcile-Thread.
-    - Alle Worker und Kanäle werden mit demselben Reconcile-`ctx`
-      orchestriert: Bei `ctx.Done()` brechen sie frühzeitig ab, geben
-      `Unknown`/`Reason=ContextCancelled` zurück und beenden sich deterministisch.
-      Der Aggregator beendet die Aufzeichnung beim Schließen des Ergebnis-Channels.
-    - Kein geteilter mutable Check-Zustand im Adapter-/Reconcile-Pfad, um
+       - Der Reconciler erzeugt pro aktivem Check eine immutable
+         Task-Repäsentation und pusht diese in ein **gepuffertes Task-Channel**.
+         Die Puffergröße ist mindestens `len(activeChecks)`; damit bleiben
+         Produzenten nicht blockiert, solange Worker noch starten.
+       - Resultat-Sammelpfad:
+         - `resultCh` ist per Run mit mindestens `len(activeChecks)` gepuffert.
+         - Während eines aktiven Runs darf kein valides Resultat über den Send-Pfad
+           verworfen werden; der Reconciler-Thread konsumiert den Kanal
+           deterministisch bis `allResultsReceived` oder Abbruch.
+         - Für die deterministische Run-Abschlusslogik wird ein dedizierter
+           per-run Channel `resultLimitCh` eingeführt:
+            - Er wird mit der Restlaufzeit von `runCtx` initialisiert und dient als
+              One-Shot-Zeitgeber für die Ergebnis-Aggregation.
+            - Typisch: `resultBudget := time.Until(runDeadline); if resultBudget < 0 { resultBudget = 0 }`;
+             `resultLimitTimer := time.NewTimer(resultBudget)`  
+             `resultLimitCh := resultLimitTimer.C`  
+             `defer func() { if !resultLimitTimer.Stop() { select { case <-resultLimitTimer.C: default: } } }()`
+             (auch bei frühem Abschluss durch `allResultsReceived`).
+         `runDeadline` ist die in `runCtx` hinterlegte (oder substituierte)
+         Deadline aus Schritt 1.
+       - `runCtx.Done()` ist der harte Abbruchpfad für Check-Execution,
+         API-Aufrufe und weitere Blockaden; `resultLimitCh` ist die
+         deterministische Abschlussmarke der Ergebnis-Sammelphase.
+       - Wird `resultLimitCh` ausgelöst, ist der Run finalisiert: offene Tasks
+         werden als Timeout/ContextCancelled markiert, weitere Worker-Sends
+         werden verworfen.
+   - Die erwartete Ergebnisanzahl ist `expectedResults := len(activeChecks)`.
+     Der Reconciler verwaltet:
+     - `dispatchedTaskIDs`: Menge aller ausgesandten Tasks
+     - `resultTaskIDs`: Menge bereits accepted Ergebnis-Einträge
+     - `timedOutTaskIDs`: Menge synthetisch beendeter Tasks nach Laufzeitgrenzen.
+   - Für jeden Task wird exakt ein Ergebnis benötigt (`resultTaskIDs ∪
+     timedOutTaskIDs` == `dispatchedTaskIDs`).
+   - Resultate laufen ausschließlich über ein **gepuffertes Ergebnis-Channel**
+     (`checkResultEnvelope` mit `taskID`, `runID`, `domain.Result`, Check-Name),
+     konsumiert durch einen single-threaded Aggregator im Reconcile-Thread.
+     - Bei normaler Abarbeitung werden echte Ergebnisse accepted, wenn `runID`
+       passt und die Task-ID noch nicht final ist.
+     - Bei `runCtx.Done()` oder `resultLimitCh` werden offene Tasks als
+       `Unknown` + `Reason: Timeout`/`ContextCancelled` deterministisch
+       nachgefüllt und in `timedOutTaskIDs` markiert.
+     - `allResultsReceived` ist erfüllt, wenn
+       `len(resultTaskIDs) + len(timedOutTaskIDs) == expectedResults`.
+     - Der Ergebnis-Kanal wird geschlossen, wenn alle Ergebnisse erfasst sind oder
+       der Run-Deadline- oder Kontextpfad auslöst.
+   - Alle Worker und Kanäle werden mit demselben Reconcile-`runCtx`
+     orchestriert: Bei `runCtx.Done()` brechen sie frühzeitig ab, geben
+     `Unknown`/`Reason=ContextCancelled` zurück und beenden sich deterministisch.
+     Der Aggregator beendet die Aufzeichnung, sobald `allResultsReceived` true ist
+     oder `runCtx.Done()`/`resultLimitCh` ausgelöst wird.
+     Späte Sends nach Abschluss werden verworfen.
+   - Kein geteilter mutable Check-Zustand im Adapter-/Reconcile-Pfad, um
      Datenrennen auszuschließen.
-    - `workerTaskRunner` verwaltet `sync.WaitGroup`, startet Workers nur im
-      gültigen Pool-Bereich, schließt deterministisch das Ergebnis-Channel und
-      stellt sicher, dass keine Goroutine „hängen bleibt“ (kein Leak bei
-      vorzeitigem Rückgabepfad).
+   - `workerTaskRunner` verwaltet `sync.WaitGroup` für Worker-Hygiene, startet
+     Worker nur im gültigen Pool-Bereich und schließt das Ergebnis-Channel nicht
+     am unendlichen Join von potenziell blockierenden Workern, sondern via
+     deterministischem Abschlusskriterium (`allResultsReceived` oder
+     `runCtx.Done()`/`resultLimitCh`).
+   - Pro Reconcile-Lauf wird ein monotones `runID`/`epoch` erzeugt. Der
+     Sender darf auf `resultCh` nur mit passendem `runID`-Match schreiben.
+   - Der Send-Pfad ist non-blocking (`select`) über:
+     - `case <-taskDoneCh:` (Task lokal abgeschlossen)
+     - `case <-runCtx.Done():` (Reconcile-Kontext beendet)
+     - `case <-resultLimitCh:` (globale Run-Deadline/Timeout)
+     - `resultCh <- envelope`
+     - `default:` (Drop nur bei nicht-aktiven Runs oder veralteten `runID`/`taskID`)
+     - Late/abweichende Sends (falsche `runID`, `taskDone` bereits gesetzt oder
+       `resultLimitCh` bereits signalisiert) werden verworfen.
+   - Worker-Sender verwenden den Guard `taskID` + `runID`, damit verspätete
+     Sends eindeutig als veraltet erkannt und verworfen werden.
    - Timeout-/Fehlerbehandlung wird zentral im Reconcile-Executor abgefangen
      und als `Result` nach außen gegeben (`Unknown` bei Laufzeit- oder
      Kontextabbruch).
    - Pro Check: `Run(ctx, spec) Result` ohne Cluster-Mutation.
 5. **Aggregate** — Schweregrade auf die Gesamtphase mappen
    (`LH-F-031`/`ADR 0010 §2.3`).
-6. **Update Status** — `client.Status().Update` mit
+   - Wenn `ReconcileError/Reason=ReconcileTimeout` bereits gesetzt ist,
+     bleibt die Ergebnis-Phase deterministisch `Unknown`, unabhängig von
+     teils erfolgreichem Check-Outcome.
+6. **Update Status** — `client.Status().Patch` (mit `client.MergeFrom`) von
    `Phase`/`Summary`/`ObservedGeneration`/`Conditions`. Konflikte
    (resourceVersion)
    werden mit Re-Fetch + Retry behandelt.
@@ -437,10 +559,25 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 ### AR-010 — Wiederholintervall (`LH-F-025`)
 
 `Spec.Interval` (Default Pflichtenheft, vorgeschlagener Startwert
-`5m`) steuert `RequeueAfter` am Ende des Reconcile-Laufs. Manuelle
-Auslösung (`LH-F-026`) erfolgt durch Anwender-Edit am CR
-(Annotation-Bump oder Spec-Änderung) — automatisches Re-Reconcile
-durch das controller-runtime-Watch.
+`5m`) steuert `RequeueAfter` am Ende des Reconcile-Laufs.
+
+  - `Interval` ist als Duration (z. B. `5m`, `30s`, `1h`) in der Spec
+    vorgesehen und wird wie folgt normalisiert:
+  - Default `5m`, wenn Feld leer ist.
+  - `min=30s`, `max=24h`.
+  - Nicht parsebare Werte und Werte außerhalb des Bereichs werden auf den
+    nächstgelegenen erlaubten Wert geklemmt.
+  - Jede Normalisierung wird als `Status=Warning` + `Condition=ConfigurationInvalid`
+    dokumentiert.
+  - `OPERATOR_STRICT_CONFIG` ist auf dieser Ebene nicht restart-blockierend.
+    Für CR-spezifische `Spec.Interval`-Fehler bleibt der Reconcile deterministisch
+    lauffähig; die normale Normalisierung wird verwendet.
+  - Ein ungültiger `Spec.Interval` verhindert keinen Lauf; der normalisierte Wert
+    wird deterministisch verwendet.
+
+Auslösung (`LH-F-026`) erfolgt weiterhin durch Anwender-Edit am CR
+(Annotation-Bump oder Spezifikationsänderung) — zusätzlich zu den
+normierten `RequeueAfter`-Planungen über den controller-runtime-Watch.
 
 ### AR-011 — Error-Handling und Fehlertoleranz
 
@@ -457,6 +594,10 @@ andere Checks nicht stoppen. Konkrete Mechanik:
 - Reconciler selbst hat einen äußeren `defer/recover` für
   unerwartete Panics; bei einem solchen wird Phase `Unknown` mit
   Condition `ReconcileError` gesetzt.
+  - Primäre Fehlerursache gewinnt:
+    - Ist der Lauf bereits in `Reason=ReconcileTimeout` (durch `runCtx.Done()` oder
+      `resultLimitCh`) gefallen, bleibt diese `Reason` erhalten.
+    - Sonst wird bei Reconciler-Panic `Reason=ReconcilePanic` gesetzt.
 - `SpecInvalid` ist ausschließlich für inhaltliche Spec-Fehler vorgesehen
   (z. B. Cross-Field-Validierung), `ConfigurationInvalid` nur für
   Operator-/Ausführungs-Konfigurationsfehler (z. B. Bereichsüberschreitung
@@ -464,27 +605,47 @@ andere Checks nicht stoppen. Konkrete Mechanik:
 
 ### AR-026 — Leader-Election und Replica-Modell
 
-Der `controller-runtime`-Manager wird mit **Leader-Election
-aktiviert** gestartet. Konkret: `Manager.Options.LeaderElection =
-true` mit `LeaderElectionID = "k-deskflight-operator"` (oder
-äquivalent), `LeaderElectionNamespace = <Operator-Namespace>`
-(siehe `AR-016`).
+Der `controller-runtime`-Manager wird konfigurierbar gestartet.
+Standardmäßig ist `LeaderElection` aktiv:
+`Manager.Options.LeaderElection = !leaderElectOff` mit Flag/Env
+`--leader-elect` (`true`=Default, optional `false`).
+`LeaderElectionID = "k-deskflight-operator"` (oder äquivalent) und
+`LeaderElectionNamespace = <Operator-Namespace>` (siehe `AR-016`) gelten dabei.
 
 Damit gilt:
 
-- **Im MVP** läuft genau **eine aktive Replica** des Operators.
-  Mehrere Replicas im selben Deployment sind technisch zulässig,
-  führen aber zum Standby-Verhalten der Nicht-Leader-Replicas — kein
-  Doppel-Reconcile, keine Status-Konflikte (`AR-009 §6`
-  resourceVersion-Konflikte sind damit auf legitime Konfliktszenarien
-  beschränkt, nicht auf Self-Conflict).
-- **Failover** erfolgt über das Standard-Lease-Renewal-Schema
-  (`coordination.k8s.io/leases`, Default-Lease-Duration 15 s,
-  Renew-Deadline 10 s, Retry-Period 2 s — konkrete Werte gehören
-  ins Pflichtenheft, controller-runtime-Defaults sind akzeptabel).
-- **Parallelismus-Beschränkung:** `Manager.Options.MaxConcurrentReconciles`
-  (Default `4`, Max `8`) begrenzt parallele Reconcile-Läufe.
-  Zusammengenommen ergibt sich die obere Grenze parallel aktiver
+- **`--leader-elect=true` (MVP-Standard):**
+  - Mehrere Replicas im selben Deployment sind erlaubt und erzeugen
+    genau eine aktive Leader-Replica, die übrigen Replikate bleiben Standby.
+  - Kein Doppel-Reconcile, keine Status-Konflikte durch den lokalen Reconcile-Pfad
+    (`AR-009 §6`; resourceVersion-Konflikte bleiben auf legitime Konfliktszenarien beschränkt).
+  - **Failover** erfolgt über das Standard-Lease-Renewal-Schema
+    (`coordination.k8s.io/leases`, Default-Lease-Duration 15 s,
+    Renew-Deadline 10 s, Retry-Period 2 s — konkrete Werte gehören
+    ins Pflichtenheft, controller-runtime-Defaults sind akzeptabel).
+  - `Manager.Options.MaxConcurrentReconciles` begrenzt die interne Parallelität
+    (Default `4`, Max `8`).
+  - Readiness bleibt leader-basiert: nur der aktuelle Leader gilt als bereit
+    (siehe AR-027).
+- **`--leader-elect=false` (Single-Pod-Modus):**
+  - Diese Kombination ist nur als Debug-/isolierter Betriebsmodus vorgesehen.
+  - Der Start ist hart geblockt, wenn der Single-Pod-Guard nicht erfüllt ist:
+    `OPERATOR_EXPECTED_REPLICA_COUNT` / `--expected-replica-count`
+    dokumentiert den zulässigen Modus, Default `1`.
+    - Werte <1 werden auf `1` normalisiert.
+    - Werte >1 sind im deaktivierten Leader-Modus ein harter Konfigurationsfehler:
+      Start der Operator-Prozesse wird mit Fehler abgebrochen.
+    - Der Start-Guard wird in `cmd/operator/main.go` zentral durchgesetzt.
+  - Die Kombination aus `--leader-elect=false` + `OPERATOR_EXPECTED_REPLICA_COUNT=1`
+    ist ein optionaler Single-Pod-Modus für Debug/isolierte Test-Deployments und
+    kein aktives HA-Vorhaben.
+  - Bei deaktivierter Leader-Election ist der Readiness-Check operativ
+    reduziert (`isLeader()==false`, bis der Manager gestartet und Cache-Sync
+    abgeschlossen ist; danach deterministisch `true`).
+
+Zusätzlich gilt:
+
+- Zusammengesetzt ergibt sich die obere Grenze parallel aktiver
   Check-Worker pro Operator-Instanz als:
   `MaxConcurrentReconciles * workerPoolSize_normalized`.
 - Der Kubernetes-Client nutzt explizit `RESTClientConfig`-Rate-Limits
@@ -507,6 +668,8 @@ Damit gilt:
 - **Hochverfügbarkeit** mit echtem Active-Active oder fortgeschritteneren
   Modellen ist Folge-ADR-Stoff für v0.2+ (`LH-NF-019`-Ressourcenkonzept
   und Replica-Skalierung).
+
+
 
 Begründung: Ohne Leader-Election produziert ein versehentliches
 Hochskalieren des Deployments auf `replicas: 2` doppelte
@@ -539,11 +702,88 @@ beide Probes:
   - Der Operator registriert einen benannten Readiness-Check (z. B.
     über `mgr.AddReadyzCheck("leader", ...)`), der auf den aktuellen
     Leader-Status (`LeaderElection`) prüft.
+    - Der `leader`-Check ist verbindlich auf ein internes Flag `isLeader()` gemappt.
+      Für MVP gilt eine eindeutige Implementierung:
+      - Ein kleiner `leaderWatcher`-Runnable liest periodisch den Lease-Eintrag
+        des Operator-Lease-Namens im Operator-Namespace.
+      - `isLeader()` ist `true`, wenn `lease.spec.holderIdentity == POD_NAME`
+      und `lease.status.renewTime` innerhalb der Readiness-Frischheit liegt:
+      `now - renewTime <= leaderReadinessSlack`, wobei
+      `leaderReadinessSlack = leaseDuration + leaderReadinessGrace` gilt.
+      `leaderReadinessGrace` ist neu und standardmäßig `5s` (konfigurierbar,
+      begrenzt auf mindestens `5s`, max `30s`).
+      `leaseDuration` ist die im Manager konfigurierte Dauer; bei
+      fehlender expliziter Konfiguration der Runtime-Default aus
+      `controller-runtime`.
+      - Bei fehlender oder null `renewTime` ist das Ergebnis nur dann `true`,
+        wenn der Watcher bereits mindestens eine erfolgreiche Lease-Lektur für den
+        aktuellen `POD_NAME` hatte und die letzte erfolgreiche Lease-`Transition`
+        innerhalb von `leaderReadinessSlack` liegt.
+    - Der Runnable setzt bei Fehlern (Lease nicht lesbar) `isLeader()==false`
+      und schreibt einen strukturierten Warn-Log.
+      - Transiente Lease-Leseausfälle sind toleriert: bis zu
+      `leaderReadLeaseErrorTolerance` (Standard `2`) aufeinanderfolgende
+      Lesefehler werden mit `isLeader()==true` gehalten, sofern der letzte
+      erfolgreiche Lease-Halt noch innerhalb von
+      `leaderReadinessSlack` liegt.
+    - Wird die Toleranzgrenze überschritten, wird `isLeader()` deterministisch auf
+      `false` gesetzt; anschließend wird erst nach erfolgreicher neuer Lease-Lektur
+      wieder auf `true` zurückgerollt.
+  - Konfigurierbarkeit dieser Readiness-Parameter:
+      - `leaderReadinessGrace` (`--leader-readiness-grace` / `LEADER_READINESS_GRACE`):
+        Default `5s`, Min `5s`, Max `30s`.
+      - `leaderReadLeaseErrorTolerance` (`--leader-read-lease-error-tolerance` /
+        `LEADER_READ_LEASE_ERROR_TOLERANCE`): Default `2`, Min `1`, Max `10`.
+      - Parser-/Clamp-Verstoß dokumentiert als `ConfigurationInvalid`; bei
+        `OPERATOR_STRICT_CONFIG=true` wird der Operatorstart blockiert.
+      - `leader` liefert nur dann `true`, wenn der Lease-Test positiv ist.
+      Bei deaktivierter Leader-Election (`--leader-elect=false`) ist der Lease-Check
+      nicht aktiv.
+      - Readiness ist dann aktivitätsabhängig auf den Controller-Startup:
+        `isLeader()` ist `false`, bis der Manager gestartet und der Cache erfolgreich
+        synchronisiert ist.
+    - Anschließend liefert `isLeader()` deterministisch `true`, sofern die
+      Operator-Instanz in gesundem Laufbetrieb ist.
+    - Diese Variante ist bewusst als Single-Pod-/Nicht-HA-Verhalten
+      dokumentiert.
+    - In diesem Modus ist `--leader-elect=false` nur mit
+      `OPERATOR_EXPECTED_REPLICA_COUNT/--expected-replica-count=1`
+      zulässig; bei anderer Konfiguration ist der Guard hart
+      (`cmd/operator/main.go`) und der Operatorstart wird blockiert.
+      Deployment-Templates sollten dieses Profil technisch einschränken.
   - Optional kann zusätzlich ein expliziter Alias-Endpunkt wie
     `/readyz/leader` bereitgestellt werden.
 
 Konkrete Werte gehören ins Pflichtenheft; die Default-Werte oben sind
 controller-runtime-Standard und tragen den MVP-Pfad.
+
+### AR-028 — Minimale Observability-Metriken und Log-Schema (MVP)
+
+Um reproduzierbare Fehlersuche über `Unknown`/`Timeout`/`Conflict`-Fälle zu
+gewährleisten, ist im MVP mindestens Folgendes verpflichtend:
+
+- Die semantische Erfassung der Metriken ist als Architektur-Contract zwingend
+  (via internes Observer-Interface).
+- Der Export-Kanal (Prometheus/OTel/anderer) ist optional; ein fehlender Export
+  darf die Operator-Logik nicht blockieren.
+
+- Metrics (MVP-Minimum):
+  - `deskflight_reconcile_total{result_phase="pending|running|passed|warning|failed|unknown",namespace_scope="cluster|namespace"}`
+  - `deskflight_reconcile_duration_seconds` (Histogramm)
+  - `deskflight_status_update_retries_total` (für resourceVersion-Konflikte)
+  - `deskflight_check_result_total{check_name, reason, status}`
+  - `deskflight_check_timeout_total{check_name}`
+  - `deskflight_check_internal_error_total{check_name}`
+- Log-Kontrakt:
+  - Pro Reconcile ein stabiler `reconcileRequestID` (z. B. aus Namespaced Name
+    + generation), inkl. Ergebnis-Phase.
+  - Explizite Event-Logs für `SpecInvalid`, `ConfigurationInvalid`,
+    `ContextCancelled`, `ApiThrottled`, `resourceVersionConflict`.
+  - Keine sensiblen Stacktraces im CR-Status; Stacktrace-Dump nur in Logs.
+
+Der Readiness-/Liveness-Handler darf bei nicht initialisiertem Metrics-Stack
+funktional arbeiten; Metrik-Export ist optional, Log- und Status-Fallbacks
+sind weiterhin Pflicht.
 
 ---
 
@@ -694,18 +934,19 @@ analog `cert-manager`, `metallb-system`, `kube-system`).
 1) **Cluster-Wide Mode (Default):** Reconciliation über alle Namespaces.
    Dafür enthält `AR-015` die vollständigen Rechte inkl. `opendeskpreflightchecks`
    und `/status`.
-2) **Namespace-Scoped Mode (optional):** Scope-Reduktion der automatisch
+2) **Namespace-Reconcile-Scope Mode (optional):** Scope-Reduktion der automatisch
    beobachteten CRs auf `k-deskflight-system` über
-   `--namespace=k-deskflight-system`; dies ist ein **Watch-Scope-Modus**.
+   `--namespace=k-deskflight-system`; dies ist ein **Reconcile-Scope-Modus**
+   und kein Tenant-/Security-Isolationsmodell.
    **Kein Sicherheits-Isolationsmodell.**
    Zusätzliche Namespaced-RBAC-Objekte im Operator-Namespace sind optional.
    **Wichtig:** Viele Checks operieren auf clusterweiten Ressourcen
    (`nodes`, `storageclasses`, `ingressclasses`, `customresourcedefinitions`),  
    daher bleibt für diese Ressourcen die Cluster-Lese-Berechtigung in
-   der `AR-015`-ClusterRole aktiv. Der Namespace-Scoped-Modus reduziert
+   der `AR-015`-ClusterRole aktiv. Der Namespace-Reconcile-Scope-Modus reduziert
    primär den Reconcile-Scope (`--namespace`) und die Namespaced-Status-/Spec-
    Rechte, **nicht** automatisch jede clusterweite Leseberechtigung.
-   Der Namespace-Scoped-Modus ist primär eine Reconcile-Scope-Steuerung
+   Der Namespace-Reconcile-Scope-Modus ist primär eine Reconcile-Scope-Steuerung
    und kein vollständiges Security-Isolationsmodell.
    - Für echte Tenant-/Namespace-Isolation ist ein eigener Erweiterungsmodus
      vorgesehen: dedizierte Operator-Instanz/Profil mit eingeschränkter
@@ -715,7 +956,7 @@ analog `cert-manager`, `metallb-system`, `kube-system`).
 Anwender-Overridebarkeit per Kustomize-Overlay ist möglich; ab v0.2
 zusätzlich per Helm-Values (`ADR 0005`). Die nachfolgenden
 Role-Definitionen leben in diesem Namespace ausschließlich für den
-Namespace-Scoped Mode.
+Namespace-Reconcile-Scope Mode.
 
 | API-Gruppe | Ressourcen | Verben | Begründung |
 | ---------- | ---------- | ------ | ---------- |
@@ -734,7 +975,7 @@ RBAC-Set — siehe `§10` Verhältnis zu späteren Phasen.
 - **Cluster-Wide Mode (Default):**
   - ClusterRoleBinding `k-deskflight-operator` → ClusterRole
     `k-deskflight-operator-cluster` (AR-015).
-- **Namespace-Scoped Mode (optional):**
+- **Namespace-Reconcile-Scope Mode (optional):**
   - Zusätzlich RoleBinding `k-deskflight-operator` im Operator-Namespace →
     Role `k-deskflight-operator-namespace` (AR-016).
   - In diesem Profil bleibt die ClusterRoleBinding für die
@@ -821,6 +1062,20 @@ entstehen mit M1.
 - `internal/hexagon/application/*` mit Port-Mocks (Tabellengetriebene
   Tests, generierte Mocks via `mockery` oder handgeschriebene
   Test-Doubles — Pflichtenheft).
+  - `cmd/operator/main.go` als Start-/Bootstrap-Tests:
+   `env`/`flag`-Parsing, `RECONCILE_TIMEOUT_SECONDS`/`CHECK_TIMEOUT_SECONDS`/
+   `WORKER_POOL_SIZE`/`K8S_QPS`/`K8S_BURST`-Defaults und Verhalten bei
+   `OPERATOR_STRICT_CONFIG=true`.
+    - zusätzliche Coverage für:
+      - `LEADER_READINESS_GRACE`/`leader-readiness-grace`
+      - `LEADER_READ_LEASE_ERROR_TOLERANCE`/`leader-read-lease-error-tolerance`
+        inkl. Clamp-/Strict-Verhalten und `--leader-elect=false`-Modus.
+      - `OPERATOR_EXPECTED_REPLICA_COUNT` als harte Single-Replica-Guard im
+        `--leader-elect=false`-Profil und dessen fehlerhafte Konfiguration.
+- `AR-009`-Invarianten explizit:
+  - harte Abschlussbedingung `allResultsReceived`,
+  - runID-/taskID-Guards gegen späte/veraltete Worker-Sends,
+  - deterministische finalisierte Abschlusslogik bei `runCtx.Done()`/`resultLimitCh`.
 - Reconcile-spezifische Robustheitsfälle: `defer/recover` im Reconciler,
   `context`-Timeouts bei Check-Ausführung, `Unknown`-Ergebnisse bei
   Ausführungsfehlern sowie Condition/Phase-Mapping bei diesen Fehlern.
