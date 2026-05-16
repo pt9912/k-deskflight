@@ -949,6 +949,7 @@ Für Version 0.2 sind vorgesehen:
 - Events (LH-F-027)
 - Report als ConfigMap (LH-F-028)
 - Prometheus Metrics (LH-NF-008, LH-SST-004)
+- Helm Chart (LH-NF-016, LH-SST-010) — aus MVP ausgeklammert mit `ADR 0005`
 
 ### LH-PRI-003 — Kann-Anforderungen für spätere Versionen
 
@@ -1080,7 +1081,7 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 | LH-OP-003 | Lizenz auswählen                                                           | entfallen mit Commit `3be7b28` (MIT-Entscheidung; vor Einführung des ADR-Lifecycles)                                |
 | LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | offen                                                                                                               |
 | LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |
-| LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | offen                                                                                                               |
+| LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | Geschlossen mit [`ADR 0005`](../docs/plan/adr/0005-helm-chart-nicht-im-mvp.md)                                       |
 | LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | offen                                                                                                               |
 | LH-OP-008 | Entscheidung über Report-Format treffen                                    | offen                                                                                                               |
 | LH-OP-009 | Projektname finalisieren                                                   | Geschlossen mit [`ADR 0004`](../docs/plan/adr/0004-projektname.md)                                                  |
