@@ -1,0 +1,341 @@
+# Roadmap — MVP v0.1
+
+**Status:** In Progress (Roadmap aktiv; Slices noch nicht gestartet)
+**Eröffnet:** 2026-05-16
+**Bezug:** [Lastenheft `LH-MVP-002`, `LH-PRI-001`, `LH-REL-001`, `LH-VM-004`](../../../../spec/lastenheft.md),
+[ADR 0001](../../adr/0001-dokumentations-und-planungsstruktur.md),
+[ADRs 0004 – 0011](../../adr/) (alle MVP-relevanten Architekturentscheidungen)
+
+---
+
+## 0. Verhältnis zu Pflichtenheft und Architektur
+
+Diese Roadmap legt die **Slice-Reihenfolge** für den MVP fest — also das
+**Was** in welcher Reihenfolge geliefert wird, nicht das **Wie** im
+Detail.
+
+- Das **Pflichtenheft** (`LH-VM-002`) und/oder eine kompakte
+  `spec/architecture.md` entstehen **spätestens mit dem Start von M1**
+  und konkretisieren: Paketstruktur, Go-Modulpfad, Reconciler-Layout,
+  RBAC-Konzept, Build-/Release-Pipeline.
+- Pro Slice entsteht beim Aktivieren ein eigener
+  `in-progress/slice-MX-…md`-Plan mit Detail-Lieferzielen,
+  Abnahmekriterien und Test-Schritten. Diese Roadmap wird nicht
+  duplikativ.
+- Wenn alle M1 – M7 Slices in `done/` liegen, wandert diese Roadmap als
+  Closure-Notiz ebenfalls nach `done/`.
+
+---
+
+## 1. Lieferziel der Roadmap
+
+MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
+
+- CRD `OpenDeskPreflightCheck` (API-Gruppe `k-deskflight.geo-terrain.net/v1alpha1`,
+  namespaced, gemäß `ADR 0006`).
+- Controller, ausschließlich lesend (`LH-F-035`).
+- MVP-Prüfungen: Kubernetes-Version, StorageClass, IngressClass,
+  cert-manager-Vorhandensein, Cluster-Ressourcen, RBAC-Selbstprüfung.
+- Status-Conditions, Gesamtphase, Zusammenfassung.
+- Prometheus-`/metrics`-Endpoint mit Framework-Defaults (`ADR 0007`).
+- Raw-Manifeste in `deploy/manifests/` (kein Helm Chart, `ADR 0005`).
+- Container-Image, Beispielmanifest, README-Stand passend zum Release.
+
+---
+
+## 2. Slice-Übersicht
+
+| Slice | Titel | Vorgänger | Status |
+| ----- | ----- | --------- | ------ |
+| M1 | Repo & Build-Skeleton | — | Pending |
+| M2 | CRD + Controller-Skeleton | M1 | Pending |
+| M3 | Erste Prüfung — Kubernetes-Version | M2 | Pending |
+| M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Pending |
+| M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Pending |
+| M6 | Metrics-Endpoint, Tests, Doku | M5 | Pending |
+| M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | Pending |
+
+Abhängigkeitsgraph: `M1 → M2 → {M3, M4} → M5 → M6 → M7`.
+
+---
+
+## 3. Slices im Detail
+
+### M1 — Repo & Build-Skeleton
+
+**Lieferziel:** Go-Projektskelett im Repository, lokale Bau- und
+Test-Befehle, Container-Image baut leer, CI-Pipeline-Stub.
+
+- Go-Modulpfad final entscheiden (Folge zu `ADR 0004 §4`),
+  `go.mod`, Verzeichnis-Layout (`cmd/`, `internal/`, `api/`, `deploy/`).
+- `Makefile` mit Targets `build`/`lint`/`test`/`image-build`
+  (m-trace-Pattern als Vorlage, siehe Memory `reference_m_trace_patterns.md`).
+- Multi-Stage `Dockerfile` (`distroless` oder vergleichbares Base).
+- CI-Workflow-Skelett (GitHub Actions; passt zu `ADR 0011` GHSA-Pfad).
+- DCO-Bot-Aktivierung als Folgepflicht (`ADR 0011 §2.4`).
+- `deploy/manifests/`-Verzeichnis angelegt (initial leer oder
+  CRD-Stub als Platzhalter; siehe M2).
+- README-Stand bleibt Stand `c3da8ff` (Roadmap und ADRs verlinken
+  weiterhin korrekt).
+
+**Lastenheft-Kennungen:** `LH-NF-001` (Go), `LH-NF-014` (lokale
+Entwicklung), `LH-NF-015` (Container-Image), `LH-NF-021` (Sprachregel),
+`LH-NF-019` (Ressourcenverbrauch — Konzept), `LH-PROD-001` (Naming).
+
+**Architekturartefakte:** Pflichtenheft entsteht parallel oder voraus;
+mindestens Paketstruktur und Go-Modulpfad müssen festliegen, bevor
+Slice abgeschlossen wird.
+
+**Verifikation:**
+
+- `make build` baut ohne Fehler.
+- `make image-build` produziert ein laufendes Image (Init/Help-Pfad
+  startet).
+- `make lint` und `make test` laufen grün (auch wenn noch nichts
+  testet — Skelett-Smoketests).
+- CI-Workflow-Run auf einem Beispiel-PR ist grün.
+
+**Verifikationspfad:** kein dediziertes `LH-AK-*` zu M1 selbst;
+M1 ist die Voraussetzung für alle weiteren `LH-AK-*` ab M2.
+
+---
+
+### M2 — CRD + Controller-Skeleton
+
+**Lieferziel:** CRD `OpenDeskPreflightCheck` (`v1alpha1`, namespaced,
+gemäß `ADR 0006`), Controller-Reconciler-Stub, Status-Schema mit
+Conditions und Phase, kein Prüflogik-Inhalt.
+
+- CRD-Schema mit `spec.profile`, `spec.checks.kubernetesVersion`
+  (Platzhalter), `status.phase`, `status.summary`,
+  `status.conditions` (`LH-F-005`/`LH-F-006`/`LH-F-007`).
+- ServiceAccount, ClusterRole, RoleBinding (lesend) im
+  `deploy/manifests/`-Set, gemäß `LH-AK-015` und `ADR 0005`.
+- Reconciler reagiert auf CR-Anlage, schreibt `status.phase = Pending`
+  → `Running` → `Passed` (mit leerer Summary, weil noch keine
+  Prüfung), Conditions: leer.
+- Beispielmanifest minimal (CR ohne Inhalt außer Name).
+
+**Lastenheft-Kennungen:** `LH-F-001`, `LH-F-002`, `LH-F-003`,
+`LH-F-004`, `LH-F-005`, `LH-F-006`, `LH-F-007`, `LH-F-009`
+(API-Erreichbarkeit), `LH-F-035` (lesender Betrieb),
+`LH-NF-002` (Kubernetes-Konventionen), `LH-NF-004` (Stabilität),
+`LH-PROD-002` (API-Gruppe), `LH-AK-015` (RBAC), `LH-DAT-002`
+(Status-Speicherung).
+
+**Verifikation:**
+
+- `LH-AK-001` — CRD installierbar.
+- `LH-AK-002` — Operator startbar.
+- `LH-AK-003` — Ressource verarbeitbar.
+- `LH-AK-004` — Status sichtbar.
+- `LH-AK-011` — Conditions vorhanden (auch wenn leer ist die Struktur
+  da).
+
+---
+
+### M3 — Erste Prüfung: Kubernetes-Version
+
+**Lieferziel:** Erste konkrete Check-Implementierung — Kubernetes-Version
+gegen die in `spec.checks.kubernetesVersion.min` konfigurierte
+Mindestversion (`ADR 0009`).
+
+- Versions-Discovery via `discovery.ServerVersion()`.
+- Vergleich gegen konfigurierte Mindestversion (Default-Vorbelegung
+  per Profile, `ADR 0009 §2.2`).
+- Condition `KubernetesVersionReady` (true/false), Phase, Schweregrad
+  `critical` bei Fail.
+- `status.summary.passed`/`failed`/`warning`/`lastChecked`.
+
+**Lastenheft-Kennungen:** `LH-F-008`, `LH-F-031` (Schweregrad),
+`LH-F-032` (Ergebnis-Inhalt), `LH-NF-003` (Nachvollziehbarkeit),
+`LH-DAT-003` (Zeitstempel), `LH-QA-001` (verständliche Fehlermeldungen).
+
+**Verifikation:**
+
+- `LH-AK-005` — K8s-Version prüfbar.
+- Tests: passed-Case auf aktueller Version, failed-Case mit
+  konfigurierter Min `99.99` (synthetisch).
+
+---
+
+### M4 — Cluster-State-Prüfungen
+
+**Lieferziel:** Vier weitere Prüfungen — StorageClass, IngressClass,
+cert-manager, Cluster-Ressourcen.
+
+- StorageClass (`LH-F-010`, `LH-F-011`): konfigurierte Klassen
+  vorhanden? Default-StorageClass erkennbar?
+- IngressClass (`LH-F-012`): konfigurierte Klasse vorhanden?
+- cert-manager (`LH-F-013`): API-Gruppe `cert-manager.io` vorhanden,
+  mindestens ein `ClusterIssuer` erreichbar? (Vorhandensein, nicht
+  Detail-Validierung — die kommt v0.2 mit `LH-F-014`.)
+- Cluster-Ressourcen (`LH-F-015`): allocatable CPU/Memory aller
+  Ready-Nodes summieren, gegen konfigurierte Mindestwerte prüfen
+  (`LH-AK-009`).
+- Jede Prüfung mit eigener Condition und Severity.
+
+**Lastenheft-Kennungen:** `LH-F-010`, `LH-F-011`, `LH-F-012`,
+`LH-F-013`, `LH-F-015`, `LH-NF-005` (Fehlertoleranz —
+Einzelausfall darf andere nicht stoppen), `LH-PROF-002`/`-003`
+(Profile bestimmen Default-Werte).
+
+**Verifikation:**
+
+- `LH-AK-006` — StorageClass.
+- `LH-AK-007` — IngressClass.
+- `LH-AK-008` — cert-manager.
+- `LH-AK-009` — Ressourcen.
+
+---
+
+### M5 — RBAC-Selbstprüfung & Robustheit
+
+**Lieferziel:** Operator prüft eigene Berechtigungen und bleibt bei
+Einzelfehlern stabil.
+
+- `SelfSubjectAccessReview`/`SelfSubjectRulesReview` pro aktivierter
+  Prüfung (`LH-F-024`).
+- Condition `RBACInsufficient` falls Recht fehlt; betroffene
+  Einzelprüfung wird `Unknown` (`LH-AK-016`).
+- Fehlertoleranz: panic-Rückfänger im Reconcile-Loop, einzelne
+  Check-Fehler erzeugen `Unknown`, nicht Abbruch (`LH-NF-005`).
+- Secret-Output-Filter aktiv (`LH-SEC-002`, `LH-NF-007`) — Tests
+  prüfen, dass kein Secret-Inhalt in Logs/Events/Status landet.
+  Im MVP gibt es noch keine externen Secrets (`ADR 0010`),
+  aber der Filter ist als Pflicht-Konvention verankert.
+- Keine destruktiven Aktionen (`LH-SEC-005`).
+
+**Lastenheft-Kennungen:** `LH-F-024`, `LH-F-031`, `LH-NF-004`,
+`LH-NF-005`, `LH-SEC-001`, `LH-SEC-002`, `LH-SEC-005`,
+`LH-DAT-007` (Konvention vorbereitet, auch ohne aktiven Use),
+`LH-NF-007` (Datenschutz).
+
+**Verifikation:**
+
+- `LH-AK-010` — Fehlerfall robust.
+- `LH-AK-012` — Keine Secret-Leaks (im MVP trivial, weil keine
+  externen Secrets; Tests prüfen den Filter trotzdem).
+- `LH-AK-015` — Minimalrechte dokumentiert.
+- `LH-AK-016` — RBAC-Selbstprüfung wirksam.
+
+---
+
+### M6 — Metrics-Endpoint, Tests, Doku
+
+**Lieferziel:** Prometheus-`/metrics`-Endpoint mit
+controller-runtime-Defaults (`ADR 0007`), Integrationstests gegen
+einen lokalen kind-/k3s-Cluster, vollständige Anwender-Doku.
+
+- `/metrics`-Endpoint exposed, ServiceAccount-RBAC für Scrape
+  passend, Endpoint im Smoketest erreichbar.
+- Integrationstests (kind oder envtest): jeder MVP-Check hat einen
+  passed- und einen failed-Case.
+- Anwender-Doku in `docs/user/` ausarbeiten:
+  - Installation (raw manifests).
+  - CR-Beispiele für `evaluation` und `production`.
+  - Conditions-Katalog mit Reason/Severity.
+  - Troubleshooting (typische Fehlerbilder).
+
+**Lastenheft-Kennungen:** `LH-SST-004` (Prometheus-Format),
+`LH-NF-008` (`/metrics` als Endpoint, eigene Domänen-Metriken
+folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
+(Dokumentation), `LH-QA-002` (reproduzierbare Ergebnisse),
+`LH-QA-004` (transparente Bewertung).
+
+**Verifikation:**
+
+- `LH-AK-013` — Dokumentation vorhanden.
+- Coverage-Gate für Unit- und Integrations-Tests grün
+  (Konkrete Schwelle entsteht im Pflichtenheft).
+- Smoketest `/metrics`-Endpoint liefert HTTP 200 mit
+  Prometheus-Format.
+
+---
+
+### M7 — Beispielmanifest, Release-Tag v0.1.0
+
+**Lieferziel:** Vollständige Beispielmanifeste, Release-Notes,
+v0.1.0-Tag, Container-Image-Publish auf GHCR.
+
+- Beispielmanifeste konsistent mit `LH-PROD-003a` (MVP-Profil).
+- Release-Notes pro `ADR 0011 §2.5`: SemVer-Tag, Inhalt verlinkt.
+- CHANGELOG-Entscheidung umsetzen (`planning/open/changelog.md`)
+  vor dem Tag.
+- Container-Image-Publish via `make image-publish`-Pattern aus
+  m-trace (Approval-Gate, `ADR 0011 §2.5`).
+- v0.1.0-Tag setzen.
+- DCO-Compliance-Check vor Merge der Release-PR.
+
+**Lastenheft-Kennungen:** `LH-REL-001` (Version 0.1), `LH-MVP-002`
+(Vollständigkeit), `LH-AK-014` (Open-Source-Veröffentlichung
+möglich — schließt jetzt vollständig, inkl. README/CONTRIBUTING/
+CODE_OF_CONDUCT/SECURITY und CHANGELOG).
+
+**Verifikation:**
+
+- v0.1.0-Tag existiert, GHSA-Pfad ist aktiv (Repo öffentlich).
+- Alle `LH-AK-001..016` erfüllt (Traceability-Matrix §20 grün).
+- Container-Image `ghcr.io/<owner>/k-deskflight:v0.1.0` läuft auf
+  einer der drei aktuellen K8s-Versionen aus `ADR 0009`.
+
+---
+
+## 4. Was nicht im MVP
+
+Diese Roadmap deckt **ausschließlich** den MVP-Scope. Folgende Inhalte
+gehören nicht in M1–M7 und kommen in späteren Roadmaps:
+
+- DNS / TLS / Netzwerk-Reachability (`LH-F-018`, `LH-F-019`,
+  `LH-F-022`) — v0.2 (`ADR 0010`).
+- ClusterIssuer-Detailprüfung (`LH-F-014`) — v0.2.
+- Node-Anzahl- und Zustandsprüfung (`LH-F-016`, `LH-F-017`) — v0.2.
+- Events (`LH-F-027`) — v0.2.
+- ConfigMap-Report (`LH-F-028`) — v0.2.
+- Eigene Domänen-Metriken (`LH-NF-008` voll) — v0.2.
+- Helm Chart (`LH-NF-016`, `LH-SST-010`) — v0.2 (`ADR 0005`).
+- PostgreSQL- und S3-Erreichbarkeit (`LH-F-020`, `LH-F-021`) — v0.3+
+  (`ADR 0010` + Folge-ADR, Trigger
+  `docs/plan/planning/open/external-services-v03-activation.md`).
+- HTML-Report, kubectl-Plugin, Plattformprofile (`k3s`/`scs`/
+  `airgapped`/`custom`) — spätere Versionen (`LH-PRI-003`,
+  `LH-PROF-001`/`-004`).
+- Mandantenverwaltung, Backup-Orchestrierung, Upgrade-Orchestrierung
+  — nicht im Produktscope (`LH-MVP-003`, `LH-SYS-002..005`).
+
+---
+
+## 5. Meilenstein-Marker für `LH-VM-006`-Traceability
+
+`LH-VM-006` fordert: „Jede wesentliche Implementierungsfunktion soll auf
+mindestens eine Lastenheftkennung zurückführbar sein." Die Slices stellen
+diese Rückführbarkeit her:
+
+| Marker | Slice | Bedeutung |
+| ------ | ----- | --------- |
+| M1 | Repo bereit | Build- und CI-Skelett, kein `LH-AK-*` direkt |
+| M2 | CRD installierbar | `LH-AK-001`, `-002`, `-003`, `-004`, `-011` |
+| M3 | Erste Prüfung lauffähig | `LH-AK-005` |
+| M4 | Alle Cluster-State-Prüfungen | `LH-AK-006`, `-007`, `-008`, `-009` |
+| M5 | Robustheit & RBAC | `LH-AK-010`, `-012`, `-015`, `-016` |
+| M6 | Doku & Tests | `LH-AK-013` |
+| M7 | v0.1.0-Release | `LH-AK-014`; Traceability-Matrix vollständig grün |
+
+---
+
+## 6. Status-Tracking
+
+Slice-Status werden in dieser Datei aktualisiert, sobald ein Slice von
+`Pending` nach `In Progress` und schließlich nach `Done` wandert. Pro
+abgeschlossenem Slice entsteht eine Closure-Notiz in
+`docs/plan/planning/done/slice-MX-…md` mit Lieferzielen-Abgleich und
+Verifikations-Ergebnis. Mit M7-Abschluss wandert auch diese Roadmap als
+Sammel-Closure-Notiz nach `done/`.
+
+---
+
+## 7. Status
+
+In Progress. Slices alle Pending; Aktivierung von M1 nach Pflichtenheft-
+Start (`LH-VM-002`) bzw. spätestens mit dem ersten Code-Commit
+(`LH-VM-004`).
