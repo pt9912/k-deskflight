@@ -538,7 +538,7 @@ Der Operator soll Kubernetes Events für wichtige Zustandsänderungen erzeugen.
 
 ### LH-F-028 — Report als ConfigMap
 
-Der Operator kann optional einen menschenlesbaren Report als ConfigMap erzeugen.
+Der Operator kann optional einen Report als ConfigMap erzeugen. Das Layout ist mit `ADR 0008` festgelegt: zwei Daten-Keys — `report.yaml` (maschinenlesbar, erfüllt LH-F-029) und `report.md` (menschenlesbar, erfüllt LH-DAT-004). Naming und Lifecycle ebenfalls in `ADR 0008`.
 
 ### LH-F-029 — Exportierbare Ergebnisse
 
@@ -952,7 +952,7 @@ Für Version 0.2 sind vorgesehen:
 - Node-Anzahl- und Zustandsprüfung (LH-F-016, LH-F-017)
 - ClusterIssuer-Prüfung (LH-F-014)
 - Events (LH-F-027)
-- Report als ConfigMap (LH-F-028)
+- Report als ConfigMap (LH-F-028) — Format YAML + Markdown gemäß `ADR 0008`
 - Eigene Domänen-Metriken (LH-NF-008) — Prometheus-Format (LH-SST-004) bereits im MVP erfüllt gemäß `ADR 0007`
 - Helm Chart (LH-NF-016, LH-SST-010) — aus MVP ausgeklammert mit `ADR 0005`
 
@@ -1088,7 +1088,7 @@ Gegenmaßnahme: Plattformneutrale Prüfungen bevorzugen und providerspezifische 
 | LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |
 | LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | Geschlossen mit [`ADR 0005`](../docs/plan/adr/0005-helm-chart-nicht-im-mvp.md)                                       |
 | LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | Geschlossen mit [`ADR 0007`](../docs/plan/adr/0007-prometheus-metrik-scope-im-mvp.md)                                |
-| LH-OP-008 | Entscheidung über Report-Format treffen                                    | offen                                                                                                               |
+| LH-OP-008 | Entscheidung über Report-Format treffen                                    | Geschlossen mit [`ADR 0008`](../docs/plan/adr/0008-report-format-stack.md)                                          |
 | LH-OP-009 | Projektname finalisieren                                                   | Geschlossen mit [`ADR 0004`](../docs/plan/adr/0004-projektname.md)                                                  |
 | LH-OP-010 | Governance für Open-Source-Beiträge definieren                             | offen                                                                                                               |
 | LH-OP-011 | Behandlung von Authentifizierungs-Secrets für externe Dienste detaillieren | offen                                                                                                               |
