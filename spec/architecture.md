@@ -34,7 +34,8 @@ Pflichtenheft delegierten `depguard`-Regeln.
   OpenAPI-Validierung pro Feld — Pflichtenheft (`LH-VM-002`) bzw.
   Slice-Pläne in `docs/plan/planning/in-progress/`.
 - Konkrete Probe-Implementierungen, Test-Mock-Strukturen, exakte
-  Timeouts und Retry-Budgets — Pflichtenheft und Slice-Pläne.
+  Retry-Budgets (`retry backoff policy`, `maxRetryAttempts`), sofern nicht in
+  `AR-009`/`AR-026` festgelegt — Pflichtenheft und Slice-Pläne.
 - CI-Workflow-YAML im Detail, Release-Approval-Skript-Layout —
   M1-Slice-Plan.
 - Operative Tool-Versionspins (govulncheck, Trivy, gremlins) —
@@ -333,17 +334,48 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 3. **Determine Active Checks** — basierend auf Profile und
    Spec.Checks-Map die zu aktivierenden Check-Instanzen aus der
    `CheckRegistry` (`AR-013`) auflösen.
+   - Die Auflösung ist strict: sind in `Spec.Checks` unbekannte Check-Namen
+     eingetragen oder ist ein Check nicht im aktivierten Profil erlaubt,
+     wird `Resolve`/`ListByProfile` als invalidiert betrachtet.
+   - Die betroffenen Namen werden vor der Fehlerausgabe als eindeutige,
+     alphabetisch sortierte Liste verarbeitet.
+   - Für unbekannte Namen wird `Reason: UnknownCheck` gesetzt.
+   - Für profil-inkompatible Namen wird `Reason: CheckNotAllowedInProfile`
+     gesetzt.
+   - Reconcile endet in Phase `Failed` mit `Condition: SpecInvalid`,
+     deterministischem Fehlertext und führt keine Check-Execution aus.
 4. **Execute Checks** — basierend auf der Registry-Auflösung werden die
    Check-spezifischen Werte in `CheckSpec`-Instanzen transformiert und via
    `spec.Kind()` gegen `Check.SpecKind()` validiert.
    Danach wird die Ausführung durch ein verbindliches Worker-Pool-Modell
    bestimmt (Pflichtenheft-Detail):
-    - **MVP-Entscheidung:** bounded parallel über Worker-Pool (`workerPoolSize`
-     konfigurierbar), fallback auf sequenziell bei `workerPoolSize <= 1`.
+   - **Timeout-Vertrag (MVP):**
+     - `RECONCILE_TIMEOUT_SECONDS`:
+       Default `120`, Min `5`, Max `600`; begrenzt einen kompletten
+       Reconcile-Lauf.
+     - `CHECK_TIMEOUT_SECONDS`:
+       Default `30`, Min `1`, Max `120`; begrenzt die Laufzeit pro Check
+       (`domain.Check.Run`).
+     - Konfigurationen werden strikt geparst:
+       - parsefaule Werte (leer, nicht-zahlbar, negative Werte) werden auf die
+         Defaults normalisiert.
+       - Werte `<= 0` werden auf den Default normalisiert.
+       - Werte `> Max` werden auf `Max`, Werte `< Min` auf `Min` normalisiert.
+       - Optional: `OPERATOR_STRICT_CONFIG=true` verwandelt solche
+         Normalisierungen in ein Start-Blocking (Operator-Start abgebrochen,
+         klarer Startfehler bis die Konfiguration korrigiert ist).
+     - Normalisierung/Parsefehler erzeugen `Status=Warning +
+       Condition=ConfigurationInvalid`, ein `Reason=TimeoutConfig` und die
+       gewählte Normalisierung.
+     - `Result`-Ausgabe bei Überschreitung bleibt: `Unknown` + `Reason: Timeout`.
+     - **MVP-Entscheidung:** bounded parallel über Worker-Pool (`workerPoolSize`
+      konfigurierbar), fallback auf sequenziell bei `workerPoolSize <= 1`.
      Der Wert stammt aus dem Operator-Config (`WORKER_POOL_SIZE` / Flag) mit
      Default `4` und wird in `Fetch` validiert:
-       - `< 1` wird auf `1` normalisiert.
-       - `> 32` wird auf `32` normalisiert.
+     - `< 1` wird auf `1` normalisiert.
+     - `> 32` wird auf `32` normalisiert.
+     - Bei `OPERATOR_STRICT_CONFIG=true` blockiert jede erzwungene
+       Normalisierung den regulären Betriebsstart.
      Jede Normalisierung wird als Konfigurationsfehler mit `Status=Warning`
      und `Condition=ConfigurationInvalid` in den Status geschrieben; die
      Ausführung läuft mit dem normalisierten Wert weiter.
@@ -373,6 +405,14 @@ folgt einem deterministischen sechs-Phasen-Pfad pro Reconcile-Lauf:
 6. **Update Status** — `client.Status().Update` mit
    `Phase`/`Summary`/`Conditions`. Konflikte (resourceVersion)
    werden mit Re-Fetch + Retry behandelt.
+   - Die Status-Aktualisierung ist idempotent: nur wenn sich `Phase`,
+     `Summary` oder `Conditions` tatsächlich ändern, wird geschrieben.
+   - Der Original-Status wird vor dem Update kopiert; bei Gleichstand
+     (z. B. via `equality.Semantic.DeepEqual`) wird keine Änderung
+     persistiert.
+   - Bei Änderung wird `client.Status().Patch` mit
+     `client.MergeFrom` bevorzugt eingesetzt, um unnötige Self-Writes zu
+     reduzieren.
 
 ### AR-010 — Wiederholintervall (`LH-F-025`)
 
@@ -422,6 +462,25 @@ Damit gilt:
   (`coordination.k8s.io/leases`, Default-Lease-Duration 15 s,
   Renew-Deadline 10 s, Retry-Period 2 s — konkrete Werte gehören
   ins Pflichtenheft, controller-runtime-Defaults sind akzeptabel).
+- **Parallelismus-Beschränkung:** `Manager.Options.MaxConcurrentReconciles`
+  (Default `4`, Max `8`) begrenzt parallele Reconcile-Läufe.
+  Zusammengenommen ergibt sich die obere Grenze parallel aktiver
+  Check-Worker pro Operator-Instanz als:
+  `MaxConcurrentReconciles * workerPoolSize_normalized`.
+- Der Kubernetes-Client nutzt explizit `RESTClientConfig`-Rate-Limits
+  (`QPS=10`, `Burst=20` als konservativer Standard). `K8S_QPS` und
+  `K8S_BURST` haben harte Grenzen:
+  - `K8S_QPS`: Min `1`, Max `100`, Default `10`.
+  - `K8S_BURST`: Min `1`, Max `200`, Default `20`.
+  - `K8S_BURST` wird mindestens auf `ceil(K8S_QPS)` normalisiert.
+  OOB-Werte (inkl. Parsefehler) werden geclamped und als
+  `Status=Warning + Condition=ConfigurationInvalid` dokumentiert.
+- API-Throttling ist deterministisch abgesichert: der Standard-Rate
+  Limiter (`TokenBucket`) bleibt aktiv und arbeitet mit bounded
+  exponential backoff.
+  Bei dauerhafter Exzessexposition (`TooManyRequests` nach Exhaustion)
+  führt der betroffene Check auf `Result{Status: Unknown, Reason:
+  ApiThrottled}`; Reconcile-Result bleibt deterministisch aggregiert.
 - **RBAC** für Leases ist in `AR-015` eingebunden
   (`coordination.k8s.io/leases` mit `get/list/watch/create/update/
   patch`).
@@ -534,13 +593,34 @@ import "github.com/pt9912/k-deskflight/internal/domain"
 type CheckRegistry interface {
     Register(c domain.Check)
     Resolve(name string) (domain.Check, bool)
-    ListByProfile(profile string, spec map[string]domain.CheckSpec) []domain.Check
+    ListByProfile(profile string, spec map[string]domain.CheckSpec) ([]domain.Check, []CheckSelectionIssue)
+}
+
+type CheckSelectionIssue struct {
+	Name   string
+	Reason string
 }
 ```
 
 `cmd/operator/main.go` registriert beim Start alle MVP-Checks
 (KubernetesVersion, StorageClass, IngressClass, certManager,
 Resources, RBAC).
+
+Kontrakt:
+- `ListByProfile` liefert exakt die aktivierbaren Checks als erste
+  Rückgabe.
+- Die zweite Rückgabe enthält Tupel `(Name, Reason)` für nicht auflösbare Checks.
+  - `Reason` ist stabil und enthält entweder `UnknownCheck` oder
+    `CheckNotAllowedInProfile`.
+  - Tupel sind dedupliziert, stabil alphabetisch sortiert (nach Name).
+- Ist diese Liste nicht leer, bricht der Reconcile als
+  `Phase: Failed` + `Condition: SpecInvalid` ab und erzeugt keine
+  Check-Execution.
+- `Resolve` bleibt für explizite Direktanfragen vorgesehen; der produktive
+  aktivierende Pfad läuft über `ListByProfile`.
+- Bestehende Call-Sites sind auf `ListByProfile`-Resultate umzustellen.
+  Eine direkte, aktive Reconcile-Schleife auf Basis von `Resolve(name)`
+  ist nicht mehr zulässig.
 
 ### AR-014 — Schweregrad-Aggregation und Conditions-Sortierung
 
@@ -600,8 +680,12 @@ analog `cert-manager`, `metallb-system`, `kube-system`).
    der `AR-015`-ClusterRole aktiv. Der Namespace-Scoped-Modus reduziert
    primär den Reconcile-Scope (`--namespace`) und die Namespaced-Status-/Spec-
    Rechte, **nicht** automatisch jede clusterweite Leseberechtigung.
-   Der Trade-off wird als dokumentierte Security-Intention in der Ziel-Phase
-   `v0.2+` nachgezogen.
+   Der Namespace-Scoped-Modus ist primär eine Reconcile-Scope-Steuerung
+   und kein vollständiges Security-Isolationsmodell.
+   - Für echte Tenant-/Namespace-Isolation ist ein eigener Erweiterungsmodus
+     vorgesehen: dedizierte Operator-Instanz/Profil mit eingeschränkter
+     ClusterRole und ohne allgemeine Cluster-Weit-Lesezugriffe, sofern
+     die Check-Profile angepasst werden.
 
 Anwender-Overridebarkeit per Kustomize-Overlay ist möglich; ab v0.2
 zusätzlich per Helm-Values (`ADR 0005`). Die nachfolgenden
@@ -768,6 +852,7 @@ ausdrücken kann. Dann eigene Folge-ADR.
 | `AR-OP-005` | Anwender-Overridebarkeit des Default-Operator-Namespace `k-deskflight-system` via Kustomize-Overlay (ab MVP) bzw. Helm-Values (ab v0.2, `ADR 0005`) — exakte Override-Mechanik | offen — M1-/M2-Slice-Plan |
 | `AR-OP-006` | OTel-Integration: Tracing-Spans im Reconcile-Pfad ja/nein | offen — v0.2-Slice, koordiniert mit `ADR 0007` |
 | `AR-OP-007` | Conversion-Webhook für künftige Versionssprünge (`AR-008`) — implementieren oder via Re-Apply lösen | offen — Folge-ADR zu `ADR 0006 §4` |
+| `AR-OP-008` | Harte Namespace-/Tenant-Isolation (separate Operator-Instanz, eingeschränkte ClusterRole, profilierte Check-Matrix) | offen — v0.2/ Folge-ADR |
 
 Die `AR-OP-*`-Punkte werden bei Aktivierung der jeweiligen Slice in
 die zugehörigen Slice-Pläne überführt oder, wenn übergreifend, als
