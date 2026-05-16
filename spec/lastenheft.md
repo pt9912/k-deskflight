@@ -174,7 +174,7 @@ spec:
 
   checks:
     kubernetesVersion:
-      min: "1.27"
+      min: "1.34"
 
     ingress:
       required: true
@@ -212,7 +212,7 @@ spec:
 
   checks:
     kubernetesVersion:
-      min: "1.27"
+      min: "1.34"
 
     ingress:
       required: true
@@ -392,11 +392,15 @@ Das Profil `evaluation` soll für Test- und Evaluierungsumgebungen gedacht sein.
 
 Es soll weniger strenge Anforderungen prüfen als das Produktionsprofil.
 
+Die K8s-Mindestversion-Vorbelegung folgt dem Operator-Floor gemäß `ADR 0009` (heute 1.34, rollend mit der Operator-Support-Matrix). Anwender können den Wert pro CR via `spec.checks.kubernetesVersion.min` überschreiben.
+
 ### LH-PROF-003 — Profil `production`
 
 Das Profil `production` soll für produktionsnahe oder produktive Umgebungen gedacht sein.
 
 Es soll strengere Anforderungen prüfen, insbesondere bezüglich Ressourcen, Storage, TLS, Ingress und externen Diensten.
+
+Die K8s-Mindestversion-Vorbelegung ist identisch mit `evaluation` (Operator-Floor gemäß `ADR 0009`) — Profile-Differenzierung erfolgt nicht über die K8s-Version. Die OpenDesk-Doku-Untergrenze `≥ v1.24` ist niedriger als der Operator-Floor und wird in `ADR 0009 §2.3` eingeordnet.
 
 ### LH-PROF-004 — Modus `custom` (spätere Version)
 
@@ -1088,10 +1092,10 @@ Gegenmaßnahme: Domain-Verlängerung als operative Routine sichern (Verantwortun
 
 | Kennung   | Offener Punkt                                                              | Status                                                                                                              |
 | --------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     | offen                                                                                                               |
+| LH-OP-001 | Exakte Mindestversionen für OpenDesk-Profile festlegen                     | Geschlossen mit [`ADR 0009`](../docs/plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md)             |
 | LH-OP-002 | Namensraum und API-Gruppe final entscheiden                                | Geschlossen mit [`ADR 0006`](../docs/plan/adr/0006-api-gruppe-und-crd-scope.md) (Vorklärung archiviert unter [`docs/archive/api-gruppe-domain.md`](../docs/archive/api-gruppe-domain.md)) |
 | LH-OP-003 | Lizenz auswählen                                                           | entfallen mit Commit `3be7b28` (MIT-Entscheidung; vor Einführung des ADR-Lifecycles)                                |
-| LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | offen                                                                                                               |
+| LH-OP-004 | Unterstützte Kubernetes-Versionen definieren                               | Geschlossen mit [`ADR 0009`](../docs/plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md)             |
 | LH-OP-005 | Umfang der externen Dienstprüfungen festlegen                              | offen                                                                                                               |
 | LH-OP-006 | Entscheidung über Helm Chart im MVP treffen                                | Geschlossen mit [`ADR 0005`](../docs/plan/adr/0005-helm-chart-nicht-im-mvp.md)                                       |
 | LH-OP-007 | Entscheidung über Prometheus Metrics im MVP treffen                        | Geschlossen mit [`ADR 0007`](../docs/plan/adr/0007-prometheus-metrik-scope-im-mvp.md)                                |
