@@ -327,6 +327,41 @@ andere Checks nicht stoppen. Konkrete Mechanik:
   unerwartete Panics; bei einem solchen wird Phase `Unknown` mit
   Condition `ReconcileError` gesetzt.
 
+### AR-026 — Leader-Election und Replica-Modell
+
+Der `controller-runtime`-Manager wird mit **Leader-Election
+aktiviert** gestartet. Konkret: `Manager.Options.LeaderElection =
+true` mit `LeaderElectionID = "k-deskflight-operator"` (oder
+äquivalent), `LeaderElectionNamespace = <Operator-Namespace>`
+(siehe `AR-016`).
+
+Damit gilt:
+
+- **Im MVP** läuft genau **eine aktive Replica** des Operators.
+  Mehrere Replicas im selben Deployment sind technisch zulässig,
+  führen aber zum Standby-Verhalten der Nicht-Leader-Replicas — kein
+  Doppel-Reconcile, keine Status-Konflikte (`AR-009 §6`
+  resourceVersion-Konflikte sind damit auf legitime Konfliktszenarien
+  beschränkt, nicht auf Self-Conflict).
+- **Failover** erfolgt über das Standard-Lease-Renewal-Schema
+  (`coordination.k8s.io/leases`, Default-Lease-Duration 15 s,
+  Renew-Deadline 10 s, Retry-Period 2 s — konkrete Werte gehören
+  ins Pflichtenheft, controller-runtime-Defaults sind akzeptabel).
+- **RBAC** für Leases ist in `AR-015` eingebunden
+  (`coordination.k8s.io/leases` mit `get/list/watch/create/update/
+  patch`).
+- **Hochverfügbarkeit** mit echtem Active-Active oder fortgeschritteneren
+  Modellen ist Folge-ADR-Stoff für v0.2+ (`LH-NF-019`-Ressourcenkonzept
+  und Replica-Skalierung).
+
+Begründung: Ohne Leader-Election produziert ein versehentliches
+Hochskalieren des Deployments auf `replicas: 2` doppelte
+Reconcile-Loops, was sich in unkontrollierten Status-Flips und
+Event-Lawinen äußert. Die Mehrkosten der Leader-Election (eine
+zusätzliche `Lease`-Ressource im Operator-Namespace, ein paar
+Watch-Verbindungen) sind vernachlässigbar; die Risiko-Mitigation ist
+substantiell.
+
 ---
 
 ## 6. Check-Plugin-Architektur
@@ -415,11 +450,16 @@ Rechte benötigt (`LH-F-035`, `LH-AK-015`, `LH-NF-006`):
 | API-Gruppe | Ressourcen | Verben | Begründung |
 | ---------- | ---------- | ------ | ---------- |
 | `""` (core) | `nodes` | `get`, `list`, `watch` | Allocatable CPU/Memory, Ready-Status (`LH-F-015`) |
-| `""` | `persistentvolumeclaims` (read-only) | `get`, `list` | optional, für spätere StorageClass-PVC-Bindung; im MVP nicht aktiv |
 | `storage.k8s.io` | `storageclasses` | `get`, `list`, `watch` | `LH-F-010`/`LH-F-011` |
 | `networking.k8s.io` | `ingressclasses` | `get`, `list`, `watch` | `LH-F-012` |
 | `apiextensions.k8s.io` | `customresourcedefinitions` | `get`, `list` | `cert-manager.io`-Discovery (`LH-F-013`) |
 | `authorization.k8s.io` | `selfsubjectaccessreviews`, `selfsubjectrulesreviews` | `create` | `LH-F-024` |
+| `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch` | Leader-Election (`AR-026`) |
+
+Strikte Minimal-Rechte-Linie (`LH-SEC-001`, `LH-NF-006`): keine
+weiteren Rechte. Insbesondere keine `persistentvolumeclaims`-Rechte
+im MVP (PVC-Inspektion ist nicht Teil der MVP-Prüfungen aus
+`LH-PRI-001`).
 
 ### AR-016 — Role im Operator-Namespace
 
@@ -427,12 +467,11 @@ Rechte benötigt (`LH-F-035`, `LH-AK-015`, `LH-NF-006`):
 | ---------- | ---------- | ------ | ---------- |
 | `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks` | `get`, `list`, `watch`, `update`, `patch` | CR-Verarbeitung |
 | `k-deskflight.geo-terrain.net` | `opendeskpreflightchecks/status` | `get`, `update`, `patch` | Status-Updates (`LH-F-004`) |
-| `""` | `events` | `create`, `patch` | v0.2 (`LH-F-027`); im MVP-RBAC bereits enthalten als Vorbereitung |
-| `""` | `configmaps` | `get`, `list`, `create`, `update`, `patch` | v0.2 (`LH-F-028`) — nicht im MVP-Set |
 
-Im MVP-Set sind nur CR + CR/status + Events enthalten (Events als
-Vorbereitung, auch wenn `LH-F-027` v0.2 ist — die `events.create`-
-Berechtigung ist controller-runtime-Standard und schadet nicht).
+Strikte Minimal-Rechte-Linie: keine `events.create`/`events.patch`
+(`LH-F-027` ist v0.2) und keine `configmaps`-Rechte (`LH-F-028` ist
+v0.2). Diese Rechte kommen mit den jeweiligen v0.2-Slices in das
+RBAC-Set — siehe `§10` Verhältnis zu späteren Phasen.
 
 ### AR-017 — ServiceAccount
 
@@ -547,7 +586,7 @@ entstehen mit M1.
 | Phase | Was aus dieser Architektur trägt | Was hinzukommt |
 | ----- | -------------------------------- | -------------- |
 | MVP v0.1 (`LH-REL-001`) | alle hier festgelegten `AR-*` (außer den explizit als v0.2+ markierten ConfigMap- und Event-RBAC-Anteilen) | konkrete Spec-Felder, Probe-Implementierungen, Test-Mocks |
-| v0.2 (`LH-PRI-002`) | Helm-Chart als alternativer Distributions-Pfad (`ADR 0005`); CRD bleibt `v1alpha1` | DNS-/TLS-/Netzwerk-Check-Module unter `adapter/check/`; ConfigMap-Report-Adapter; Events-Emission; Domänen-Metriken |
+| v0.2 (`LH-PRI-002`) | Helm-Chart als alternativer Distributions-Pfad (`ADR 0005`); CRD bleibt `v1alpha1` | DNS-/TLS-/Netzwerk-Check-Module unter `adapter/check/`; ConfigMap-Report-Adapter; Events-Emission; Domänen-Metriken. RBAC-Erweiterung gegenüber MVP-`AR-016`: `core/events` mit `create`+`patch` (`LH-F-027`) und `core/configmaps` mit `get`/`list`/`create`/`update`/`patch` (`LH-F-028`). |
 | v0.3+ (`LH-PRI-003`) | mit-Auth-Checks bauen auf der bestehenden Check-Interface auf (`AR-012`); RBAC-Konzept (`AR-015`) wird um Secret-Read-Rechte erweitert | PostgreSQL-Adapter, S3-Adapter, evtl. CRD-Schema-Erweiterung auf `v1alpha2` oder `v1beta1` |
 
 ---
