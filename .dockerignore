@@ -1,0 +1,9 @@
+# Build-Kontext-Filter. Hält den Docker-Build deterministisch und klein.
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.md
+docs/
+spec/
