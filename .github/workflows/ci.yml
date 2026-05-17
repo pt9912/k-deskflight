@@ -20,18 +20,27 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
+# Top-level permissions: explizit alles entziehen, jeder Job lockert
+# auf das, was er braucht (Defense-in-Depth gegen versehentlich neu
+# hinzukommende Steps, die schreibende Tokens nutzen würden).
+permissions: {}
 
 jobs:
   gates:
     name: gates (lint + test + coverage-gate + doc-refs)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     env:
       DOCKER_BUILDKIT: '1'
     steps:
+      # SHA-Pin auf v4.2.2 (Supply-Chain-Härtung gegen Tag-Move). Pin-
+      # Hebung ist Routine; neuen Commit-SHA via
+      # `gh api repos/actions/checkout/git/refs/tags/<tag>` auflösen
+      # und Tag-Kommentar mitführen.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Run make gates
         run: make gates
@@ -39,11 +48,14 @@ jobs:
   security-gates:
     name: security-gates (govulncheck)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     env:
       DOCKER_BUILDKIT: '1'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Run make security-gates
         run: make security-gates
