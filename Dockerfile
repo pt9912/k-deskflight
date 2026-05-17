@@ -34,8 +34,12 @@ ENV GOFLAGS="-mod=readonly" \
     GOCACHE=/root/.cache/go-build
 
 COPY go.mod ./
-# go.sum is copied if present (initial bootstrap may not have it yet);
-# `go mod download` populates the cache from go.mod alone.
+# go.sum is copied if present. Der Glob `go.su[m]` ist eine Ein-
+# Zeichen-Zeichenklasse, die `go.sum` matched, aber leer bleibt, wenn
+# die Datei (noch) nicht existiert. Damit funktioniert dieselbe COPY-
+# Zeile vor dem ersten `go mod tidy` (Bootstrap) und nach jedem späteren
+# Stand — ohne Conditional und ohne `COPY --link`-Tricks. `go mod
+# download` zieht die Module dann nur aus `go.mod`.
 COPY go.su[m] ./
 
 RUN mkdir -p "$GOMODCACHE" && go mod download

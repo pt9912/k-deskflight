@@ -1,9 +1,14 @@
 # k-deskflight — OpenDesk Preflight Operator
 #
-# Docker-only workflow per docs/plan/planning/in-progress/
-# slice-M1-repo-skeleton.md §2.1. Build/lint/test/coverage rufen
-# `docker build --target <stage>`; das Repository hat keine
-# host-seitige Go-Toolchain-Anforderung.
+# Docker-only workflow per docs/plan/planning/done/slice-M1-repo-skeleton.md
+# §2.1. Build/lint/test/coverage/govulncheck rufen alle
+# `docker build --target <stage>` bzw. `docker run`; das Repository
+# hat keine host-seitige Go-Toolchain-Anforderung.
+#
+# Ausnahme: `make doc-refs` ruft `bash scripts/verify-doc-refs.sh`
+# direkt auf dem Host — ein 100-Zeilen-Bash-Skript ohne Go-Toolchain-
+# Bedarf zu containerisieren wäre Overhead ohne Nutzen. Das ist die
+# einzige Carveout-Stelle der Docker-only-Konvention.
 #
 # Quality-Gates (ADR 0012 §2.11):
 #   make gates           — Pflicht-Gates der Inner-Loop, PR-blockierend.

@@ -84,7 +84,11 @@ while IFS= read -r md; do
         fi
         if [[ ! -e "$resolved" ]]; then
             echo "BROKEN: $rel -> $target"
-            ((++broken))
+            # Why: $(( … )) statt ((broken++)) — bash post-increment
+            # liefert beim Übergang 0→1 Exit 1, was set -e abbrechen
+            # würde. Die committete Form ist robust gegen späteres
+            # Refactoring.
+            broken=$((broken + 1))
         fi
     done < <(extract_local_markdown_links "$md")
 done < <(
