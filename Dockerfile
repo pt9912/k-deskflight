@@ -26,7 +26,14 @@
 # ---------------------------------------------------------------------------
 
 # ---- deps ------------------------------------------------------------------
-FROM golang:1.26.3 AS deps
+# AR-019 Step 1 (spec/architecture.md) fordert `ARG GO_VERSION` als
+# expliziten Build-Pfad, damit Container- und Modul-Toolchain synchron
+# pinnbar sind. Default folgt dem M1-Slice-Plan-Pin (§2.4); Hebung ist
+# Routine ohne ADR (ADR 0012 §2.8 Abs. 3), neue Werte via
+# `docker build --build-arg GO_VERSION=…` oder direktes Edit.
+ARG GO_VERSION=1.26.3
+
+FROM golang:${GO_VERSION} AS deps
 
 WORKDIR /src
 ENV GOFLAGS="-mod=readonly" \
