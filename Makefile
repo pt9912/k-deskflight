@@ -33,8 +33,13 @@ NO_CACHE_FILTER_COVERAGE := --no-cache-filter coverage
 # keine ADR; Begründung gehört in den Commit-Body.
 GOVULNCHECK_VERSION ?= v1.1.4
 
-.PHONY: help build compile deps lint test coverage coverage-gate doc-refs \
-        govulncheck image-build run gates security-gates clean
+.PHONY: help build compile deps tools lint test coverage coverage-gate doc-refs \
+        manifests generated-drift-check govulncheck image-build run gates \
+        security-gates clean
+
+# controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
+# Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
+CONTROLLER_GEN_VERSION ?= v0.21.0
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -70,9 +75,59 @@ coverage: coverage-gate
 doc-refs: ## Verify local markdown link targets (LH-QG-008).
 	bash scripts/verify-doc-refs.sh
 
+# ---- generators ------------------------------------------------------------
+
+tools: ## Build the tools image with controller-gen pinned.
+	docker build --target tools \
+	    --build-arg CONTROLLER_GEN_VERSION=$(CONTROLLER_GEN_VERSION) \
+	    -t $(IMAGE):go-tools .
+
+# `make manifests` regeneriert die kubebuilder-Output-Artefakte
+# (architecture.md AR-007, slice-M2 §2.3):
+#   - api/v1alpha1/zz_generated.deepcopy.go (object-Generator)
+#   - config/crd/<group>_<resource>.yaml (crd-Generator)
+#   - config/rbac/role.yaml (rbac-Generator aus den Markern am
+#     Reconcile-Receiver in internal/hexagon/application/)
+# `--user $(id -u):$(id -g)` schreibt die Outputs als Caller, nicht
+# als root. GOCACHE/GOMODCACHE auf /tmp, weil controller-gen intern
+# `go list` aufruft und das Default-Cache-Verzeichnis (~/.cache/go-build)
+# mit nicht-root-User nicht beschreibbar ist. controller-gen läuft
+# idempotent.
+manifests: tools
+	docker run --rm \
+	    --user "$$(id -u):$$(id -g)" \
+	    -v "$(CURDIR):/src" \
+	    -w /src \
+	    -e GOCACHE=/tmp/gocache \
+	    -e GOMODCACHE=/tmp/gomodcache \
+	    $(IMAGE):go-tools \
+	    /go/bin/controller-gen \
+	        object:headerFile=hack/boilerplate.go.txt \
+	        crd \
+	        rbac:roleName=k-deskflight-operator-cluster \
+	        paths=./api/... \
+	        paths=./internal/hexagon/application/... \
+	        output:crd:dir=config/crd \
+	        output:rbac:dir=config/rbac
+
+# Drift-Gate: regeneriert Manifeste und prüft via `git diff --exit-code`,
+# dass nichts vom committeten Stand abweicht (ADR 0012 §2.7, LH-QG-005).
+# Pfade: alle controller-gen-Outputs.
+generated-drift-check: manifests
+	@git diff --exit-code -- \
+	    api/v1alpha1/zz_generated.deepcopy.go \
+	    config/crd/ \
+	    config/rbac/ \
+	    >/dev/null 2>&1 || { \
+	        echo "[generated-drift-check] FAILED — `make manifests`-Output weicht vom committeten Stand ab:" >&2; \
+	        git diff --stat -- api/v1alpha1/zz_generated.deepcopy.go config/crd/ config/rbac/ >&2; \
+	        exit 1; \
+	    }
+	@echo "[generated-drift-check] passed"
+
 # ---- gate bundles ----------------------------------------------------------
 
-gates: build lint test coverage-gate doc-refs ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
+gates: build lint test coverage-gate doc-refs generated-drift-check ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
 	@echo "[gates] passed"
 
 # `govulncheck` läuft in einem golang:1.26.3-Container und installiert

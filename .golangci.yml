@@ -52,11 +52,58 @@ linters:
     cyclop:
       max-complexity: 15
     depguard:
-      # Why: Layer-Regeln (architecture.md AR-005) werden in M2 ergänzt,
-      # sobald die hexagon-/adapter-Pakete Inhalte haben. depguard
-      # bleibt in M1 enabled, damit das Profil bereits vollständig
-      # läuft; ein leeres rules-Map ist kein Fehler.
-      rules: {}
+      # Why: Layer-Regeln gemäß architecture.md AR-005 (M2 Step 1+2).
+      # `list-mode: lax` heißt: jede Regel filtert nur Dateien, die in
+      # ihrer `files:`-Liste matchen — andere Dateien (cmd/operator,
+      # api/v1alpha1) sind von der jeweiligen Regel ungesehen. Mit
+      # ≥1 Regel verschwindet auch die golangci-lint-v2-Default-Deny-
+      # Liste „Main", die bei `rules: {}` greift.
+      rules:
+        domain-isolation:
+          list-mode: lax
+          files:
+            - '**/internal/hexagon/domain/**'
+          deny:
+            - pkg: k8s.io
+              desc: domain layer must not depend on Kubernetes libraries (use port)
+            - pkg: sigs.k8s.io
+              desc: domain layer must not depend on controller-runtime
+            - pkg: github.com/pt9912/k-deskflight/internal/hexagon/application
+              desc: domain must not depend on application (AR-004)
+            - pkg: github.com/pt9912/k-deskflight/internal/hexagon/port
+              desc: domain must not depend on port (AR-004)
+            - pkg: github.com/pt9912/k-deskflight/internal/adapter
+              desc: domain must not depend on adapter (AR-004)
+        application-no-adapter:
+          list-mode: lax
+          files:
+            - '**/internal/hexagon/application/**'
+          deny:
+            - pkg: github.com/pt9912/k-deskflight/internal/adapter
+              desc: application must depend on ports, not on adapter implementations (AR-004)
+        port-no-application:
+          list-mode: lax
+          files:
+            - '**/internal/hexagon/port/**'
+          deny:
+            - pkg: github.com/pt9912/k-deskflight/internal/hexagon/application
+              desc: ports are abstractions, must not depend on application (AR-004)
+            - pkg: github.com/pt9912/k-deskflight/internal/adapter
+              desc: ports define abstractions, must not depend on adapter implementations (AR-004)
+        adapter-no-application:
+          list-mode: lax
+          files:
+            - '**/internal/adapter/**'
+          deny:
+            - pkg: github.com/pt9912/k-deskflight/internal/hexagon/application
+              desc: adapter implements port, must not call into application directly (AR-004)
+        api-no-internal:
+          list-mode: lax
+          files:
+            - '**/api/v1alpha1/**'
+          deny:
+            - pkg: github.com/pt9912/k-deskflight/internal/hexagon
+              desc: api/v1alpha1 declares CRD types only — must not depend on internal/* (AR-004)
     dupl:
       threshold: 150
     forbidigo:
@@ -128,6 +175,16 @@ linters:
           - gocognit
           - gocyclo
         path: scripts/
+      # Why: api/v1alpha1/ folgt dem k8s-Standard-Pattern (architecture.md
+      # AR-006): drei Package-Level-Vars (GroupVersion, SchemeBuilder,
+      # AddToScheme) sind im Ökosystem unverhandelbar. Wir nutzen
+      # apimachinery's runtime.NewSchemeBuilder-Pattern statt
+      # controller-runtime/pkg/scheme.Builder (deprecated SA1019), damit
+      # ist ein `init()` nicht mehr nötig — gochecknoinits bleibt also
+      # wirksam und ist hier nicht im Carveout.
+      - linters:
+          - gochecknoglobals
+        path: api/v1alpha1/
     paths:
       - third_party$
       - builtin$

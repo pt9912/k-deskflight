@@ -51,6 +51,17 @@ COPY go.su[m] ./
 
 RUN mkdir -p "$GOMODCACHE" && go mod download
 
+# ---- tools -----------------------------------------------------------------
+# Stage für Generator-Tools (slice-M2 §2.3, architecture.md AR-007).
+# Hier lebt `controller-gen` als statischer Tool-Pin. Hebung ist
+# Routine ohne ADR (ADR 0012 §2.8 Abs. 3); Override via
+# `make manifests CONTROLLER_GEN_VERSION=…`.
+FROM deps AS tools
+
+ARG CONTROLLER_GEN_VERSION=v0.21.0
+
+RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
+
 # ---- compile ---------------------------------------------------------------
 FROM deps AS compile
 

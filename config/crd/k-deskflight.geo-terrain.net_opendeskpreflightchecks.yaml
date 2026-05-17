@@ -1,0 +1,193 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: opendeskpreflightchecks.k-deskflight.geo-terrain.net
+spec:
+  group: k-deskflight.geo-terrain.net
+  names:
+    kind: OpenDeskPreflightCheck
+    listKind: OpenDeskPreflightCheckList
+    plural: opendeskpreflightchecks
+    shortNames:
+    - opdc
+    singular: opendeskpreflightcheck
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: OpenDeskPreflightCheck is the Schema for the opendeskpreflightchecks
+          API (LH-F-001).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: OpenDeskPreflightCheckSpec defines the desired state of an
+              OpenDeskPreflightCheck.
+            properties:
+              checks:
+                description: Checks selects and configures the individual preflight
+                  checks.
+                properties:
+                  kubernetesVersion:
+                    description: KubernetesVersion configures the Kubernetes version
+                      check (LH-F-008).
+                    properties:
+                      min:
+                        default: "1.34"
+                        description: |-
+                          Min is the minimum acceptable Kubernetes server version.
+                          Default follows ADR 0009 §2.2 (production profile floor).
+                        pattern: ^[0-9]+\.[0-9]+(\.[0-9]+)?$
+                        type: string
+                    type: object
+                type: object
+              profile:
+                default: production
+                description: Profile selects the preset of check defaults to apply.
+                enum:
+                - production
+                - evaluation
+                type: string
+            type: object
+          status:
+            description: OpenDeskPreflightCheckStatus captures the observed state
+              of a preflight run.
+            properties:
+              conditions:
+                description: Conditions detail per-check outcomes (LH-F-005).
+                items:
+                  description: |-
+                    Condition is a Kubernetes-style status entry extended with an explicit
+                    Severity field (architecture.md AR-006). Severity drives the aggregation
+                    rules in AR-014.
+                  properties:
+                    lastTransitionTime:
+                      description: LastTransitionTime is the last time the condition
+                        transitioned.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message is a human-readable explanation of the
+                        condition.
+                      type: string
+                    reason:
+                      description: Reason is a programmatic identifier indicating
+                        the cause of the condition.
+                      minLength: 1
+                      type: string
+                    severity:
+                      default: info
+                      description: |-
+                        Severity is the operational severity associated with the condition.
+                        Default `info` per AR-006 — producers should set warning/critical
+                        when applicable for AR-014 aggregation.
+                      enum:
+                      - info
+                      - warning
+                      - critical
+                      type: string
+                    status:
+                      description: Status is True, False, or Unknown.
+                      type: string
+                    type:
+                      description: Type is a CamelCase name identifying the condition
+                        (e.g. KubernetesVersionReady).
+                      minLength: 1
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation that the controller has
+                  most recently fully reconciled (architecture.md AR-006).
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the overall reconcile phase (LH-F-006).
+                enum:
+                - Pending
+                - Running
+                - Passed
+                - Warning
+                - Failed
+                - Unknown
+                type: string
+              summary:
+                description: Summary aggregates per-result counts (LH-F-007).
+                properties:
+                  checksTotal:
+                    description: ChecksTotal is the number of active checks for this
+                      reconcile run.
+                    format: int32
+                    type: integer
+                  failed:
+                    description: Failed counts checks that completed with a critical
+                      failure.
+                    format: int32
+                    type: integer
+                  lastChecked:
+                    description: LastChecked is the timestamp of the last reconcile
+                      run that populated this Summary.
+                    format: date-time
+                    type: string
+                  passed:
+                    description: Passed counts checks that completed successfully.
+                    format: int32
+                    type: integer
+                  unknown:
+                    description: Unknown counts checks whose outcome could not be
+                      determined.
+                    format: int32
+                    type: integer
+                  warning:
+                    description: Warning counts checks that completed with a non-fatal
+                      warning.
+                    format: int32
+                    type: integer
+                required:
+                - checksTotal
+                - failed
+                - passed
+                - unknown
+                - warning
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
