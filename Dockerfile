@@ -66,10 +66,20 @@ RUN CGO_ENABLED=0 go test ./...
 # ---- coverage --------------------------------------------------------------
 # Misst Coverage über produktive Pakete (Range-Selector grenzt cmd/
 # bewusst aus; architecture.md AR-004). In M1 ist internal/ noch leer —
-# scripts/coverage-gate.sh erkennt die Bootstrap-Phase (kein „total:"-
-# Eintrag) und exitet sauber. M6 hebt die Schwelle auf 90 % und macht
-# das Gate PR-blockierend (Roadmap §3 M6).
+# der Stage setzt COVERAGE_BOOTSTRAP=1, scripts/coverage-gate.sh
+# autorisiert genau dann eine leere Eingabe. Ab M2 (internal/ hat
+# Code) ist COVERAGE_BOOTSTRAP=0, und ein fehlschlagender `go test`
+# kann nicht mehr stillschweigend maskiert werden — `pipefail` lässt
+# den `&&`-Chain abbrechen, fehlende `total:`-Zeile erzeugt Exit 2 im
+# Gate. M6 hebt die Schwelle auf 90 % und macht das Gate PR-blockierend
+# (Roadmap §3 M6).
 FROM deps AS coverage
+
+# SHELL mit -eo pipefail erzwingt, dass `go test … | tee …` den
+# Exit-Code von `go test` durchreicht. Ohne pipefail wäre `tee`-OK das
+# einzige, was zählt, und ein gecrashtes `go test` würde geräuschlos
+# leere Coverage-Artefakte produzieren.
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 ARG COVERAGE_THRESHOLD=0
 ENV COVERAGE_THRESHOLD=${COVERAGE_THRESHOLD}
@@ -81,6 +91,7 @@ RUN mkdir -p /out && \
         echo "coverage: no production packages in ./internal/... yet — bootstrap mode (M1)"; \
         : > /out/coverage.out; \
         : > /out/coverage-func.txt; \
+        export COVERAGE_BOOTSTRAP=1; \
     else \
         CGO_ENABLED=0 go test \
             -coverpkg="$COVERPKG" \
@@ -88,6 +99,7 @@ RUN mkdir -p /out && \
             -covermode=atomic \
             ./... && \
         go tool cover -func=/out/coverage.out | tee /out/coverage-func.txt; \
+        export COVERAGE_BOOTSTRAP=0; \
     fi && \
     bash scripts/coverage-gate.sh /out/coverage-func.txt "$COVERAGE_THRESHOLD"
 

@@ -6,20 +6,24 @@
 #
 # Erwartet eine Datei mit dem Output-Format von `go tool cover -func`.
 # Die letzte Zeile beginnt im Normalfall mit `total:` und trägt im
-# dritten Whitespace-Token den Prozentwert (Format `89.8%`).
+# letzten Whitespace-Token den Prozentwert (Format `89.8%`).
 #
-# Bootstrap-Modus (slice M1, internal/ noch leer): wenn die Eingabe-
-# Datei leer ist oder keine `total:`-Zeile enthält, exitet das Gate
-# sauber mit 0. M6 hebt die Schwelle auf 90 % und macht das Gate
-# PR-blockierend (Roadmap §3 M6).
+# Bootstrap-Modus: nur akzeptiert, wenn das Env-Var COVERAGE_BOOTSTRAP
+# explizit auf "1" gesetzt ist. Damit kann der Dockerfile-coverage-Stage
+# in slice M1 (internal/ noch leer) sauber mit leerer Eingabe arbeiten,
+# ohne dass ab M2 ein still maskierter Test-Failure das Gate grün
+# erscheinen lässt. Sobald COVERPKG nicht leer ist, MUSS `go tool
+# cover -func` eine `total:`-Zeile liefern; tut sie das nicht, bricht
+# das Gate (Exit 2 = Format-/Pipeline-Fehler).
 #
 # Verwendung:
-#   bash scripts/coverage-gate.sh <go-tool-cover-func-file> [<threshold-percent>]
+#   COVERAGE_BOOTSTRAP=0|1 bash scripts/coverage-gate.sh <func-file> [<threshold-percent>]
 #
 # Exit codes:
-#   0 — Coverage >= Threshold (oder Bootstrap-Modus)
+#   0 — Coverage >= Threshold (oder Bootstrap-Modus authorized)
 #   1 — Coverage < Threshold
-#   2 — Eingabe-Fehler (Datei fehlt)
+#   2 — Eingabe-/Format-Fehler (Datei fehlt; Bootstrap-Eingabe ohne
+#       Authorisierung; total_pct nicht numerisch)
 set -euo pipefail
 
 usage() {
@@ -40,19 +44,26 @@ if [[ ! -f "$func_file" ]]; then
     exit 2
 fi
 
-# Bootstrap-Modus: leere Datei (kein Test-Output) oder Datei ohne
-# `total:`-Zeile. Tritt in Slice M1 auf, solange internal/ keine
-# Go-Pakete enthält.
+# Bootstrap-Modus: leere Datei oder Datei ohne `total:`-Zeile ist nur
+# OK, wenn der Aufrufer COVERAGE_BOOTSTRAP=1 setzt. Sonst liegt ein
+# echter Failure vor (Tests crashen, Pipefail im Build, neue Range-
+# Selector-Drift), den wir nicht stillschweigend grün durchwinken.
+bootstrap="${COVERAGE_BOOTSTRAP:-0}"
+
 if [[ ! -s "$func_file" ]] || ! grep -q '^total:' "$func_file"; then
-    echo "coverage-gate: no coverage data yet — bootstrap mode (threshold=${threshold}% accepted)"
-    exit 0
+    if [[ "$bootstrap" == "1" ]]; then
+        echo "coverage-gate: bootstrap-mode authorized (COVERAGE_BOOTSTRAP=1; threshold=${threshold}%)"
+        exit 0
+    fi
+    echo "coverage-gate: input has no 'total:' line and COVERAGE_BOOTSTRAP!=1 — refusing to mask test failure" >&2
+    exit 2
 fi
 
 total_line="$(grep '^total:' "$func_file" | tail -n1)"
 total_pct="$(awk '{print $NF}' <<<"$total_line" | tr -d '%')"
 
-if [[ -z "$total_pct" ]]; then
-    echo "coverage-gate: could not parse total from: $total_line" >&2
+if [[ ! "$total_pct" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "coverage-gate: total token is not numeric: '$total_pct' (line: $total_line)" >&2
     exit 2
 fi
 
