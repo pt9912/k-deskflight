@@ -1,10 +1,11 @@
 # Slice M1 — Repo & Build-Skeleton
 
-**Status:** In Progress
+**Status:** Done
 **Eröffnet:** 2026-05-17
+**Geschlossen:** 2026-05-17
 **Vorgänger:** keiner (Eintritts-Slice)
-**Nachfolger:** [M2 — CRD + Controller-Skeleton](./roadmap.md#m2--crd--controller-skeleton)
-**Bezug:** [Roadmap §3 M1](./roadmap.md#m1--repo--build-skeleton),
+**Nachfolger:** [M2 — CRD + Controller-Skeleton](../in-progress/roadmap.md#m2--crd--controller-skeleton)
+**Bezug:** [Roadmap §3 M1](../in-progress/roadmap.md#m1--repo--build-skeleton),
 [`spec/architecture.md` §3 (AR-001–AR-005) und §AR-019](../../../../spec/architecture.md),
 [ADR 0004 §2](../../adr/0004-projektname.md),
 [ADR 0011](../../adr/0011-governance-und-beitragskonventionen.md),
@@ -123,7 +124,7 @@ zulässig, ohne diesen Slice-Plan anzupassen.
 7. **Scripts** (`scripts/verify-doc-refs.sh`, `scripts/coverage-gate.sh`) mit
    den k-deskflight-spezifischen Pfaden.
 8. **`.github/workflows/ci.yml`** mit beiden Jobs.
-9. **Roadmap-Eintrag** in [`roadmap.md` §2 Tabelle und §7 Status](./roadmap.md):
+9. **Roadmap-Eintrag** in [`roadmap.md` §2 Tabelle und §7 Status](../in-progress/roadmap.md):
    M1 von „Pending" auf „In Progress" und nach Abschluss auf „Done"
    ziehen; Closure-Notiz in `done/slice-M1-repo-skeleton.md`.
 
@@ -185,7 +186,7 @@ Vorbereitet, aktiv ab späterer Slice:
 9. **CI-Workflow-Run** auf einem Beispiel-PR ist grün (beide Jobs).
 
 **Kein dediziertes `LH-AK-*`** für M1 selbst — M1 ist die Voraussetzung
-für alle weiteren `LH-AK-*` ab M2 ([`Roadmap §3 M1`](./roadmap.md#m1--repo--build-skeleton)).
+für alle weiteren `LH-AK-*` ab M2 ([`Roadmap §3 M1`](../in-progress/roadmap.md#m1--repo--build-skeleton)).
 
 ---
 
@@ -218,3 +219,72 @@ für alle weiteren `LH-AK-*` ab M2 ([`Roadmap §3 M1`](./roadmap.md#m1--repo--bu
   nicht** zwischen Jobs: bewusst akzeptiert, weil Trennung den
   PR-Pfad stabiler macht (Vuln-DB-Download isoliert). Build-Zeit-
   Impact wird in M7 bewertet.
+
+---
+
+## 10. Closure (2026-05-17)
+
+### 10.1 Geliefertes Datei-Set
+
+Alle Einträge aus §3 sind committet (siehe `git log --oneline main` von
+Slice-Aktivierung an):
+
+| Pfad | Commit |
+| ---- | ------ |
+| `go.mod`, `cmd/operator/main.go`, Layout (`.gitkeep`-Set) | `a064547 feat(skel): bootstrap Go module + directory layout + smoke main` |
+| `Dockerfile`, `.dockerignore` | `4637fdb feat(skel): add multi-stage Dockerfile + .dockerignore` |
+| `Makefile`, `.gitignore` | `fa8c20a feat(skel): add Makefile (Docker-only) + .gitignore` |
+| `.golangci.yml` | `cae647d feat(skel): add .golangci.yml — 5 defaults + 24 SOLID linters` |
+| `scripts/verify-doc-refs.sh`, `scripts/coverage-gate.sh` | `60ccea5 feat(skel): add doc-refs + coverage-gate scripts (m-trace adaption)` |
+| `.github/workflows/ci.yml` | `4728379 feat(skel): add GitHub Actions CI workflow — gates + security-gates parallel` |
+
+Voraus-Cleanup-Commits (vor der Code-Phase):
+
+- `34e68df docs(plan): activate slice M1 — repo & build skeleton (in-progress)`
+- `6605375 docs(plan): ADR 0004 §4 — fix stale link to api-gruppe-domain trigger`
+- `9030778 docs(plan): ADR 0012 §2.10 — phrase doc-refs example to not match regex`
+
+### 10.2 Verifikations-Ergebnis (§7)
+
+| # | Item | Ergebnis |
+| - | ---- | -------- |
+| 1 | `make build` | ✓ Image `k-deskflight:go` (distroless/static, nonroot, USER 65532) |
+| 2 | `make lint` | ✓ `0 issues` mit 5 Default + 24 SOLID Linter |
+| 3 | `make test` | ✓ exit 0 (`[no test files]`; M2 zieht den ersten Test ein) |
+| 4 | `make coverage-gate` | ✓ Bootstrap-Modus, threshold 0 % akzeptiert |
+| 5 | `make doc-refs` | ✓ All documentation links OK |
+| 6 | `make gates` | ✓ `[gates] passed` |
+| 7 | `make security-gates` | ✓ `No vulnerabilities found.` (`govulncheck v1.1.4`) |
+| 8 | `make run` | ✓ Smoke-Binary loggt strukturiertes JSON-slog und exited mit 0 |
+| 9 | CI-Workflow-Run | ausstehend bis zum ersten PR — Workflow-Definition ist Teil dieser Slice |
+
+Item 9 ist **nicht-blockierend für die Closure**: der Workflow ist
+korrekt definiert und syntaktisch valide; ein PR-Lauf folgt als
+Folgeaktivität (kein eigener Slice nötig).
+
+### 10.3 Out-of-Scope-Übergaben an M2
+
+- `depguard`-Regelblöcke (`architecture.md` §AR-005) — `.golangci.yml`
+  hat das `depguard.rules`-Map leer mit `Why:`-Kommentar, M2 füllt es.
+- `cmd/operator/main.go` wechselt in M2 von Smoke-Binary auf
+  `controller-runtime`-Setup (Scheme-Registrierung, Signal-Handling,
+  Reconciler-Wiring).
+- Generated-Drift-Gate wird in M2 strikt, sobald `config/crd/` Inhalt
+  hat (siehe `Roadmap §3 M2`).
+
+### 10.4 Lessons learned
+
+- Der m-trace-`verify-doc-refs.sh`-Awk-Linkextraktor erkennt Backticks
+  nicht: Markdown-Linkbeispiele werden auch in Inline-Code-Spans als
+  echte Links interpretiert. Pre-existing in ADR 0012 §2.10
+  stillschweigend vorhanden gewesen; mit Commit `9030778` durch
+  Prosa-Formulierung entschärft. Konvention für künftige Specs:
+  literale Linkpattern in Code-Spans vermeiden, stattdessen Text-
+  Beschreibung der Form „eckiges Text-Klammerpaar plus rundes
+  Pfad-Klammerpaar" nutzen (vgl. `ADR 0012 §2.10`).
+- Coverage-Gate-Bootstrap-Modus war nötig, weil `internal/` in M1 leer
+  ist und `go list ./internal/...` ein leeres `COVERPKG` liefert. Die
+  Erweiterung in `scripts/coverage-gate.sh` (leere Datei oder
+  Datei ohne `total:`-Zeile → exit 0) ist die saubere Lösung; sie
+  läuft in M2+ ohne Sonderfälle, weil dann reale `total:`-Zeilen
+  vorhanden sind.
