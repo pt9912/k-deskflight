@@ -1,0 +1,20 @@
+---
+# Bindet die generierte ClusterRole `k-deskflight-operator-cluster`
+# (config/rbac/role.yaml, AR-015 MVP-Minimum) an den Operator-SA aus
+# serviceaccount.yaml. Ergibt zusammen den Cluster-Wide Mode aus AR-017.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k-deskflight-operator
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: k-deskflight
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k-deskflight-operator-cluster
+subjects:
+  - kind: ServiceAccount
+    name: k-deskflight-operator
+    namespace: k-deskflight-system

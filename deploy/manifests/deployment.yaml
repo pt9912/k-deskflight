@@ -1,0 +1,51 @@
+---
+# Operator-Deployment. M2 stellt das Skelett bereit; M5/M6 ziehen
+# Leader-Election (AR-026) und Health-/Metrics-Probes (AR-024) nach.
+# Image-Pin wird beim Apply via Kustomize-Edit oder Helm-Wert gesetzt;
+# der hier eingetragene `:dev`-Tag ist ein lokaler Platzhalter.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k-deskflight-operator
+  namespace: k-deskflight-system
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: k-deskflight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: k-deskflight
+      app.kubernetes.io/component: operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: k-deskflight
+        app.kubernetes.io/component: operator
+        app.kubernetes.io/part-of: k-deskflight
+    spec:
+      serviceAccountName: k-deskflight-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: ghcr.io/pt9912/k-deskflight:dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

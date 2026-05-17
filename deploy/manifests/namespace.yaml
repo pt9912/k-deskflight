@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k-deskflight-system
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: k-deskflight

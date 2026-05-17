@@ -1,0 +1,15 @@
+---
+# kustomize-Basis für `kubectl apply -k deploy/manifests/`.
+# Bündelt die rohen Manifeste (architecture.md AR-019/AR-020,
+# ADR 0005: kein Helm Chart im MVP). CRD und ClusterRole werden
+# aus den controller-gen-Outputs (config/) referenziert.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - ../../config/crd/k-deskflight.geo-terrain.net_opendeskpreflightchecks.yaml
+  - ../../config/rbac/role.yaml
+  - serviceaccount.yaml
+  - clusterrolebinding.yaml
+  - deployment.yaml
