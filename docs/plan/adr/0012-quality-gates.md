@@ -222,8 +222,10 @@ passed/broken/env-error).
 
 **Was geprüft wird:**
 
-- Lokale Markdown-Linktargets `[text](path)` und `[text](<path>)`-
-  Notation. Relative Pfade werden gegen den Speicherort der
+- Lokale Markdown-Linktargets in der Standard-Inline-Form (eckiges
+  Klammerpaar für den Text, rundes Klammerpaar für den Pfad, vgl.
+  CommonMark §6.6), auch in der spitzklammerumschlossenen
+  Pfad-Variante. Relative Pfade werden gegen den Speicherort der
   enthaltenden MD-Datei aufgelöst, absolute Pfade gegen Repository-
   Root.
 - Image-Links `![…](…)` werden übersprungen (m-trace-Konvention).
