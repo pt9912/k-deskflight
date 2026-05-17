@@ -182,13 +182,23 @@ Range-Selektor, Schwelle in M6), `LH-QG-004` (Boundary-Stub),
 
 **Verifikation:**
 
-- [ ] `LH-AK-001` — CRD installierbar. (Slice-M2 §10.5 observational;
-  attestiert mit dem ersten kind/minikube-Lauf.)
-- [ ] `LH-AK-002` — Operator startbar.
-- [ ] `LH-AK-003` — Ressource verarbeitbar.
-- [ ] `LH-AK-004` — Status sichtbar.
-- [ ] `LH-AK-011` — Conditions vorhanden (auch wenn leer ist die Struktur
-  da).
+- [ ] `LH-AK-001` — CRD installierbar. Strikt cluster-pflichtig
+  („lässt sich in einem Kubernetes-Cluster installieren"); attestiert
+  in Slice-M2 §10.5 mit dem ersten `kubectl apply -f
+  config/crd/…yaml` auf kind/minikube.
+- [ ] `LH-AK-002` — Operator startbar. Strikt cluster-pflichtig
+  („lässt sich in einem Kubernetes-Cluster starten"); attestiert mit
+  dem ersten `kubectl apply -k deploy/manifests/`-Rollout.
+- [x] `LH-AK-003` — Ressource verarbeitbar. Erfüllt durch fake-client-
+  Reconciler-Tests (`TestReconcileSmokeTransitionToPassed`,
+  `TestReconcileKubernetesVersionPassed/Failed`,
+  `TestReconcileDefaultActivatesKubernetesVersion`): Reconciler liest
+  die CR, transitionsiert Pending → Running → Final.
+- [x] `LH-AK-004` — Status sichtbar. Erfüllt durch dieselben fake-
+  client-Tests: `Status().Update` schreibt `phase`, `summary` und
+  `conditions` deterministisch.
+- [x] `LH-AK-011` — Conditions vorhanden. Erfüllt durch M3-Reconciler-
+  Tests (KubernetesVersionReady-Condition mit Severity).
 
 ---
 
@@ -211,8 +221,13 @@ Mindestversion (`ADR 0009`).
 
 **Verifikation:**
 
-- [ ] `LH-AK-005` — K8s-Version prüfbar. (Slice-M3 §10.5 observational;
-  attestiert mit dem ersten kind/minikube-Lauf.)
+- [x] `LH-AK-005` — K8s-Version prüfbar. Erfüllt durch
+  `adapter/check/kubernetesversion_test.go` (7 Fälle: passed/failed/
+  lookup-fail/parse-fail/min-parse-fail/invalid-spec/build-suffix) +
+  Reconciler-Tests (passed/failed-Pfad mit Status-Darstellung). Der
+  discovery-Adapter selbst bleibt M3-untested (M6 envtest).
+  Cluster-Smoke gegen reale Server-Version bleibt als zusätzliches
+  observational Attest in Slice-M3 §10.5 offen.
 - [x] Tests: passed-Case auf aktueller Version, failed-Case mit
   konfigurierter Min `99.99` (synthetisch).
 

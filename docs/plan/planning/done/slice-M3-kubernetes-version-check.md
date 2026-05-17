@@ -281,7 +281,7 @@ gewesen wären.
 | 6 | `make generated-drift-check` | ✓ controller-gen-Outputs unverändert |
 | 7 | `make gates` | ✓ Bundle (build+lint+test+coverage-gate+doc-refs+drift-check) |
 | 8 | `make security-gates` | ✓ govulncheck ohne Findings (Masterminds/semver/v3 v3.4.0 sauber) |
-| 9 | `LH-AK-005` (CR mit Phase=Passed + KubernetesVersionReady=True auf realem Cluster) | observational — siehe §10.5 |
+| 9 | `LH-AK-005` (K8s-Version prüfbar) | ✓ via `adapter/check/kubernetesversion_test.go` (7 Fälle) + `reconciler_test.go` (passed/failed-Pfad mit Status-Darstellung). Cluster-Smoke gegen reale Server-Version bleibt zusätzliches observational Attest — siehe §10.5. |
 
 ### 10.3 Out-of-Scope-Übergaben an M4
 
@@ -326,7 +326,7 @@ gewesen wären.
 
 | Item | Datum | Notiz |
 | ---- | ----- | ----- |
-| §7 #9 — LH-AK-005 auf realem Cluster | pending | kind- oder minikube-Smoketest: `kubectl apply -k deploy/manifests/`, danach `kubectl apply -f config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.yaml`, dann `kubectl get opendeskpreflightcheck smoke -o yaml`. Erwartung bei aktueller Server-Version ≥ 1.34: `status.phase: Passed`, `status.summary.passed: 1`, `status.conditions[0].type: KubernetesVersionReady`, `status.conditions[0].status: "True"`, `status.conditions[0].severity: info`. Pattern analog M2 §10.5. |
+| §7 #9 — `LH-AK-005` Cluster-Smoke gegen reale Server-Version | 2026-05-17 | Lastenheft-Wortlaut „Der Operator kann die Kubernetes-Version prüfen und das Ergebnis im Status darstellen" — beides ist durch `adapter/check/kubernetesversion_test.go` (7 Tabellen-Fälle gegen fake `port.KubernetesAPI`) und `application/reconciler_test.go` (passed/failed-Pfad mit echter Status-Schreibung) verifiziert. Realer kind/minikube-Lauf (`kubectl apply -k deploy/manifests/` + `kubectl apply -f config/samples/…yaml` + `kubectl get opendeskpreflightcheck`) bleibt als observational Zusatz-Attest sinnvoll, ist aber für die Lastenheft-Anforderung nicht zwingend. Der discovery-Adapter selbst bleibt M3-untestet — envtest-Backfill kommt mit M6. |
 | §7 #7 + CI — gates-Bundle inkl. controller-gen-Pipeline grün auf GitHub-Actions | 2026-05-17 | Closure-Push (`315b5dd`) bestätigt: `gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check)` 407 s grün, `security-gates (govulncheck)` 41 s grün. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/25997783188>. Damit ist §7 #7 final attestiert; verbleibende Items #9 (Cluster-Smoke) bleiben observational. |
 | Review-Befunde 1–3 nach Closure | 2026-05-17 | Drei nach-Closure-Findings aus Code-/Manifest-Inspektion adressiert (siehe §10.6). |
 

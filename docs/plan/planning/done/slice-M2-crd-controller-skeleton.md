@@ -349,13 +349,18 @@ Marker zu scannen. Drei Code-Commits + eine Test-Ergänzung + Closure:
 | 6 | `make test` | ✓ Drei Tests grün (`TestReconcileSmokeTransitionToPassed`, `TestReconcileNotFound`, `TestReconcileIdempotent`) |
 | 7 | `make coverage-gate` | ✓ 83.3 % über `internal/hexagon/application/` — nicht-trivial, M2-Schwelle 0 % bleibt |
 | 8 | `make gates` | ✓ Bundle aus `build + lint + test + coverage-gate + doc-refs + generated-drift-check` |
-| 9 | `kubectl apply -f config/crd/…yaml` | observational — siehe §10.5 |
-| 10 | Operator-Deployment ausrollen | observational — siehe §10.5 |
-| 11 | `kubectl apply -f config/samples/…yaml` → Phase=Passed | observational — siehe §10.5 |
+| 9 | `kubectl apply -f config/crd/…yaml` (LH-AK-001) | observational cluster-only — siehe §10.5 |
+| 10 | Operator-Deployment ausrollen (LH-AK-002) | observational cluster-only — siehe §10.5 |
+| 11 | `kubectl apply -f config/samples/…yaml` → Phase=Passed (LH-AK-003/004/011) | ✓ via fake-client-Tests; Cluster-Attest zusätzlich observational |
 
-Items 9–11 sind per §7 als observational ausgewiesen. Sie attestieren
-sich mit dem ersten kind-/minikube-Lauf, ohne dass der Slice re-opened
-werden muss (Pattern analog M1 §10.5 CI-Attest).
+Items 9 und 10 sind strikt cluster-pflichtig (Lastenheft §17:
+„installierbar in einem Kubernetes-Cluster" / „startbar in einem
+Kubernetes-Cluster"); Item 11 wird durch die M2-Reconciler-fake-
+client-Tests abgedeckt (CR wird gelesen, Status mit `Phase=Passed`
+und leeren Conditions wird geschrieben — `LH-AK-003`/`LH-AK-004`/
+`LH-AK-011` erfüllt). Ein zusätzlicher Cluster-Lauf bleibt als
+observational Attest in §10.5 stehen, ohne dass der Slice re-opened
+werden muss.
 
 ### 10.3 Out-of-Scope-Übergaben an M3
 
@@ -405,7 +410,7 @@ werden muss (Pattern analog M1 §10.5 CI-Attest).
 
 | Item | Datum | Notiz |
 | ---- | ----- | ----- |
-| §7 #9 — CRD installierbar via `kubectl apply -f config/crd/…` | pending | wird mit dem ersten kind/minikube-Smoke-Test attestiert. Erwartung: `kubectl get crd opendeskpreflightchecks.k-deskflight.geo-terrain.net` zeigt `Established=True`. |
-| §7 #10 — Operator startbar via Deployment-Manifest | pending | `kubectl apply -k deploy/manifests/` rollt Deployment aus; Pod erreicht `Ready` (deps via `client-go` mit Cluster-Default-KubeConfig). |
-| §7 #11 — CR verarbeitbar, Phase=Passed | pending | `kubectl apply -f config/samples/…yaml`, dann `kubectl get opendeskpreflightcheck smoke -o yaml` zeigt `status.phase: Passed`, `status.observedGeneration == metadata.generation`, leere Conditions. |
+| §7 #9 — `LH-AK-001` CRD installierbar (kubectl apply der CRD) | pending | strikt cluster-pflichtig pro Lastenheft §17. Attestiert mit dem ersten kind/minikube-Lauf — Erwartung: `kubectl get crd opendeskpreflightchecks.k-deskflight.geo-terrain.net` zeigt `Established=True`. |
+| §7 #10 — `LH-AK-002` Operator startbar via Deployment-Manifest | pending | strikt cluster-pflichtig pro Lastenheft §17. `kubectl apply -k deploy/manifests/` rollt Deployment aus; Pod erreicht `Ready` (deps via `client-go` mit Cluster-Default-KubeConfig). |
+| §7 #11 — `LH-AK-003`/`LH-AK-004`/`LH-AK-011` CR verarbeitbar + Status + Conditions | 2026-05-17 | Via M2/M3-Reconciler-fake-client-Tests verifiziert: Reconciler liest CR, schreibt `Status.Phase`, `ObservedGeneration` und (in M3+) `Conditions` deterministisch. Ein realer Cluster-Lauf (`kubectl apply -f config/samples/…yaml` + `kubectl get opendeskpreflightcheck` Beobachtung) bleibt als zusätzliches observational Attest sinnvoll, ist aber für die Lastenheft-Anforderung nicht zwingend („wird erkannt" / „schreibt Status" / „Ergebnisse als Conditions" sind alle code-pfad-Aussagen). |
 | §7 #8 / CI — gates-Bundle inkl. drift-check grün auf GitHub-Actions | 2026-05-17 | Run beim Push von SHA `00ccb94` (M2 Step 1+2) bereits grün: `gates` 379 s, `security-gates` 41 s (Run `25991308791`). Folgende Pushes (`6125ebb`, `2bb1e13`) ziehen kleinere Diffs. |
