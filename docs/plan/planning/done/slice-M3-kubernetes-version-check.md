@@ -1,11 +1,12 @@
 # Slice M3 — Erste Prüfung: Kubernetes-Version
 
-**Status:** In Progress
+**Status:** Done
 **Eröffnet:** 2026-05-17
-**Vorgänger:** [M2 — CRD + Controller-Skeleton (Done)](../done/slice-M2-crd-controller-skeleton.md)
-**Nachfolger:** [M4 — Cluster-State-Prüfungen](./roadmap.md#m4--cluster-state-pr%C3%BCfungen)
+**Geschlossen:** 2026-05-17
+**Vorgänger:** [M2 — CRD + Controller-Skeleton (Done)](slice-M2-crd-controller-skeleton.md)
+**Nachfolger:** [M4 — Cluster-State-Prüfungen](../in-progress/roadmap.md#m4--cluster-state-pr%C3%BCfungen)
 **Bezug:**
-[Roadmap §3 M3](./roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version),
+[Roadmap §3 M3](../in-progress/roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version),
 [`spec/architecture.md` §5 (AR-009), §6 (AR-012, AR-013, AR-014), §7 (AR-018)](../../../../spec/architecture.md),
 [ADR 0009](../../adr/0009-k8s-versions-support-und-profile-mindestversionen.md)
 
@@ -246,3 +247,84 @@ Vorbereitet, aktiv ab späterer Slice:
   Cache-Update + Edit) kann `Update` 409 zurückgeben. M3 returniert
   den Error → controller-runtime requeued automatisch. M5 ergänzt
   explizite RetryOnConflict-Handhabung falls nötig.
+
+---
+
+## 10. Closure (2026-05-17)
+
+### 10.1 Geliefertes Datei-Set
+
+Sechs Code-Commits + Phase-A + Closure. Die §4-Reihenfolge wurde
+weitgehend eingehalten — Step 4 (Reconciler-Rewrite) und Step 5
+(CR-Beispiel + Tests) sind zu einem Commit verbunden, weil die
+existierenden M2-Reconciler-Tests an die neue Reconciler-Struct-
+Signatur angepasst werden mussten und alleine nicht lint-stabil
+gewesen wären.
+
+| Commit | Inhalt |
+| ------ | ------ |
+| `c93683a docs(plan): activate slice M3 …` | Phase A — Slice-Plan, Roadmap-Status, in-progress-Readme. |
+| `b39a4d3 feat(domain,port): Check interface + KubernetesAPI + CheckRegistry (M3 §4 Step 1)` | domain/check.go (AR-012), domain/kubernetesversion.go (Spec+Validate), port/kubernetes.go (`ServerVersion`), port/checkregistry.go (AR-013-Interface). 12 Tabellen-Tests für `KubernetesVersionSpec.Validate`. |
+| `b6e0aa2 feat(adapter): KubernetesVersion check + Registry + Discovery (M3 §4 Step 2)` | adapter/check/registry.go (Map-Impl, threadsafe), adapter/check/kubernetesversion.go (Masterminds/semver/v3, sieben Tests inkl. invalid-spec/build-suffix), adapter/k8s/discovery.go (client-go-Wrapper, M3-untestet). ireturn-Allow um Domain/Port-Pattern erweitert. |
+| `c101a1f feat(application): Aggregator — severity → phase + conditions dedupe/sort (M3 §4 Step 3)` | application/aggregator.go (AR-014: Severity→Phase + Dedupe-by-Name mit höchster Severity + alphabetische Sort). Acht Tests. |
+| `113951d feat(application,cmd): reconciler runs real checks + wire KubernetesVersion (M3 §4 Steps 4-5)` | Reconciler-Rewrite mit Run-Context (120s-Timeout), Phase-2-Validate, Phase-3-Registry-Resolve, Phase-4-sequenzielle-Check-Execution, Phase-5-Aggregate, Phase-6-Status-Update. SpecInvalid-Pfad für Validation- und Registry-Issues. cmd/operator/main.go wiret discoveryAdapter + KubernetesVersionCheck + Registry. Reconciler-Tests erweitert (passed/failed/spec-invalid + bestehende Tests an neue Struct angepasst). config/samples/ erweitert um `kubernetesVersion.min: "1.34"`. |
+
+### 10.2 Verifikations-Ergebnis (§7)
+
+| # | Item | Ergebnis |
+| - | ---- | -------- |
+| 1 | `make build` | ✓ Image enthält neuen Reconciler + Discovery-Adapter |
+| 2 | `make lint` | ✓ `0 issues` mit allen depguard-Regeln scharf (`application-no-adapter` greift im Reconciler-_test.go-File — daher die lokale fakeRegistry/stubCheck statt Adapter-Import) |
+| 3 | `make test` | ✓ 27 Tests grün (domain: 13, adapter/check: 11, application: 13 inkl. neue passed/failed/spec-invalid) |
+| 4 | `make coverage-gate` | ✓ 86.1 % über alle internal/-Pakete (vorher 83.3 %); discovery.go bleibt untestet pro Plan |
+| 5 | `make doc-refs` | ✓ All documentation links OK |
+| 6 | `make generated-drift-check` | ✓ controller-gen-Outputs unverändert |
+| 7 | `make gates` | ✓ Bundle (build+lint+test+coverage-gate+doc-refs+drift-check) |
+| 8 | `make security-gates` | ✓ govulncheck ohne Findings (Masterminds/semver/v3 v3.4.0 sauber) |
+| 9 | `LH-AK-005` (CR mit Phase=Passed + KubernetesVersionReady=True auf realem Cluster) | observational — siehe §10.5 |
+
+### 10.3 Out-of-Scope-Übergaben an M4
+
+- Weitere Check-Implementierungen (StorageClass, IngressClass,
+  cert-manager, Resources) — M4 ergänzt sie nur als Sibling-Felder
+  in `ChecksSpec` und ruft `registry.Register(...)` in main.go;
+  die Reconciler-Mechanik bleibt unangetastet.
+- `ListByProfile` profil-differenzierend — M4 (sobald mehrere Checks
+  pro Profil unterschiedlich aktivieren).
+
+### 10.4 Lessons learned
+
+- **depguard application-no-adapter greift auch in `_test.go`:**
+  `internal/hexagon/application/reconciler_test.go` darf nicht
+  `internal/adapter/check` importieren. Lösung: lokale `fakeRegistry`
+  + `stubCheck` direkt im Test-File. Sauberer Schnitt: Application-
+  Layer-Tests verifizieren Plumbing gegen Domain-/Port-Doubles, die
+  echten Check-Implementierungen sind im adapter-Package separat
+  unit-getestet. Architektonisch das richtige Test-Pyramid-Layout.
+- **`ireturn`-Allow muss Domain-/Port-Pattern enthalten:** sobald
+  ein Adapter eine Domain-Interface-Methode wie `Resolve(name) (domain.Check, bool)`
+  exportiert, schlägt ireturn ohne explizite Allow-Regex zu. M1 hatte
+  das als Folge angekündigt; M3 hat es scharf geschaltet.
+- **`unparam` flagt Methoden, die immer denselben Wert returnen.**
+  Initial hatte `writeStatus` `(ctrl.Result, error)` als Rückgabe; der
+  Result-Teil war immer leer. unparam erkannte das. Lösung: writeStatus
+  liefert nur `error`, Caller wrappen `ctrl.Result{}` an der Aufrufsite.
+  Saubereres API, kein Compromise.
+- **client-go-`discovery.DiscoveryInterface` nimmt keinen Context:**
+  unser `KubernetesAPI.ServerVersion(ctx)` hat den Context an der
+  Aufrufsite, aber die client-go-Library ignoriert ihn. M3-Adapter
+  fängt das transparent ab (rest.Config-Timeout greift), M5-Härtung
+  kann ein Goroutine+Select-Pattern einziehen, falls explizite
+  Cancellation gebraucht wird.
+- **`metav1.Time` als Status-Field:** der `time.Time` im `domain.Result`
+  ist nanos-genau, `metav1.NewTime` strippt das auf Sekunden bei der
+  Serialisierung. Reconciler-Tests müssen mit `time.Date(...0, UTC)`
+  arbeiten — die fixedClock()-Helper-Funktion ist deshalb explizit
+  sekundengenau.
+
+### 10.5 Folge-Attest
+
+| Item | Datum | Notiz |
+| ---- | ----- | ----- |
+| §7 #9 — LH-AK-005 auf realem Cluster | pending | kind- oder minikube-Smoketest: `kubectl apply -k deploy/manifests/`, danach `kubectl apply -f config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.yaml`, dann `kubectl get opendeskpreflightcheck smoke -o yaml`. Erwartung bei aktueller Server-Version ≥ 1.34: `status.phase: Passed`, `status.summary.passed: 1`, `status.conditions[0].type: KubernetesVersionReady`, `status.conditions[0].status: "True"`, `status.conditions[0].severity: info`. Pattern analog M2 §10.5. |
+| §7 #7 + CI — gates-Bundle inkl. controller-gen-Pipeline grün auf GitHub-Actions | 2026-05-17 | Folge-Pushes nach `b39a4d3`/`b6e0aa2`/`c101a1f`/`113951d` aktualisieren das Bundle automatisch; CI-Status wird in dieser Tabellenzeile nachgepflegt, wenn der erste komplette M3-Push grün durch ist. |
