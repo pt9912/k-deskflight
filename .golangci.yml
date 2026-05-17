@@ -1,0 +1,138 @@
+# golangci-lint configuration for k-deskflight (v2-Schema).
+#
+# Bezug:
+#   - ADR 0012 §2.2 — 5 Default-Linter + 24 SOLID-nahe Linter (Pflicht).
+#   - ADR 0012 §2.3 — forbidigo-Startverbote (fmt.Print*, panic(...)).
+#   - ADR 0012 §2.4 — Suppressions-Verbot: //nolint-Pragmas sind
+#     verboten. Carveouts werden zentral hier dokumentiert
+#     (`Why:`-Kommentar Pflicht).
+#   - ADR 0012 §2.6 + architecture.md AR-005 — depguard-Layer-Regeln.
+#
+# Slice M1 (siehe slice-M1-repo-skeleton.md §2.3): das Profil ist hier
+# vollständig aktiv, depguard ist enabled aber mit leerem `rules`-Map —
+# die fünf konkreten Layer-Regelblöcke kommen in M2, sobald
+# internal/hexagon/* und api/v1alpha1/* Inhalte haben.
+
+version: "2"
+linters:
+  default: none
+  enable:
+    # 5 Default-Linter (ADR 0012 §2.2)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # 24 SOLID-nahe Linter (ADR 0012 §2.2)
+    - containedctx
+    - contextcheck
+    - cyclop
+    - depguard
+    - dupl
+    - fatcontext
+    - forbidigo
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocyclo
+    - gomodguard_v2
+    - iface
+    - inamedparam
+    - interfacebloat
+    - ireturn
+    - maintidx
+    - nestif
+    - noctx
+    - reassign
+    - revive
+    - testpackage
+    - unparam
+  settings:
+    cyclop:
+      max-complexity: 15
+    depguard:
+      # Why: Layer-Regeln (architecture.md AR-005) werden in M2 ergänzt,
+      # sobald die hexagon-/adapter-Pakete Inhalte haben. depguard
+      # bleibt in M1 enabled, damit das Profil bereits vollständig
+      # läuft; ein leeres rules-Map ist kein Fehler.
+      rules: {}
+    dupl:
+      threshold: 150
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: 'use log/slog with context (ADR 0012 §2.3, LH-NF-009)'
+        - pattern: ^panic\(.*\)$
+          msg: 'reconcile paths must return errors, not panic (ADR 0012 §2.3, LH-NF-004, LH-AK-010)'
+    funlen:
+      lines: 100
+      statements: 60
+    gocognit:
+      min-complexity: 20
+    gocyclo:
+      min-complexity: 15
+    interfacebloat:
+      max: 10
+    ireturn:
+      allow:
+        - error
+        - empty
+        - anon
+        - stdlib
+        - generic
+    maintidx:
+      under: 20
+    nestif:
+      min-complexity: 5
+  exclusions:
+    generated: lax
+    rules:
+      # Why: Tests dürfen tiefer verschachteln, höhere Komplexität und
+      # context-lose Aufrufe verwenden — Test-Strukturen folgen anderen
+      # Lesbarkeits-Trade-offs (table-driven, sub-tests).
+      - linters:
+          - cyclop
+          - gocognit
+          - gocyclo
+          - nestif
+          - noctx
+          - unparam
+        path: _test\.go$
+      # Why: Test-Code darf revive `unused-parameter` ignorieren —
+      # Test-Helpers nehmen häufig benannte Parameter zur Lesbarkeit
+      # auch ohne Use entgegen.
+      - linters:
+          - revive
+        path: _test\.go$
+        text: ^unused-parameter
+      # Why: Tests müssen panicken dürfen (assert.PanicsWithError &
+      # ähnliche Patterns); fmt.Println im Test-Trace ist OK, wenn man
+      # `go test -v` parst.
+      - linters:
+          - forbidigo
+        path: _test\.go$
+      # Why: Bootstrap-Skripte (`scripts/coverage-overview` o. ä.)
+      # leben außerhalb des Reconcile-Pfads; relaxierte Schwellen sind
+      # vertretbar. Aktuell kein Inhalt — Eintrag steht vorab, bevor
+      # Skripte in M6/M7 dazukommen.
+      - linters:
+          - cyclop
+          - forbidigo
+          - gocognit
+          - gocyclo
+        path: scripts/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
