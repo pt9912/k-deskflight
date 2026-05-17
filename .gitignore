@@ -2,7 +2,7 @@
 # k-deskflight .gitignore
 #
 # Operator-Repository in Go mit Docker-only-Workflow (siehe
-# docs/plan/planning/in-progress/slice-M1-repo-skeleton.md §2.1). Wir
+# docs/plan/planning/done/slice-M1-repo-skeleton.md §2.1). Wir
 # halten dieses File bewusst schlank — nur Pfade, die tatsächlich
 # entstehen können.
 # =============================================================================

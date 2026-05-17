@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # k-deskflight — OpenDesk Preflight Operator
 #
-# Docker-only workflow per docs/plan/planning/in-progress/
+# Docker-only workflow per docs/plan/planning/done/
 # slice-M1-repo-skeleton.md §2.1. Das Repository ist absichtlich
 # Toolchain-frei: build/lint/test/coverage laufen über
 #   docker build --target <stage> -t k-deskflight:go-<stage> .
