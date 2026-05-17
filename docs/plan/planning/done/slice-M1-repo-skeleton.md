@@ -184,6 +184,14 @@ Vorbereitet, aktiv ab späterer Slice:
    `docker run --rm k-deskflight:go` schreibt eine Selbst-
    Identifikation auf `stdout` und exited mit 0.
 9. **CI-Workflow-Run** auf einem Beispiel-PR ist grün (beide Jobs).
+   **Charakter:** observational — die Closure verifiziert, dass die
+   Workflow-Datei syntaktisch korrekt und konzeptuell vollständig ist;
+   der erste reale Lauf erfolgt mit dem ersten Push auf einen Fork-
+   bzw. PR-Branch. Die endgültige Attest-Schließung von Item 9 erfolgt
+   als Folgenote in §10.5, nicht durch Slice-Re-Open. Diese Erwartung
+   ist beim Slice-Schliessen am 2026-05-17 dokumentiert; sie ist keine
+   stillschweigende Herabstufung, sondern ein bewusst observationaler
+   Verifikationspfad.
 
 **Kein dediziertes `LH-AK-*`** für M1 selbst — M1 ist die Voraussetzung
 für alle weiteren `LH-AK-*` ab M2 ([`Roadmap §3 M1`](../in-progress/roadmap.md#m1--repo--build-skeleton)).
@@ -256,11 +264,12 @@ Voraus-Cleanup-Commits (vor der Code-Phase):
 | 6 | `make gates` | ✓ `[gates] passed` |
 | 7 | `make security-gates` | ✓ `No vulnerabilities found.` (`govulncheck v1.1.4`) |
 | 8 | `make run` | ✓ Smoke-Binary loggt strukturiertes JSON-slog und exited mit 0 |
-| 9 | CI-Workflow-Run | ausstehend bis zum ersten PR — Workflow-Definition ist Teil dieser Slice |
+| 9 | CI-Workflow-Run | observational (§7 #9) — Workflow-Datei verifiziert (Schema, Jobs, Permissions, SHA-Pin, Timeouts); erster realer Lauf attestiert in §10.5 |
 
-Item 9 ist **nicht-blockierend für die Closure**: der Workflow ist
-korrekt definiert und syntaktisch valide; ein PR-Lauf folgt als
-Folgeaktivität (kein eigener Slice nötig).
+Item 9 ist per §7 #9 als **observationaler** Verifikationspfad
+ausgewiesen. Die endgültige Attest-Notiz pflegen wir unter §10.5,
+sobald der erste PR (oder ein Push auf `main`) gelaufen ist; das
+erfordert kein Re-Open dieses Slices.
 
 ### 10.3 Out-of-Scope-Übergaben an M2
 
@@ -284,7 +293,17 @@ Folgeaktivität (kein eigener Slice nötig).
   Pfad-Klammerpaar" nutzen (vgl. `ADR 0012 §2.10`).
 - Coverage-Gate-Bootstrap-Modus war nötig, weil `internal/` in M1 leer
   ist und `go list ./internal/...` ein leeres `COVERPKG` liefert. Die
-  Erweiterung in `scripts/coverage-gate.sh` (leere Datei oder
-  Datei ohne `total:`-Zeile → exit 0) ist die saubere Lösung; sie
-  läuft in M2+ ohne Sonderfälle, weil dann reale `total:`-Zeilen
-  vorhanden sind.
+  erste Implementierung (leere Datei → exit 0) hatte einen blinden
+  Fleck: ab M2 würde ein fehlschlagender `go test` denselben „leere
+  Datei"-Zustand produzieren und unsichtbar grün durchgehen. Reviewer-
+  Finding M1 (Commit `09e81c4`) zieht die Lösung gerade: explizites
+  `COVERAGE_BOOTSTRAP=1`-Env-Var aus dem Dockerfile + Bash-`pipefail`
+  in der coverage-Stage. Lesson: jede „Bootstrap-Behandlung" in einem
+  Gate braucht einen expliziten Marker, nicht eine Heuristik auf den
+  Output-Zustand.
+
+### 10.5 Folge-Attest
+
+| Item | Datum | Notiz |
+| ---- | ----- | ----- |
+| §7 #9 — erster CI-Workflow-Run | pending | wird hier eingetragen, sobald der erste PR (oder Push) beide Jobs grün durchlaufen hat. Erwartung: keine Anpassung an `ci.yml` nötig; nur die Bestätigung, dass der Workflow gegen GitHub-runner-State auch tatsächlich grün läuft. |
