@@ -1,0 +1,44 @@
+name: cluster-smoke
+
+# Cluster-Smoke gegen kind (ADR 0013). Trigger nur auf push:main und
+# manuell (workflow_dispatch). NICHT auf pull_request, weil der Lauf
+# 60–90 s Build + Cluster-Setup kostet und kein PR-Pfad-Pflicht-Gate
+# ist (ADR 0013 §2.5). Pflicht-Gates aus ADR 0012 §2.11 laufen
+# weiterhin in `.github/workflows/ci.yml`.
+#
+# Tooling (kind + kubectl + docker-cli) lebt in der `smoke`-Dockerfile-
+# Stage; der Workflow installiert keine externen Actions außer
+# `actions/checkout`.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: cluster-smoke (kind + LH-AK-001/-002/-005)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      DOCKER_BUILDKIT: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run cluster-smoke
+        run: make cluster-smoke
+
+      - name: Upload attest artifact
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cluster-smoke-attest
+          path: |
+            .cluster-smoke-attest.yaml
+          if-no-files-found: ignore
+          retention-days: 30

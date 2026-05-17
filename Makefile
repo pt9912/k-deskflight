@@ -35,11 +35,20 @@ GOVULNCHECK_VERSION ?= v1.1.4
 
 .PHONY: help build compile deps tools lint test coverage coverage-gate doc-refs \
         manifests generated-drift-check govulncheck image-build run gates \
-        security-gates clean
+        security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
+        clean
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
 CONTROLLER_GEN_VERSION ?= v0.21.0
+
+# Cluster-Smoke-Pins (ADR 0013 §2.4). Hebung Routine, override via
+# `make cluster-smoke KIND_VERSION=… KUBECTL_VERSION=… K8S_VERSION=…`.
+KIND_VERSION    ?= v0.31.0
+KUBECTL_VERSION ?= v1.34.0
+K8S_VERSION     ?= v1.34.0
+CLUSTER_NAME    ?= k-deskflight-smoke
+CLUSTER_KEEP    ?= 0
 
 help: ## Show this help.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -143,6 +152,40 @@ govulncheck: ## Run govulncheck (function-based scanning).
 
 security-gates: govulncheck ## Externe Pflicht-Gates (Vuln-Scan; Image-Scan in M7).
 	@echo "[security-gates] passed"
+
+# ---- cluster-smoke ---------------------------------------------------------
+# ADR 0013: kind als Default-Plattform für LH-AK-001/-002/-005-Attest.
+# Tools (kind, kubectl, docker-cli) leben in der `smoke`-Dockerfile-
+# Stage; `cluster-smoke` ruft `docker run` mit Docker-out-of-Docker
+# (Host-Socket-Mount) und `--network host`, damit der kind-apiserver
+# (127.0.0.1:<port>) aus dem Container erreichbar bleibt.
+# Nicht in `make gates` — opt-in pro ADR 0013 §2.5.
+
+cluster-smoke-image: ## Build the smoke tool image (kind + kubectl + docker-cli).
+	docker build --target smoke \
+	    --build-arg KIND_VERSION=$(KIND_VERSION) \
+	    --build-arg KUBECTL_VERSION=$(KUBECTL_VERSION) \
+	    -t $(IMAGE):go-smoke .
+
+cluster-smoke: build cluster-smoke-image ## End-to-end Cluster-Smoke gegen kind.
+	docker run --rm \
+	    --network host \
+	    -v /var/run/docker.sock:/var/run/docker.sock \
+	    -v "$(CURDIR):/src" \
+	    -w /src \
+	    -e CLUSTER_NAME=$(CLUSTER_NAME) \
+	    -e K8S_VERSION=$(K8S_VERSION) \
+	    -e IMAGE_TAG=$(IMAGE):go \
+	    -e CLUSTER_KEEP=$(CLUSTER_KEEP) \
+	    $(IMAGE):go-smoke \
+	    bash scripts/cluster-smoke.sh
+
+cluster-smoke-cleanup: cluster-smoke-image ## Lösche den smoke-Cluster manuell.
+	docker run --rm \
+	    --network host \
+	    -v /var/run/docker.sock:/var/run/docker.sock \
+	    $(IMAGE):go-smoke \
+	    kind delete cluster --name $(CLUSTER_NAME)
 
 # ---- ops -------------------------------------------------------------------
 

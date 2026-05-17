@@ -113,11 +113,15 @@ die unterstützte Liste.
 
 ### 2.4 Versionspin
 
-| Komponente | Pin in dieser ADR | Hebung |
-| ---------- | ----------------- | ------ |
-| `kind` CLI | latest stable (typisch v0.24+) — keine harte Bindung in dieser ADR | Routine ohne ADR |
-| `kindest/node`-Image | `kindest/node:v1.34.0` als Default (synchron mit [`ADR 0009 §2.2`](0009-k8s-versions-support-und-profile-mindestversionen.md) Min-Wert) | Routine ohne ADR |
-| `helm/kind-action` (CI) | SHA-gepinnt auf v1.13.0 (oder neuer); analog [`ADR 0012 §2.8`](0012-quality-gates.md) | Routine ohne ADR |
+Tools werden in der Dockerfile-`smoke`-Stage installiert (siehe §2.6),
+deshalb sind die Pins zentral im Dockerfile via `ARG` gesetzt — analog
+`ARG GO_VERSION` und `ARG CONTROLLER_GEN_VERSION`.
+
+| Komponente | Pin-Quelle | Hebung |
+| ---------- | ---------- | ------ |
+| `kind` CLI | `Dockerfile` `ARG KIND_VERSION` (Default `v0.31.0` — matched zu kindest/node:v1.34.0; ältere kind-Versionen können containerd-2.x-TOML im node-Container nicht parsen) | Routine ohne ADR |
+| `kubectl` CLI | `Dockerfile` `ARG KUBECTL_VERSION` (Default `v1.34.0`) | Routine ohne ADR |
+| `kindest/node`-Image | Default `kindest/node:v1.34.0` im Smoke-Skript (synchron mit [`ADR 0009 §2.2`](0009-k8s-versions-support-und-profile-mindestversionen.md) Min-Wert); per Env `K8S_VERSION=…` override-bar | Routine ohne ADR |
 
 Eine Version-Matrix-Erweiterung (z. B. parallele Läufe gegen
 `kindest/node:v1.32.0` + `v1.33.0` + `v1.34.0` zur Validierung der
@@ -135,22 +139,37 @@ bleibt eine **Folge-Entscheidung** für eine spätere Slice
   ~60–90 s pro Lauf und wäre PR-Pfad-Belastung ohne neuen
   Lastenheft-Beweis. Die Pflicht-Gates aus
   [`ADR 0012 §2.11`](0012-quality-gates.md) bleiben unverändert.
-- Der Workflow installiert kind+kubectl via `helm/kind-action@<SHA>`,
-  ruft `make build` und `make cluster-smoke`, und schreibt
-  abschließend ein Attest-Artefakt (Status-YAML der Sample-CR).
+- Der Workflow installiert **keine externen Actions** für kind/kubectl
+  (der `smoke`-Dockerfile-Stage bringt beides mit). Steps:
+  `actions/checkout` (SHA-gepinnt analog `ci.yml`), `make build`,
+  `make cluster-smoke`. Optional schreibt ein abschließender Step ein
+  Attest-Artefakt (Status-YAML der Sample-CR).
 
-### 2.6 Host-Tool-Abhängigkeit
+### 2.6 Docker-only-Konsistenz: `smoke`-Stage im Dockerfile
 
-`make cluster-smoke` durchbricht die Docker-only-Konvention aus
-[slice-M1 §2.1](../planning/done/slice-M1-repo-skeleton.md) bewusst:
-lokal müssen `kind` (≥ v0.24) und `kubectl` auf dem Host-`PATH`
-verfügbar sein. Das wird im Makefile-Header und in
-CONTRIBUTING.md dokumentiert.
+`make cluster-smoke` hält die Docker-only-Konvention aus
+[slice-M1 §2.1](../planning/done/slice-M1-repo-skeleton.md) ein:
 
-Eine Container-isolierte Variante (kind-in-Docker-in-Docker) wäre
-technisch möglich, würde aber zusätzliche Komplexität ohne
-Mehrwert einziehen — kind selbst orchestriert bereits Docker-
-Container; die Host-Docker-Socket-Bindung ist Standard.
+- Eine neue Dockerfile-Stage `FROM … AS smoke` liefert kind CLI und
+  kubectl pinned (analog tools-Stage / controller-gen-Pattern).
+- `make cluster-smoke` ruft `docker build --target smoke` und
+  anschließend `docker run` mit:
+  - `-v /var/run/docker.sock:/var/run/docker.sock` (Docker-out-of-
+    Docker: der `kind`-Prozess im Container spawnt
+    `kindest/node`-Container über die **Host-Docker-Engine**;
+    geladene lokale Images wie `k-deskflight:go` bleiben sichtbar).
+  - `--network host` (kind exposed den apiserver auf `127.0.0.1:<port>`;
+    aus dem smoke-Container muss derselbe Loopback erreichbar bleiben).
+  - `-v "$(CURDIR):/src"` (Workspace-Mount; Skripte + Manifeste
+    werden gelesen, keine Schreibe).
+- Host-Tool-Voraussetzung bleibt damit auf `docker` reduziert —
+  exakt wie die Pflicht-Targets in `make gates`.
+
+`--network host` funktioniert stabil unter Linux (CI-Runner sind
+ubuntu-latest, lokale Dev-Maschinen meist Linux). macOS-Docker-Desktop
+hat hier Einschränkungen; falls künftig macOS-Dev-Support nötig wird,
+kommt ein Folge-Pfad als `make cluster-smoke-macos` mit
+Port-Forwarding statt host-Networking. Diese ADR bindet das nicht.
 
 ---
 
@@ -164,10 +183,10 @@ Container; die Host-Docker-Socket-Bindung ist Standard.
   `cluster-smoke-cleanup` (kind-Cluster löschen).
 - **CI:** neuer Workflow-File `.github/workflows/cluster-smoke.yml`,
   separat vom Pflicht-`ci.yml`-Bundle.
-- **CONTRIBUTING.md:** wird in einem Folge-Commit um Host-Tool-
-  Voraussetzungen (kind ≥ v0.24, kubectl) erweitert. Bisher gibt es
-  diese Datei noch nicht (kommt mit M7 / `LH-AK-014`); bis dahin
-  bleibt der Hinweis im Makefile-Header die normative Quelle.
+- **Host-Tool-Anforderung bleibt minimal:** nur Docker (siehe §2.6);
+  kein zusätzlicher Eintrag in CONTRIBUTING.md nötig. Die Docker-only-
+  Konvention aus [slice-M1 §2.1](../planning/done/slice-M1-repo-skeleton.md)
+  bleibt unverändert wirksam.
 - **Pflichtenheft (`LH-VM-002`):** Test-Infrastruktur-Beschreibung
   enthält künftig die kind-Variante als Default-Plattform.
 - **Lastenheft `LH-AK-001`/`LH-AK-002`:** die operative Verifikation

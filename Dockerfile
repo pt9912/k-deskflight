@@ -62,6 +62,39 @@ ARG CONTROLLER_GEN_VERSION=v0.21.0
 
 RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
 
+# ---- smoke -----------------------------------------------------------------
+# Cluster-Smoke-Stage (ADR 0013): pinnt `kind` und `kubectl` in einem
+# Container, der über den gemounteten Host-Docker-Socket
+# (Docker-out-of-Docker) `kindest/node`-Container auf der Host-Engine
+# erzeugt. Damit hält make cluster-smoke die Docker-only-Konvention
+# aus slice-M1 §2.1 ein — keine Host-Tool-Installation jenseits von
+# Docker selbst.
+#
+# Pinning-Politik wie übrige Tool-Stages: ARG mit Default,
+# `docker build --build-arg KIND_VERSION=…` zum Override.
+# `alpine:3.20` ist klein (~5 MB) und bringt apk-paket-basiert
+# `docker-cli` mit — kind shellt intern zu `docker` raus, deshalb
+# ist die CLI Pflicht im smoke-Container.
+FROM alpine:3.20 AS smoke
+
+ARG KIND_VERSION=v0.31.0
+ARG KUBECTL_VERSION=v1.34.0
+
+RUN apk add --no-cache \
+        bash \
+        ca-certificates \
+        curl \
+        docker-cli \
+    && curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64" -o /usr/local/bin/kind \
+    && chmod +x /usr/local/bin/kind \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256" -o /tmp/kubectl.sha256 \
+    && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
+    && rm /tmp/kubectl.sha256
+
+WORKDIR /src
+
 # ---- compile ---------------------------------------------------------------
 FROM deps AS compile
 

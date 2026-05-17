@@ -80,6 +80,20 @@ out/
 .gomodcache/
 
 # ---------------------------------------------------------------------------
+# Cluster-Smoke (ADR 0013)
+# ---------------------------------------------------------------------------
+# scripts/cluster-smoke.sh legt eine kustomize-Overlay-Datei mit
+# Image-Substitution kurzzeitig hier ab und räumt sie via trap auf.
+# Falls der trap nicht greift, soll der Restbestand nicht committed
+# werden.
+.cluster-smoke-overlay/
+
+# Attest-Artefakt vom Cluster-Smoke: enthält den CR-Status-Dump (Phase,
+# Conditions, Summary). Wird im CI-Workflow als Upload-Artefakt
+# hochgeladen, lokal nicht committed.
+.cluster-smoke-attest.yaml
+
+# ---------------------------------------------------------------------------
 # Security-Gates (kommt in M7 mit Trivy)
 # ---------------------------------------------------------------------------
 .security/.trivy-cache/
