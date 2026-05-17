@@ -128,12 +128,17 @@ linters:
     interfacebloat:
       max: 10
     ireturn:
+      # Why: Adapter/Application müssen Domain- und Port-Interfaces
+      # zurückgeben können (architecture.md AR-013 Resolve, AR-014
+      # Aggregator). Konkrete Typen wären eine Layer-Verletzung.
       allow:
         - error
         - empty
         - anon
         - stdlib
         - generic
+        - github.com/pt9912/k-deskflight/internal/hexagon/domain\..*
+        - github.com/pt9912/k-deskflight/internal/hexagon/port\..*
     maintidx:
       under: 20
     nestif:

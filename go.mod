@@ -3,6 +3,7 @@ module github.com/pt9912/k-deskflight
 go 1.26.0
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/client-go v0.36.0
 	sigs.k8s.io/controller-runtime v0.24.1
