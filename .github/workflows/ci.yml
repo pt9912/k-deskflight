@@ -1,0 +1,49 @@
+name: ci
+
+# Zwei parallele Jobs gemäß ADR 0012 §2.11:
+#   - gates           : Inner-Loop-Pflichten (lint, test, coverage-gate,
+#                       doc-refs) — `make gates`.
+#   - security-gates  : Externe Gates (govulncheck) — `make security-gates`.
+#
+# Beide Jobs sind PR-blockierend (Required-Status-Checks-Konfiguration
+# erfolgt im GitHub-UI nach dem ersten grünen Lauf). Docker-only-Pfad:
+# alle Werkzeuge laufen über `docker build --target <stage>`, sodass die
+# CI-Runner keine Go-Toolchain installieren muss — sie braucht nur das
+# vorinstallierte Docker + BuildKit auf ubuntu-latest.
+#
+# DCO-Bot-Aktivierung ist Folgepflicht im GitHub-UI (ADR 0011 §2.4) und
+# läuft nicht als Workflow-Step.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: gates (lint + test + coverage-gate + doc-refs)
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run make gates
+        run: make gates
+
+  security-gates:
+    name: security-gates (govulncheck)
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run make security-gates
+        run: make security-gates
