@@ -27,7 +27,7 @@ permissions: {}
 
 jobs:
   gates:
-    name: gates (lint + test + coverage-gate + doc-refs)
+    name: gates (build + lint + test + coverage-gate + doc-refs)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
