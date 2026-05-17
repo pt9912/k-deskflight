@@ -19,8 +19,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	preflightv1alpha1 "github.com/pt9912/k-deskflight/api/v1alpha1"
 	"github.com/pt9912/k-deskflight/internal/adapter/check"
@@ -28,7 +30,19 @@ import (
 	"github.com/pt9912/k-deskflight/internal/hexagon/application"
 )
 
-const productName = "k-deskflight"
+const (
+	productName = "k-deskflight"
+
+	// healthzAddr + metricsAddr exposen die controller-runtime-
+	// Default-Endpoints (Healthz/Readyz auf :8081; Prometheus-
+	// /metrics auf :8080) für Liveness-/Readiness-Probes und für
+	// das HTTP-Smoke-Script (scripts/operator-http-smoke.sh).
+	// /metrics ist in M3 unauthentisiert exposed — der vollständige
+	// Prometheus-Scrape-Pfad (RBAC, ServiceMonitor, Auth-Filter)
+	// bleibt M6 (Roadmap §3 M6, AR-024).
+	healthzAddr = ":8081"
+	metricsAddr = ":8080"
+)
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -56,9 +70,20 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("load kubeconfig: %w", err)
 	}
 
-	mgr, err := ctrl.NewManager(cfg, manager.Options{Scheme: scheme})
+	mgr, err := ctrl.NewManager(cfg, manager.Options{
+		Scheme:                 scheme,
+		HealthProbeBindAddress: healthzAddr,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+	})
 	if err != nil {
 		return fmt.Errorf("create manager: %w", err)
+	}
+
+	if err := mgr.AddHealthzCheck("ping", healthz.Ping); err != nil {
+		return fmt.Errorf("register healthz check: %w", err)
+	}
+	if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
+		return fmt.Errorf("register readyz check: %w", err)
 	}
 
 	// Adapter-Wiring (architecture.md AR-013, AR-009 Phase 1).

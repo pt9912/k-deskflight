@@ -36,7 +36,7 @@ GOVULNCHECK_VERSION ?= v1.1.4
 .PHONY: help build compile deps tools lint test coverage coverage-gate doc-refs \
         manifests generated-drift-check govulncheck image-build run gates \
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
-        clean
+        operator-http-smoke clean
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -186,6 +186,20 @@ cluster-smoke-cleanup: cluster-smoke-image ## Lösche den smoke-Cluster manuell.
 	    -v /var/run/docker.sock:/var/run/docker.sock \
 	    $(IMAGE):go-smoke \
 	    kind delete cluster --name $(CLUSTER_NAME)
+
+# operator-http-smoke: standalone HTTP-Probe gegen /healthz, /readyz,
+# /metrics. Setzt voraus, dass der smoke-Cluster läuft
+# (z.B. `make cluster-smoke CLUSTER_KEEP=1` lokal). Wird sonst von
+# cluster-smoke.sh als finale Stufe automatisch mitgerufen.
+operator-http-smoke: cluster-smoke-image ## HTTP-Smoke gegen healthz/readyz/metrics.
+	docker run --rm \
+	    --network host \
+	    -v /var/run/docker.sock:/var/run/docker.sock \
+	    -v "$(CURDIR):/src" \
+	    -w /src \
+	    -e CLUSTER_NAME=$(CLUSTER_NAME) \
+	    $(IMAGE):go-smoke \
+	    bash scripts/operator-http-smoke.sh
 
 # ---- ops -------------------------------------------------------------------
 

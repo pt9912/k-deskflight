@@ -152,7 +152,14 @@ if [[ "${condition_status}" != "True" ]]; then
     exit 1
 fi
 
-log "PASSED — phase=${phase}, condition=${condition_type}=${condition_status}"
+# Step 9 — HTTP-Smoke gegen Operator-Endpoints (healthz/readyz/metrics).
+# Identische Toolchain (smoke-Stage); aufgerufen als embedded Sub-Step,
+# damit ein einziger `make cluster-smoke`-Run alle Slice-§7-Items
+# attestiert (CR-Phase + HTTP-Endpoints).
+log "Step 9: HTTP-Smoke gegen Operator-Endpoints"
+bash scripts/operator-http-smoke.sh
+
+log "PASSED — phase=${phase}, condition=${condition_type}=${condition_status}, HTTP probes OK"
 
 # Attest-Artefakt: Status-Dump unter /src/.cluster-smoke-attest.yaml
 # (Workspace-Mount); CI-Workflow `cluster-smoke.yml` lädt das als
