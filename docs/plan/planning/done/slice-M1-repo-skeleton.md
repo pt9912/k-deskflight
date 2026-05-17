@@ -311,4 +311,4 @@ erfordert kein Re-Open dieses Slices.
 
 | Item | Datum | Notiz |
 | ---- | ----- | ----- |
-| §7 #9 — erster CI-Workflow-Run | pending | wird hier eingetragen, sobald der erste PR (oder Push) beide Jobs grün durchlaufen hat. Erwartung: keine Anpassung an `ci.yml` nötig; nur die Bestätigung, dass der Workflow gegen GitHub-runner-State auch tatsächlich grün läuft. |
+| §7 #9 — erster CI-Workflow-Run | 2026-05-17 | `push`-Trigger auf `main` (SHA `6d9a6fd`); beide Jobs parallel grün durchlaufen — `gates` 44 s, `security-gates` 34 s. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/25987203531>. Keine `ci.yml`-Anpassung nötig; CI-Härtung aus Review M3 (Commit `87b5345`: top-level `permissions: {}`, SHA-Pin, `timeout-minutes`) wirkt produktiv. Damit ist Item §7 #9 attestiert geschlossen; weitere PRs verifizieren den `pull_request`-Trigger im Regelbetrieb. |
