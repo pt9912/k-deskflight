@@ -8,17 +8,22 @@ Cluster-Voraussetzungen für [OpenDesk](https://docs.opendesk.eu/)-Installatione
 
 ## Status
 
-Das Projekt befindet sich in der **Spezifikationsphase** des V-Modells
-(`LH-VM-001`). Es gibt noch keinen Code — die Anforderungen sind
-dokumentiert, alle Architekturentscheidungen für den MVP-Scope sind getroffen,
-die Implementierung beginnt mit `LH-VM-004`.
+Die Implementierung ist **im Gang** (`LH-VM-004`). Die ersten drei von
+sieben MVP-Slices sind geschlossen:
 
 | Phase | Status | Quelle |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Entwurf 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
-| Architekturentscheidungen | 11 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
-| Pflichtenheft (`LH-VM-002`) | offen | folgt |
-| Implementierung (`LH-VM-004`) | offen | folgt |
+| Architekturentscheidungen | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
+| Architektur-Spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
+| Implementierung (`LH-VM-004`) | M1, M2, M3 done — M4–M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Pflichtenheft (`LH-VM-002`) | wächst mit den Slices | Slice-Pläne unter [`docs/plan/planning/done/`](docs/plan/planning/done/) |
+
+Die Kubernetes-Versions-Prüfung (`LH-AK-005`) ist die erste produktive
+Preflight-Prüfung; die vier Cluster-State-Prüfungen (`LH-AK-006..-009`)
+folgen mit M4. CRD-Installation, Operator-Rollout, Status-Reconcile und
+HTTP-Healthz/Readyz/Metrics-Endpoints werden bei jedem Push gegen einen
+realen kind-Cluster attestiert (siehe [`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
 
 ## Was der Operator tun soll
 

@@ -8,17 +8,22 @@ checks on a cluster before an [OpenDesk](https://docs.opendesk.eu/) installation
 
 ## Status
 
-The project is in the **specification phase** of the V-model (`LH-VM-001`).
-There is no code yet — the requirements are documented, every architecture
-decision for the MVP scope is taken, and implementation begins with
-`LH-VM-004`.
+Implementation is **in progress** (`LH-VM-004`). The first three of seven
+MVP slices are closed:
 
 | Phase | Status | Source |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Draft 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
-| Architecture decisions | 11 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
-| Pflichtenheft (`LH-VM-002`) | open | follows |
-| Implementation (`LH-VM-004`) | open | follows |
+| Architecture decisions | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
+| Architecture spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
+| Implementation (`LH-VM-004`) | M1, M2, M3 done — M4–M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Pflichtenheft (`LH-VM-002`) | grows alongside slices | per-slice plans in [`docs/plan/planning/done/`](docs/plan/planning/done/) |
+
+The Kubernetes-version check (`LH-AK-005`) is the first real preflight
+running today; the four cluster-state checks (`LH-AK-006..-009`) follow
+in M4. CRD installation, operator deployment, status reconcile and HTTP
+health/readiness/metrics endpoints are attested against a real kind
+cluster on every push (see [`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
 
 ## What the operator does
 

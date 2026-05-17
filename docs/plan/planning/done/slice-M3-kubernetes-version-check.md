@@ -281,7 +281,7 @@ gewesen wären.
 | 6 | `make generated-drift-check` | ✓ controller-gen-Outputs unverändert |
 | 7 | `make gates` | ✓ Bundle (build+lint+test+coverage-gate+doc-refs+drift-check) |
 | 8 | `make security-gates` | ✓ govulncheck ohne Findings (Masterminds/semver/v3 v3.4.0 sauber) |
-| 9 | `LH-AK-005` (K8s-Version prüfbar) | ✓ via `adapter/check/kubernetesversion_test.go` (7 Fälle) + `reconciler_test.go` (passed/failed-Pfad mit Status-Darstellung). Cluster-Smoke gegen reale Server-Version bleibt zusätzliches observational Attest — siehe §10.5. |
+| 9 | `LH-AK-005` (K8s-Version prüfbar) | ✓ via `adapter/check/kubernetesversion_test.go` (7 Fälle) + `reconciler_test.go` (passed/failed-Pfad mit Status-Darstellung) **und** Cluster-Smoke (ADR 0013, Run 25999750149) gegen kindest/node:v1.34.0 — Operator schreibt `Phase=Passed`, `KubernetesVersionReady=True`, Message `"server version 1.34.0 satisfies minimum 1.34"`. |
 
 ### 10.3 Out-of-Scope-Übergaben an M4
 

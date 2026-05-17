@@ -349,18 +349,14 @@ Marker zu scannen. Drei Code-Commits + eine Test-Ergänzung + Closure:
 | 6 | `make test` | ✓ Drei Tests grün (`TestReconcileSmokeTransitionToPassed`, `TestReconcileNotFound`, `TestReconcileIdempotent`) |
 | 7 | `make coverage-gate` | ✓ 83.3 % über `internal/hexagon/application/` — nicht-trivial, M2-Schwelle 0 % bleibt |
 | 8 | `make gates` | ✓ Bundle aus `build + lint + test + coverage-gate + doc-refs + generated-drift-check` |
-| 9 | `kubectl apply -f config/crd/…yaml` (LH-AK-001) | observational cluster-only — siehe §10.5 |
-| 10 | Operator-Deployment ausrollen (LH-AK-002) | observational cluster-only — siehe §10.5 |
-| 11 | `kubectl apply -f config/samples/…yaml` → Phase=Passed (LH-AK-003/004/011) | ✓ via fake-client-Tests; Cluster-Attest zusätzlich observational |
+| 9 | `kubectl apply -f config/crd/…yaml` (LH-AK-001) | ✓ Cluster-Smoke (ADR 0013, Run 25999750149) — kind 0.31.0 + kindest/node:v1.34.0, `kubectl wait Established` grün |
+| 10 | Operator-Deployment ausrollen (LH-AK-002) | ✓ Cluster-Smoke (Run 25999750149) — `kubectl wait Available` grün + HTTP-Probes /healthz, /readyz, /metrics reachable |
+| 11 | `kubectl apply -f config/samples/…yaml` → Phase=Passed (LH-AK-003/004/011) | ✓ fake-client-Tests in M2/M3 + Cluster-Smoke (Phase=Passed, KubernetesVersionReady=True real) |
 
-Items 9 und 10 sind strikt cluster-pflichtig (Lastenheft §17:
-„installierbar in einem Kubernetes-Cluster" / „startbar in einem
-Kubernetes-Cluster"); Item 11 wird durch die M2-Reconciler-fake-
-client-Tests abgedeckt (CR wird gelesen, Status mit `Phase=Passed`
-und leeren Conditions wird geschrieben — `LH-AK-003`/`LH-AK-004`/
-`LH-AK-011` erfüllt). Ein zusätzlicher Cluster-Lauf bleibt als
-observational Attest in §10.5 stehen, ohne dass der Slice re-opened
-werden muss.
+Alle Items §7 #1–#11 sind damit attestiert: lokal via Tests/Gates und
+zusätzlich produktiv durch den `cluster-smoke`-Workflow gegen einen
+real laufenden kind-Cluster (ADR 0013). Slice ist vollständig
+geschlossen, kein Re-Open nötig.
 
 ### 10.3 Out-of-Scope-Übergaben an M3
 
