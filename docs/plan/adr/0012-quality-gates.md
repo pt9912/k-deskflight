@@ -129,11 +129,40 @@ auf 20) sind ADR-pflichtig.
 Mindest-Verbote im Pflicht-Profil:
 
 - `fmt.Print*` — Pflicht: `log/slog` mit Kontext (`LH-NF-009`).
-- `panic(...)` außerhalb von `init()`-Stoßzeit — Reconcile-Pfade
-  müssen Fehler weitergeben, nicht abstürzen (`LH-NF-004`,
-  `LH-AK-010`).
+- `panic(...)` — Reconcile-Pfade müssen Fehler weitergeben, nicht
+  abstürzen (`LH-NF-004`, `LH-AK-010`). Die Regel bannt `panic(...)`
+  global; eine Scope-Begrenzung auf „außerhalb `init()`" ist mit
+  `forbidigo` nicht ausdrückbar (siehe §2.3.1).
 
 Erweiterungen entstehen mit dem Pflichtenheft (`LH-VM-002`).
+
+#### 2.3.1 Werkzeug-Grenze: `forbidigo` ist kontextfrei
+
+`forbidigo` ist ein Pattern-Matcher; er kennt weder Funktionsnamen
+noch Aufruf-Position. Die ADR-Intention „`panic` ist außerhalb von
+`init()` verboten" lässt sich also nicht 1:1 als Linter-Regel ausdrücken
+— der Linter würde entweder zu viel verbieten (`panic` auch in
+legitimen `init`-/`Must*`-Pfaden) oder zu wenig (Carveout ohne
+Wirkung). Konsequenzen für k-deskflight:
+
+- **Default:** Die Regel bannt `panic(...)` überall. Tests sind per
+  `exclusions.rules.path: _test\.go$` ausgenommen (Patterns wie
+  `assert.PanicsWithError` bleiben legitim).
+- **`init()`/`Must*`-Pfade:** Falls und sobald sie konkret entstehen
+  (heute existiert keiner — kein `init()` in `cmd/operator/main.go`,
+  keine `regexp.MustCompile`-Aufrufe), wird ein **pfad-genauer**
+  Carveout in `.golangci.yml issues.exclude-rules` mit `Why:`-
+  Kommentar dokumentiert. Alternativ kann eine Datei den Pattern
+  per `nolint`-würdigen Code-Refactor umgehen — `//nolint`-Pragmas
+  bleiben verboten (`§2.4`/`LH-QG-010`).
+- **`init()`-Disziplin** wird normativ über das Code-Review-Gate
+  (`ADR 0011 §2.7`) durchgesetzt, nicht über `forbidigo`. PR-Reviewer
+  achten darauf, dass `panic` in nicht-init-Code nicht hineinrutscht
+  (auch dort, wo das Linter-Profil mangels Carveout schon brennt).
+
+Diese Klarstellung ist eine Werkzeug-Grenzen-Doku, keine Aufweichung
+der Pflicht: der Intent „kein `panic` im Reconcile-Pfad" bleibt
+verbindlich, der Enforcement-Pfad ist Linter + Review zusammen.
 
 ### 2.4 Suppressions-Verbot
 

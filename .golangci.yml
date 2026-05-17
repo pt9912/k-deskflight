@@ -60,11 +60,17 @@ linters:
     dupl:
       threshold: 150
     forbidigo:
+      # Why: forbidigo ist kontextfrei (ADR 0012 §2.3.1) — `panic(...)`
+      # wird global gebannt, weil eine Scope-Begrenzung auf „außerhalb
+      # init()" mit diesem Linter nicht ausdrückbar ist. Tests sind
+      # über die _test.go$-Exclusion unten ausgenommen; künftige
+      # init()-Pfade brauchen einen pfad-genauen Carveout mit `Why:`
+      # (kein //nolint-Pragma, LH-QG-010).
       forbid:
         - pattern: ^fmt\.Print.*$
           msg: 'use log/slog with context (ADR 0012 §2.3, LH-NF-009)'
         - pattern: ^panic\(.*\)$
-          msg: 'reconcile paths must return errors, not panic (ADR 0012 §2.3, LH-NF-004, LH-AK-010)'
+          msg: 'reconcile paths must return errors, not panic (ADR 0012 §2.3.1, LH-NF-004, LH-AK-010)'
     funlen:
       lines: 100
       statements: 60
