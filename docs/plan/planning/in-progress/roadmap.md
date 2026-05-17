@@ -78,28 +78,29 @@ Abhängigkeitsgraph: `M1 → M2 → {M3, M4} → M5 → M6 → M7`.
 Test-Befehle, Container-Image baut leer, CI-Pipeline-Stub,
 Pflicht-Quality-Gates auf Skelett-Ebene aktiv.
 
-- Go-Modulpfad final entscheiden (Folge zu `ADR 0004 §4`),
+- [x] Go-Modulpfad final entscheiden (Folge zu `ADR 0004 §4`),
   `go.mod`, Verzeichnis-Layout (`cmd/`, `internal/`, `api/`, `deploy/`).
-- `Makefile` mit Targets `build`/`lint`/`test`/`image-build` plus
+- [x] `Makefile` mit Targets `build`/`lint`/`test`/`image-build` plus
   Bündel-Targets `gates` und `security-gates` (`LH-QG-009`,
   m-trace-Pattern als Vorlage — siehe Memory-Hinweis unten).
-- `golangci-lint`-Konfiguration `.golangci.yml` mit den fünf
+- [x] `golangci-lint`-Konfiguration `.golangci.yml` mit den fünf
   Default-Lintern und dem 24-er SOLID-nahen Profil gemäß
   `ADR 0012 §2.2` und `LH-QG-001`.
-- `scripts/verify-doc-refs.sh` (adaptiert von m-trace, gemäß
+- [x] `scripts/verify-doc-refs.sh` (adaptiert von m-trace, gemäß
   `ADR 0012 §2.10` und `LH-QG-008`) als Pflicht-Gate für
   Markdown-Querverweise — Geltungsbereich: `docs/`, `spec/`,
   `README.md`, `README.de.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `SECURITY.md`. Schließt zugleich den
   `ADR 0003 §5`-Folge-Trigger.
-- Multi-Stage `Dockerfile` (`distroless` oder vergleichbares Base);
+- [x] Multi-Stage `Dockerfile` (`distroless` oder vergleichbares Base);
   eigene `lint`-Stage analog `m-trace/apps/api/Dockerfile`.
-- CI-Workflow-Skelett (GitHub Actions; passt zu `ADR 0011` GHSA-Pfad)
+- [x] CI-Workflow-Skelett (GitHub Actions; passt zu `ADR 0011` GHSA-Pfad)
   mit zwei Jobs: `gates` und `security-gates` parallel.
-- DCO-Bot-Aktivierung als Folgepflicht (`ADR 0011 §2.4`).
-- `deploy/manifests/`-Verzeichnis angelegt (initial leer oder
+- [ ] DCO-Bot-Aktivierung als Folgepflicht (`ADR 0011 §2.4`) — operative
+  GitHub-Org-Einstellung, nicht im Code.
+- [x] `deploy/manifests/`-Verzeichnis angelegt (initial leer oder
   CRD-Stub als Platzhalter; siehe M2).
-- README-Stand bleibt zur M1-Aktivierung der aktuelle `main`-Stand;
+- [x] README-Stand bleibt zur M1-Aktivierung der aktuelle `main`-Stand;
   Roadmap- und ADR-Querverweise im README sind konsistent zu halten,
   legitime spätere Edits (Tippfehler, neue ADR-Aufnahmen) zwingen
   zu keiner Roadmap-Änderung.
@@ -123,12 +124,12 @@ Slice abgeschlossen wird.
 
 **Verifikation:**
 
-- `make build` baut ohne Fehler.
-- `make image-build` produziert ein laufendes Image (Init/Help-Pfad
+- [x] `make build` baut ohne Fehler.
+- [x] `make image-build` produziert ein laufendes Image (Init/Help-Pfad
   startet).
-- `make lint` und `make test` laufen grün (auch wenn noch nichts
+- [x] `make lint` und `make test` laufen grün (auch wenn noch nichts
   testet — Skelett-Smoketests).
-- CI-Workflow-Run auf einem Beispiel-PR ist grün.
+- [x] CI-Workflow-Run auf einem Beispiel-PR ist grün.
 
 **Verifikationspfad:** kein dediziertes `LH-AK-*` zu M1 selbst;
 M1 ist die Voraussetzung für alle weiteren `LH-AK-*` ab M2.
@@ -142,35 +143,32 @@ gemäß `ADR 0006`), Controller-Reconciler-Stub, Status-Schema mit
 Conditions und Phase, kein Prüflogik-Inhalt; Generated-Drift- und
 depguard-Boundary-Gates aktiv.
 
-- CRD-Schema mit `spec.profile`, `spec.checks.kubernetesVersion`
+- [x] CRD-Schema mit `spec.profile`, `spec.checks.kubernetesVersion`
   (Platzhalter), `status.phase`, `status.summary`,
   `status.conditions` (`LH-F-005`/`LH-F-006`/`LH-F-007`).
-- **Profile-Default-Vorbelegung** im CRD-OpenAPI-Schema:
+- [x] **Profile-Default-Vorbelegung** im CRD-OpenAPI-Schema:
   `spec.profile` Default `production`, `kubernetesVersion.min`
   Default gemäß `ADR 0009 §2.2` (heute `"1.34"`). `LH-PROF-002`/
   `LH-PROF-003` werden durch die Schema-Defaults vorbereitet, die
   fachliche Auswertung der Defaults pro Profile passiert in M4.
-- ServiceAccount, ClusterRole, RoleBinding (lesend) im
+- [x] ServiceAccount, ClusterRole, RoleBinding (lesend) im
   `deploy/manifests/`-Set, gemäß `LH-AK-015`, `LH-NF-006` und
   `ADR 0005`.
-- Reconciler reagiert auf CR-Anlage, schreibt `status.phase = Pending`
+- [x] Reconciler reagiert auf CR-Anlage, schreibt `status.phase = Pending`
   → `Running` → `Passed` (mit leerer Summary, weil noch keine
-  Prüfung), Conditions: leer.
-- **Generated-Drift-Gate aktiv**: `controller-gen`-Output (CRD-YAML,
+  Prüfung), Conditions: leer. (M2-Implementierung kollabierte
+  initial; M3 §10.6-Fix zieht die Transitions in den Reconcile rein.)
+- [x] **Generated-Drift-Gate aktiv**: `controller-gen`-Output (CRD-YAML,
   DeepCopy) gegen Git-Stand prüfen (`LH-QG-005`).
-- **depguard-Regeln im Linter-Profil** (Stub): erste Layer-
-  Definition gemäß Pflichtenheft/`architecture.md` (`LH-QG-004`).
-  Strikte Durchsetzung kommt in M6.
-- **Coverage-Range-Selektor und `scripts/coverage-gate.sh` anlegen**
+- [x] **depguard-Regeln im Linter-Profil** (in M2 bereits scharf
+  geschaltet, nicht nur Stub — siehe Slice-M2 §10): erste Layer-
+  Definition gemäß `architecture.md` AR-005 (`LH-QG-004`).
+- [x] **Coverage-Range-Selektor und `scripts/coverage-gate.sh`**
   (`LH-QG-003`, Adaption von `m-trace/apps/api/scripts/
   coverage-gate.sh`): Selektor schließt `cmd/`-Wiring aus und
-  zielt auf `internal/`-Pakete (konkrete Pfade gemäß Pflichtenheft).
-  Skript liest das Total-Line-Cover-Ergebnis und exited mit 1 bei
-  Unterschreitung der Schwelle. In M2 ist das Skript bereits
-  vorhanden und mit niedriger Schwelle (z. B. 0 %) als
-  Smoketest-Pfad aktiv; M6 hebt die Schwelle auf 90 % und macht
-  die Verletzung PR-blockierend.
-- Beispielmanifest minimal (CR ohne Inhalt außer Name).
+  zielt auf `internal/`-Pakete. M2-Schwelle 0 % als Smoketest-Pfad;
+  M6 hebt auf 90 % strikt.
+- [x] Beispielmanifest minimal (CR ohne Inhalt außer Name).
 
 **Lastenheft-Kennungen:** `LH-F-001`, `LH-F-002`, `LH-F-003`,
 `LH-F-004`, `LH-F-005`, `LH-F-006`, `LH-F-007`, `LH-F-009`
@@ -184,11 +182,12 @@ Range-Selektor, Schwelle in M6), `LH-QG-004` (Boundary-Stub),
 
 **Verifikation:**
 
-- `LH-AK-001` — CRD installierbar.
-- `LH-AK-002` — Operator startbar.
-- `LH-AK-003` — Ressource verarbeitbar.
-- `LH-AK-004` — Status sichtbar.
-- `LH-AK-011` — Conditions vorhanden (auch wenn leer ist die Struktur
+- [ ] `LH-AK-001` — CRD installierbar. (Slice-M2 §10.5 observational;
+  attestiert mit dem ersten kind/minikube-Lauf.)
+- [ ] `LH-AK-002` — Operator startbar.
+- [ ] `LH-AK-003` — Ressource verarbeitbar.
+- [ ] `LH-AK-004` — Status sichtbar.
+- [ ] `LH-AK-011` — Conditions vorhanden (auch wenn leer ist die Struktur
   da).
 
 ---
@@ -199,12 +198,12 @@ Range-Selektor, Schwelle in M6), `LH-QG-004` (Boundary-Stub),
 gegen die in `spec.checks.kubernetesVersion.min` konfigurierte
 Mindestversion (`ADR 0009`).
 
-- Versions-Discovery via `discovery.ServerVersion()`.
-- Vergleich gegen konfigurierte Mindestversion (Default-Vorbelegung
+- [x] Versions-Discovery via `discovery.ServerVersion()`.
+- [x] Vergleich gegen konfigurierte Mindestversion (Default-Vorbelegung
   per Profile, `ADR 0009 §2.2`).
-- Condition `KubernetesVersionReady` (true/false), Phase, Schweregrad
+- [x] Condition `KubernetesVersionReady` (true/false), Phase, Schweregrad
   `critical` bei Fail.
-- `status.summary.passed`/`failed`/`warning`/`lastChecked`.
+- [x] `status.summary.passed`/`failed`/`warning`/`lastChecked`.
 
 **Lastenheft-Kennungen:** `LH-F-008`, `LH-F-031` (Schweregrad),
 `LH-F-032` (Ergebnis-Inhalt), `LH-NF-003` (Nachvollziehbarkeit),
@@ -212,8 +211,9 @@ Mindestversion (`ADR 0009`).
 
 **Verifikation:**
 
-- `LH-AK-005` — K8s-Version prüfbar.
-- Tests: passed-Case auf aktueller Version, failed-Case mit
+- [ ] `LH-AK-005` — K8s-Version prüfbar. (Slice-M3 §10.5 observational;
+  attestiert mit dem ersten kind/minikube-Lauf.)
+- [x] Tests: passed-Case auf aktueller Version, failed-Case mit
   konfigurierter Min `99.99` (synthetisch).
 
 ---
@@ -223,16 +223,16 @@ Mindestversion (`ADR 0009`).
 **Lieferziel:** Vier weitere Prüfungen — StorageClass, IngressClass,
 cert-manager, Cluster-Ressourcen.
 
-- StorageClass (`LH-F-010`, `LH-F-011`): konfigurierte Klassen
+- [ ] StorageClass (`LH-F-010`, `LH-F-011`): konfigurierte Klassen
   vorhanden? Default-StorageClass erkennbar?
-- IngressClass (`LH-F-012`): konfigurierte Klasse vorhanden?
-- cert-manager (`LH-F-013`): API-Gruppe `cert-manager.io` vorhanden,
+- [ ] IngressClass (`LH-F-012`): konfigurierte Klasse vorhanden?
+- [ ] cert-manager (`LH-F-013`): API-Gruppe `cert-manager.io` vorhanden,
   mindestens ein `ClusterIssuer` erreichbar? (Vorhandensein, nicht
   Detail-Validierung — die kommt v0.2 mit `LH-F-014`.)
-- Cluster-Ressourcen (`LH-F-015`): allocatable CPU/Memory aller
+- [ ] Cluster-Ressourcen (`LH-F-015`): allocatable CPU/Memory aller
   Ready-Nodes summieren, gegen konfigurierte Mindestwerte prüfen
   (`LH-AK-009`).
-- Jede Prüfung mit eigener Condition und Severity.
+- [ ] Jede Prüfung mit eigener Condition und Severity.
 
 **Lastenheft-Kennungen:** `LH-F-010`, `LH-F-011`, `LH-F-012`,
 `LH-F-013`, `LH-F-015`, `LH-NF-005` (Fehlertoleranz —
@@ -241,10 +241,10 @@ Einzelausfall darf andere nicht stoppen), `LH-PROF-002`/`-003`
 
 **Verifikation:**
 
-- `LH-AK-006` — StorageClass.
-- `LH-AK-007` — IngressClass.
-- `LH-AK-008` — cert-manager.
-- `LH-AK-009` — Ressourcen.
+- [ ] `LH-AK-006` — StorageClass.
+- [ ] `LH-AK-007` — IngressClass.
+- [ ] `LH-AK-008` — cert-manager.
+- [ ] `LH-AK-009` — Ressourcen.
 
 ---
 
@@ -253,17 +253,17 @@ Einzelausfall darf andere nicht stoppen), `LH-PROF-002`/`-003`
 **Lieferziel:** Operator prüft eigene Berechtigungen und bleibt bei
 Einzelfehlern stabil.
 
-- `SelfSubjectAccessReview`/`SelfSubjectRulesReview` pro aktivierter
+- [ ] `SelfSubjectAccessReview`/`SelfSubjectRulesReview` pro aktivierter
   Prüfung (`LH-F-024`).
-- Condition `RBACInsufficient` falls Recht fehlt; betroffene
+- [ ] Condition `RBACInsufficient` falls Recht fehlt; betroffene
   Einzelprüfung wird `Unknown` (`LH-AK-016`).
-- Fehlertoleranz: panic-Rückfänger im Reconcile-Loop, einzelne
+- [ ] Fehlertoleranz: panic-Rückfänger im Reconcile-Loop, einzelne
   Check-Fehler erzeugen `Unknown`, nicht Abbruch (`LH-NF-005`).
-- Secret-Output-Filter aktiv (`LH-SEC-002`, `LH-NF-007`) — Tests
+- [ ] Secret-Output-Filter aktiv (`LH-SEC-002`, `LH-NF-007`) — Tests
   prüfen, dass kein Secret-Inhalt in Logs/Events/Status landet.
   Im MVP gibt es noch keine externen Secrets (`ADR 0010`),
   aber der Filter ist als Pflicht-Konvention verankert.
-- Keine destruktiven Aktionen (`LH-SEC-005`).
+- [ ] Keine destruktiven Aktionen (`LH-SEC-005`).
 
 **Lastenheft-Kennungen:** `LH-F-024`, `LH-F-031`, `LH-NF-004`,
 `LH-NF-005`, `LH-NF-006` (minimal notwendige Berechtigungen —
@@ -273,11 +273,11 @@ operative Verankerung), `LH-SEC-001`, `LH-SEC-002`, `LH-SEC-005`,
 
 **Verifikation:**
 
-- `LH-AK-010` — Fehlerfall robust.
-- `LH-AK-012` — Keine Secret-Leaks (im MVP trivial, weil keine
+- [ ] `LH-AK-010` — Fehlerfall robust.
+- [ ] `LH-AK-012` — Keine Secret-Leaks (im MVP trivial, weil keine
   externen Secrets; Tests prüfen den Filter trotzdem).
-- `LH-AK-015` — Minimalrechte dokumentiert.
-- `LH-AK-016` — RBAC-Selbstprüfung wirksam.
+- [ ] `LH-AK-015` — Minimalrechte dokumentiert.
+- [ ] `LH-AK-016` — RBAC-Selbstprüfung wirksam.
 
 ---
 
@@ -288,22 +288,24 @@ controller-runtime-Defaults (`ADR 0007`), Integrationstests gegen
 einen lokalen kind-/envtest-Cluster, vollständige Anwender-Doku,
 alle MVP-Pflicht-Quality-Gates strikt grün.
 
-- `/metrics`-Endpoint exposed, ServiceAccount-RBAC für Scrape
+- [ ] `/metrics`-Endpoint exposed, ServiceAccount-RBAC für Scrape
   passend, Endpoint im Smoketest erreichbar.
-- Integrationstests (kind oder envtest): jeder MVP-Check hat einen
+- [ ] Integrationstests (kind oder envtest): jeder MVP-Check hat einen
   passed- und einen failed-Case.
-- Anwender-Doku in `docs/user/` ausarbeiten:
-  - Installation (raw manifests).
-  - CR-Beispiele für `evaluation` und `production`.
-  - Conditions-Katalog mit Reason/Severity.
-  - Troubleshooting (typische Fehlerbilder).
-- **Coverage-Gate strikt** auf 90 % Line-Coverage über produktive
+- [ ] Anwender-Doku in `docs/user/` ausarbeiten:
+  - [ ] Installation (raw manifests).
+  - [ ] CR-Beispiele für `evaluation` und `production`.
+  - [ ] Conditions-Katalog mit Reason/Severity.
+  - [ ] Troubleshooting (typische Fehlerbilder).
+- [ ] **Coverage-Gate strikt** auf 90 % Line-Coverage über produktive
   Pakete (`LH-QG-003`); `make coverage-gate` blockt PRs.
-- **`govulncheck` strikt** als Pflicht-Gate (`LH-QG-006`); funktions-
+- [ ] **`govulncheck` strikt** als Pflicht-Gate (`LH-QG-006`); funktions-
   basiertes Scanning gegen Go-Vulnerability-Datenbank.
-- **Architektur-Boundary strikt**: alle `depguard`-Regeln aus M2
+- [ ] **Architektur-Boundary strikt**: alle `depguard`-Regeln aus M2
   sind aktiv und brechen den Build bei Layer-Verletzung
-  (`LH-QG-004`).
+  (`LH-QG-004`). (M2 hat das bereits scharf geschaltet — M6 verifiziert
+  nur, dass mit der vollen Code-Basis weiterhin keine Verletzung
+  besteht.)
 
 **Lastenheft-Kennungen:** `LH-SST-004` (Prometheus-Format),
 `LH-NF-008` (`/metrics` als Endpoint, eigene Domänen-Metriken
@@ -315,11 +317,11 @@ folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
 
 **Verifikation:**
 
-- `LH-AK-013` — Dokumentation vorhanden.
-- Coverage-Gate grün bei Default-Threshold 90 % (`ADR 0012 §2.5`).
-- `govulncheck`-Lauf ohne Treffer in aufgerufenen Funktionen.
-- Architektur-Boundary-Check ohne `depguard`-Verletzung.
-- Smoketest `/metrics`-Endpoint liefert HTTP 200 mit
+- [ ] `LH-AK-013` — Dokumentation vorhanden.
+- [ ] Coverage-Gate grün bei Default-Threshold 90 % (`ADR 0012 §2.5`).
+- [ ] `govulncheck`-Lauf ohne Treffer in aufgerufenen Funktionen.
+- [ ] Architektur-Boundary-Check ohne `depguard`-Verletzung.
+- [ ] Smoketest `/metrics`-Endpoint liefert HTTP 200 mit
   Prometheus-Format.
 
 ---
@@ -330,17 +332,17 @@ folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
 v0.1.0-Tag, Container-Image-Publish auf GHCR; Image-Scan-Gate als
 letzte Release-Pflicht.
 
-- Beispielmanifeste konsistent mit `LH-PROD-003a` (MVP-Profil).
-- Release-Notes pro `ADR 0011 §2.5`: SemVer-Tag, Inhalt verlinkt.
-- CHANGELOG-Entscheidung umsetzen (`planning/open/changelog.md`)
+- [ ] Beispielmanifeste konsistent mit `LH-PROD-003a` (MVP-Profil).
+- [ ] Release-Notes pro `ADR 0011 §2.5`: SemVer-Tag, Inhalt verlinkt.
+- [ ] CHANGELOG-Entscheidung umsetzen (`planning/open/changelog.md`)
   vor dem Tag.
-- Container-Image-Publish via `make image-publish`-Pattern aus
+- [ ] Container-Image-Publish via `make image-publish`-Pattern aus
   m-trace (Approval-Gate, `ADR 0011 §2.5`).
-- **Trivy Image-Scan** vor Tag (`LH-QG-007`): `CRITICAL`/`HIGH`
+- [ ] **Trivy Image-Scan** vor Tag (`LH-QG-007`): `CRITICAL`/`HIGH`
   brechen Release; `MEDIUM` wird in den Release-Notes berichtet.
   Vulnignore-Einträge (falls vorhanden) tragen `expires`-Datum.
-- v0.1.0-Tag setzen.
-- DCO-Compliance-Check vor Merge der Release-PR.
+- [ ] v0.1.0-Tag setzen.
+- [ ] DCO-Compliance-Check vor Merge der Release-PR.
 
 **Lastenheft-Kennungen:** `LH-REL-001` (Version 0.1), `LH-MVP-002`
 (Vollständigkeit), `LH-AK-014` (Open-Source-Veröffentlichung
@@ -350,10 +352,10 @@ CODE_OF_CONDUCT/SECURITY und CHANGELOG), `LH-QG-007` (Image-Scan),
 
 **Verifikation:**
 
-- v0.1.0-Tag existiert, GHSA-Pfad ist aktiv (Repo öffentlich).
-- Alle `LH-AK-001..016` erfüllt (Traceability-Matrix §20 grün).
-- Trivy-Scan zeigt keinen ungeklärten `CRITICAL`/`HIGH`-Fund.
-- Container-Image `ghcr.io/<owner>/k-deskflight:v0.1.0` läuft auf
+- [ ] v0.1.0-Tag existiert, GHSA-Pfad ist aktiv (Repo öffentlich).
+- [ ] Alle `LH-AK-001..016` erfüllt (Traceability-Matrix §20 grün).
+- [ ] Trivy-Scan zeigt keinen ungeklärten `CRITICAL`/`HIGH`-Fund.
+- [ ] Container-Image `ghcr.io/<owner>/k-deskflight:v0.1.0` läuft auf
   einer der drei aktuellen K8s-Versionen aus `ADR 0009`.
 
 ---
