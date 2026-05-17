@@ -1,11 +1,12 @@
 # Slice M2 — CRD + Controller-Skeleton
 
-**Status:** In Progress
+**Status:** Done
 **Eröffnet:** 2026-05-17
-**Vorgänger:** [M1 — Repo & Build-Skeleton (Done)](../done/slice-M1-repo-skeleton.md)
-**Nachfolger:** [M3 — Erste Prüfung: Kubernetes-Version](./roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version)
+**Geschlossen:** 2026-05-17
+**Vorgänger:** [M1 — Repo & Build-Skeleton (Done)](slice-M1-repo-skeleton.md)
+**Nachfolger:** [M3 — Erste Prüfung: Kubernetes-Version](../in-progress/roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version)
 **Bezug:**
-[Roadmap §3 M2](./roadmap.md#m2--crd--controller-skeleton),
+[Roadmap §3 M2](../in-progress/roadmap.md#m2--crd--controller-skeleton),
 [`spec/architecture.md` §4 (AR-006, AR-007, AR-008), §5 (AR-009), §7 (AR-015..AR-018)](../../../../spec/architecture.md),
 [ADR 0006](../../adr/0006-api-gruppe-und-crd-scope.md),
 [ADR 0009](../../adr/0009-k8s-versions-support-und-profile-mindestversionen.md),
@@ -316,3 +317,95 @@ sie erfordern eine kind-/minikube-Instanz und sind nicht Teil von
   Lokale macOS-Hosts können hier abweichen — falls jemand auf macOS
   arbeitet und Probleme sieht, dokumentieren wir den Override in
   CONTRIBUTING.md.
+
+---
+
+## 10. Closure (2026-05-17)
+
+### 10.1 Geliefertes Datei-Set
+
+Alle Einträge aus §3 sind committet. Die §4-Reihenfolge wurde gegenüber
+dem Plan-Stand verdichtet, weil Step 1 (API-Typen) und Step 2 (Reconciler/
+tools-Stage/manifests) wechselseitig hart abhängig sind — die DeepCopy-
+Methode fehlt ohne Step 2, der RBAC-Generator hat ohne Step 2 keine
+Marker zu scannen. Drei Code-Commits + eine Test-Ergänzung + Closure:
+
+| Commit | Inhalt |
+| ------ | ------ |
+| `d61492e docs(plan): activate slice M2 …` | Phase A — Slice-Plan, Roadmap-Status, in-progress-Readme. |
+| `00ccb94 feat(crd): CRD types + reconciler skeleton + controller-gen pipeline (M2 §4 Steps 1-2)` | Combined Step 1+2: go.mod (+ controller-runtime v0.24.1, k8s.io/apimachinery v0.36.0), hack/boilerplate.go.txt, api/v1alpha1/groupversion_info.go + opendeskpreflightcheck_types.go + zz_generated.deepcopy.go, internal/hexagon/application/reconciler.go, cmd/operator/main.go-Rewrite, Dockerfile tools-Stage, Makefile tools/manifests/generated-drift-check (+ gates extension), .golangci.yml depguard scharf nach AR-005. golang.org/x/net v0.49→v0.53 wegen GO-2026-4918. |
+| `6125ebb feat(deploy): operator manifests + sample CR (M2 §4 Step 3)` | deploy/manifests/{namespace,serviceaccount,clusterrolebinding,deployment,kustomization}.yaml, config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.yaml, ci.yml-Job-Display-Name an erweitertes Bundle angepasst. |
+| `2bb1e13 test(application): reconciler smoke + not-found + idempotent (M2 §7 #6)` | Drei fake-client-Tests in `internal/hexagon/application/reconciler_test.go`; Coverage 83.3 % über das Paket. |
+
+### 10.2 Verifikations-Ergebnis (§7)
+
+| # | Item | Ergebnis |
+| - | ---- | -------- |
+| 1 | `make tools` | ✓ Image `k-deskflight:go-tools` mit controller-gen v0.21.0 |
+| 2 | `make manifests` | ✓ Erzeugt `zz_generated.deepcopy.go`, `config/crd/k-deskflight.geo-terrain.net_opendeskpreflightchecks.yaml`, `config/rbac/role.yaml` mit Caller-User (kein root-owned File) |
+| 3 | `make generated-drift-check` | ✓ Grün nach `manifests` (idempotent); bewusste Marker-Edits brechen reproduzierbar mit klarer Diff-Ausgabe |
+| 4 | `make lint` | ✓ `0 issues` mit den fünf AR-005-Regelblöcken aktiv |
+| 5 | `make build` | ✓ Distroless-Image enthält den controller-runtime-Manager |
+| 6 | `make test` | ✓ Drei Tests grün (`TestReconcileSmokeTransitionToPassed`, `TestReconcileNotFound`, `TestReconcileIdempotent`) |
+| 7 | `make coverage-gate` | ✓ 83.3 % über `internal/hexagon/application/` — nicht-trivial, M2-Schwelle 0 % bleibt |
+| 8 | `make gates` | ✓ Bundle aus `build + lint + test + coverage-gate + doc-refs + generated-drift-check` |
+| 9 | `kubectl apply -f config/crd/…yaml` | observational — siehe §10.5 |
+| 10 | Operator-Deployment ausrollen | observational — siehe §10.5 |
+| 11 | `kubectl apply -f config/samples/…yaml` → Phase=Passed | observational — siehe §10.5 |
+
+Items 9–11 sind per §7 als observational ausgewiesen. Sie attestieren
+sich mit dem ersten kind-/minikube-Lauf, ohne dass der Slice re-opened
+werden muss (Pattern analog M1 §10.5 CI-Attest).
+
+### 10.3 Out-of-Scope-Übergaben an M3
+
+- AR-009 Phase 2/4/5/6 (Cross-Field-Validate, Active-Check-Resolve,
+  Sammeln, Aggregieren) — M3 mit dem ersten echten Check.
+- AR-010 ff. (Wiederholintervall, Error-Handling) — operativ ab M3.
+- Generated-Drift-Gate ist scharf; jedes M3+-CRD-Schema-Update braucht
+  `make manifests`-Commit.
+- `Spec.Checks.IngressClass`, `Spec.Checks.StorageClass`, … kommen mit
+  M3/M4 als optionale Sibling-Felder neben `KubernetesVersion`.
+
+### 10.4 Lessons learned
+
+- **controller-gen v0.21.0 + nicht-root-Container:** `controller-gen`
+  ruft intern `go list`, das wiederum versucht
+  `/root/.cache/go-build` zu schreiben. Mit `--user $(id -u):$(id -g)`
+  ist `/root` nicht beschreibbar — die Fehlermeldung ist intransparent
+  (controller-gen druckt nur die Help-Page). Lösung: `GOCACHE` und
+  `GOMODCACHE` per Env-Var auf `/tmp/...` umleiten. Pattern jetzt im
+  Makefile-Header dokumentiert.
+- **controller-gen Output-Syntax:** Die korrekte Form ist
+  `output:<generator>:dir=<pfad>`, nicht `output:<generator>:artifacts:config=<pfad>`.
+  Die `artifacts:config`-Form ist ein eigener Generator-Modus, kein
+  per-Generator-Output-Selector. Bei Fehl-Syntax druckt controller-gen
+  schweigend die Help-Page (kein eindeutiger Parse-Error).
+- **golangci-lint v2 `depguard.rules: {}`:** Leeres Rules-Map heißt
+  in v2 **nicht** „keine Regeln", sondern „Default-Deny-Liste `Main`
+  greift". Slice §2.3 war zu optimistisch formuliert — die Konsequenz
+  war ein lint-roter Zwischenstand mit 17 verbotenen Imports. Lesson:
+  depguard entweder vollständig disablen oder mit ≥ 1 lax-Regel
+  aktivieren; halbe Aktivierung gibt es nicht.
+- **`scheme.Builder` aus controller-runtime ist deprecated** (SA1019):
+  api/-Pakete sollen schlank an transitiven Imports bleiben. Das
+  `runtime.NewSchemeBuilder(addKnownTypes)`-Pattern aus apimachinery
+  ist der vorgeschriebene Weg — schöner Nebeneffekt: das `init()` in
+  `*_types.go` entfällt, `gochecknoinits`-Carveout für api/v1alpha1/
+  wird damit unnötig.
+- **`metav1.Time` ist sekundengenau:** RFC3339 ohne Nanoseconds. Tests,
+  die `Time`-Werte vergleichen, müssen mit `time.Date(...0, time.UTC)`
+  arbeiten (sekundengenaue Literale), sonst trunkiert der fake-client
+  und der Vergleich wird unstable.
+- **`res.Requeue` ist SA1019-deprecated in controller-runtime v0.24**:
+  `RequeueAfter` ist der Nachfolger; `RequeueAfter=0` deckt beide
+  semantischen Fälle (no requeue / requeue-after-0) ab.
+
+### 10.5 Folge-Attest
+
+| Item | Datum | Notiz |
+| ---- | ----- | ----- |
+| §7 #9 — CRD installierbar via `kubectl apply -f config/crd/…` | pending | wird mit dem ersten kind/minikube-Smoke-Test attestiert. Erwartung: `kubectl get crd opendeskpreflightchecks.k-deskflight.geo-terrain.net` zeigt `Established=True`. |
+| §7 #10 — Operator startbar via Deployment-Manifest | pending | `kubectl apply -k deploy/manifests/` rollt Deployment aus; Pod erreicht `Ready` (deps via `client-go` mit Cluster-Default-KubeConfig). |
+| §7 #11 — CR verarbeitbar, Phase=Passed | pending | `kubectl apply -f config/samples/…yaml`, dann `kubectl get opendeskpreflightcheck smoke -o yaml` zeigt `status.phase: Passed`, `status.observedGeneration == metadata.generation`, leere Conditions. |
+| §7 #8 / CI — gates-Bundle inkl. drift-check grün auf GitHub-Actions | 2026-05-17 | Run beim Push von SHA `00ccb94` (M2 Step 1+2) bereits grün: `gates` 379 s, `security-gates` 41 s (Run `25991308791`). Folgende Pushes (`6125ebb`, `2bb1e13`) ziehen kleinere Diffs. |
