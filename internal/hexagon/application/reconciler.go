@@ -74,6 +74,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
+	// AR-009 / Roadmap §3 M2: sichtbare Phasen-Transition Pending →
+	// Running → Final. Pending signalisiert „Controller hat den CR für
+	// diese Generation gesehen"; Running markiert die Check-Execution-
+	// Phase; Final ist das Aggregat. Drei sequenzielle Status-Updates
+	// sind günstig (lokale Generation bleibt, controller-runtime liefert
+	// die neue resourceVersion direkt in das Objekt zurück).
+	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhasePending); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	specs, validationErrs := buildSpecMap(runCtx, &cr.Spec.Checks)
 	if len(validationErrs) > 0 {
 		return ctrl.Result{}, r.writeStatus(runCtx, &cr, r.specInvalidOutput(validationErrs))
@@ -83,6 +93,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	active, issues := r.Registry.ListByProfile(profile, specs)
 	if len(issues) > 0 {
 		return ctrl.Result{}, r.writeStatus(runCtx, &cr, r.selectionIssueOutput(issues, len(specs)))
+	}
+
+	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhaseRunning); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	results := r.runChecks(runCtx, active, specs)
@@ -117,9 +131,30 @@ func (r *Reconciler) now() time.Time {
 	return time.Now()
 }
 
+// isAlreadyReconciled überspringt den Reconcile, wenn die aktuelle
+// CR-Generation bereits in einer **terminalen** Phase liegt — das
+// schließt nicht nur Passed ein, sondern auch Failed/Warning/Unknown.
+// Andernfalls würde controller-runtime auf jeden Resync (Default
+// 10h-Cache-Resync, manuelle Trigger) ein erneutes Reconcile auslösen
+// und mit neuen LastTransition-Zeitstempeln Status-Events erzeugen,
+// obwohl sich am tatsächlichen Zustand nichts geändert hat. Echter
+// Re-Run pro Intervall kommt mit AR-010 in M5.
+//
+// Pending und Running sind bewusst NICHT terminal — wenn ein Reconcile
+// nach Pending-Write abstürzt, soll der nächste Versuch sauber neu
+// laufen.
 func (r *Reconciler) isAlreadyReconciled(cr *preflightv1alpha1.OpenDeskPreflightCheck) bool {
-	return cr.Status.Phase == preflightv1alpha1.PhasePassed &&
-		cr.Status.ObservedGeneration == cr.Generation
+	if cr.Status.ObservedGeneration != cr.Generation {
+		return false
+	}
+	switch cr.Status.Phase {
+	case preflightv1alpha1.PhasePassed,
+		preflightv1alpha1.PhaseWarning,
+		preflightv1alpha1.PhaseFailed,
+		preflightv1alpha1.PhaseUnknown:
+		return true
+	}
+	return false
 }
 
 func (r *Reconciler) runChecks(
@@ -136,6 +171,27 @@ func (r *Reconciler) runChecks(
 		results = append(results, check.Run(ctx, spec))
 	}
 	return results
+}
+
+// markPhase schreibt eine Zwischen-Phase (Pending/Running) ohne die
+// Conditions oder Summary anzufassen. Beobachter sehen damit den
+// Reconcile-Fortschritt; die ObservedGeneration wird erst beim
+// finalen `writeStatus` gehoben, damit ein abgebrochener Reconcile-
+// Zyklus auf Pending/Running-Stand nicht versehentlich als „diese
+// Generation ist fertig" interpretiert wird.
+func (r *Reconciler) markPhase(
+	ctx context.Context,
+	cr *preflightv1alpha1.OpenDeskPreflightCheck,
+	phase preflightv1alpha1.Phase,
+) error {
+	if cr.Status.Phase == phase {
+		return nil
+	}
+	cr.Status.Phase = phase
+	if err := r.Status().Update(ctx, cr); err != nil {
+		return fmt.Errorf("mark phase %q: %w", phase, err)
+	}
+	return nil
 }
 
 // writeStatus persistiert das AggregationOutput in den CR-Status
@@ -218,8 +274,19 @@ type specError struct {
 
 // buildSpecMap übersetzt die api/v1alpha1.ChecksSpec in eine
 // `map[string]domain.CheckSpec`, ruft auf jeder Sub-Spec `Validate`
-// und sammelt Fehler. In M3 ist nur `KubernetesVersion` belegt;
-// M4 erweitert um die anderen Sibling-Felder.
+// und sammelt Fehler.
+//
+// MVP-Default: KubernetesVersion ist im MVP-Profil immer aktiv —
+// auch wenn die CR `spec: {}` oder ohne `checks`-Block angelegt wird.
+// Begründung: ADR 0009 §2.2 setzt einen normativen Min-Wert
+// (`DefaultKubernetesVersionMin`), und Roadmap §3 M3 verlangt das
+// Verhalten "spec ohne explizites kubernetesVersion läuft mit Default".
+// Der CRD-`+kubebuilder:default="1.34"` greift nur auf
+// `kubernetesVersion.min` und nicht auf das ganze `kubernetesVersion`-
+// Sub-Objekt, deshalb fängt der Reconciler den nil-Fall ab.
+// M4+ erweitert um StorageClass/IngressClass/cert-manager/Resources;
+// die Profile-Auswahl (welche Defaults für welches Profil aktiv sind)
+// kommt mit M4 in `Registry.ListByProfile`.
 func buildSpecMap(
 	ctx context.Context,
 	checks *preflightv1alpha1.ChecksSpec,
@@ -227,13 +294,14 @@ func buildSpecMap(
 	specs := make(map[string]domain.CheckSpec)
 	var errs []specError
 
-	if checks.KubernetesVersion != nil {
-		spec := domain.KubernetesVersionSpec{Min: checks.KubernetesVersion.Min}
-		if err := spec.Validate(ctx); err != nil {
-			errs = append(errs, specError{check: domain.KubernetesVersionSpecKind, err: err})
-		} else {
-			specs[domain.KubernetesVersionSpecKind] = spec
-		}
+	versionSpec := domain.KubernetesVersionSpec{Min: domain.DefaultKubernetesVersionMin}
+	if checks.KubernetesVersion != nil && checks.KubernetesVersion.Min != "" {
+		versionSpec.Min = checks.KubernetesVersion.Min
+	}
+	if err := versionSpec.Validate(ctx); err != nil {
+		errs = append(errs, specError{check: domain.KubernetesVersionSpecKind, err: err})
+	} else {
+		specs[domain.KubernetesVersionSpecKind] = versionSpec
 	}
 
 	if len(errs) > 0 {

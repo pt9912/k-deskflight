@@ -17,6 +17,15 @@ import (
 // (architecture.md AR-012).
 const KubernetesVersionSpecKind = "kubernetesVersion"
 
+// DefaultKubernetesVersionMin ist der Default-Min aus ADR 0009 §2.2.
+// Muss synchron zum CRD-Schema-Default in
+// `api/v1alpha1/opendeskpreflightcheck_types.go` (`+kubebuilder:default="1.34"`)
+// gehalten werden — der CRD-Default greift nur, wenn das
+// `kubernetesVersion`-Sub-Objekt gesetzt ist, nicht wenn die ganze
+// `checks`-Map leer ist; deshalb braucht der Reconciler diesen
+// Code-seitigen Default als zweite Verteidigungslinie.
+const DefaultKubernetesVersionMin = "1.34"
+
 // KubernetesVersionSpec ist die domain-seitige CheckSpec für den
 // KubernetesVersion-Check (LH-F-008, ADR 0009 §2.2).
 //

@@ -327,4 +327,36 @@ gewesen wären.
 | Item | Datum | Notiz |
 | ---- | ----- | ----- |
 | §7 #9 — LH-AK-005 auf realem Cluster | pending | kind- oder minikube-Smoketest: `kubectl apply -k deploy/manifests/`, danach `kubectl apply -f config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.yaml`, dann `kubectl get opendeskpreflightcheck smoke -o yaml`. Erwartung bei aktueller Server-Version ≥ 1.34: `status.phase: Passed`, `status.summary.passed: 1`, `status.conditions[0].type: KubernetesVersionReady`, `status.conditions[0].status: "True"`, `status.conditions[0].severity: info`. Pattern analog M2 §10.5. |
-| §7 #7 + CI — gates-Bundle inkl. controller-gen-Pipeline grün auf GitHub-Actions | 2026-05-17 | Folge-Pushes nach `b39a4d3`/`b6e0aa2`/`c101a1f`/`113951d` aktualisieren das Bundle automatisch; CI-Status wird in dieser Tabellenzeile nachgepflegt, wenn der erste komplette M3-Push grün durch ist. |
+| §7 #7 + CI — gates-Bundle inkl. controller-gen-Pipeline grün auf GitHub-Actions | 2026-05-17 | Closure-Push (`315b5dd`) bestätigt: `gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check)` 407 s grün, `security-gates (govulncheck)` 41 s grün. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/25997783188>. Damit ist §7 #7 final attestiert; verbleibende Items #9 (Cluster-Smoke) bleiben observational. |
+| Review-Befunde 1–3 nach Closure | 2026-05-17 | Drei nach-Closure-Findings aus Code-/Manifest-Inspektion adressiert (siehe §10.6). |
+
+### 10.6 Nach-Closure-Review-Fixups
+
+Drei Befunde wurden nach dem Closure-Push gemeldet und in einem
+zusätzlichen Code-Commit eingearbeitet:
+
+1. **Default-Pfad führt keinen Check aus** (Reconciler war strikt
+   pointer-abhängig). Fix: `buildSpecMap` aktiviert KubernetesVersion
+   immer mit `domain.DefaultKubernetesVersionMin = "1.34"`, override
+   nur, wenn `spec.checks.kubernetesVersion.min` explizit gesetzt ist.
+   Neuer Test `TestReconcileDefaultActivatesKubernetesVersion`.
+2. **Non-Passed-Idempotency** — Failed/Warning/Unknown wurden bei
+   jedem Resync neu geschrieben. Fix: `isAlreadyReconciled` skippt
+   jetzt alle terminalen Phasen bei matching ObservedGeneration
+   (Pending/Running bleiben bewusst non-terminal). Neuer Test
+   `TestReconcileIdempotentFailed`.
+3. **Pending → Running → Final Transitions** — M3 hatte den M2-§3-
+   Roadmap-Wortlaut nicht eingelöst. Fix: neue Helper-Methode
+   `markPhase` schreibt Pending vor Phase-2-Validation und Running
+   vor Check-Execution; finaler Aggregator-Status bleibt im
+   `writeStatus`-Pfad. Beobachter sehen die Transitions via
+   `kubectl get -w`. ObservedGeneration wird erst beim finalen
+   `writeStatus` gehoben, damit ein abgebrochener Pending/Running-
+   Reconcile sauber neu läuft.
+
+Domain-Konstante `DefaultKubernetesVersionMin = "1.34"` führt das
+ADR-0009-§2.2-Default zentral; CRD-Schema-Default
+`+kubebuilder:default="1.34"` und Reconciler-Default-Activation
+sind damit synchron gehalten.
+
+Gates + Security weiterhin grün nach den Fixes.

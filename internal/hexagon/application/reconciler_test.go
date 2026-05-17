@@ -81,18 +81,20 @@ func newSchemeWithAPI(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-// TestReconcileEmptyChecks ist das M2-Erbe: CR ohne Spec.Checks führt
-// zu Phase=Passed mit ChecksTotal=0 — die Aggregator-Leerstellen-
-// Klausel deckt das.
-func TestReconcileEmptyChecks(t *testing.T) {
+// TestReconcileDefaultActivatesKubernetesVersion verifiziert das
+// Default-Aktivierungs-Verhalten (Befund 1 aus Review nach Push c93683a..315b5dd):
+// Eine CR ohne expliziten checks.kubernetesVersion-Block aktiviert den
+// Check trotzdem, mit dem Default-Min aus ADR 0009 §2.2.
+func TestReconcileDefaultActivatesKubernetesVersion(t *testing.T) {
 	scheme := newSchemeWithAPI(t)
 
 	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       "empty",
+			Name:       "default-activation",
 			Namespace:  "default",
 			Generation: 1,
 		},
+		// Bewusst leeres Spec — Defaults sollen greifen.
 	}
 
 	client := fake.NewClientBuilder().
@@ -101,30 +103,45 @@ func TestReconcileEmptyChecks(t *testing.T) {
 		WithStatusSubresource(cr).
 		Build()
 
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{
+		name: domain.KubernetesVersionSpecKind,
+		result: domain.Result{
+			Name:           "KubernetesVersionReady",
+			Status:         domain.StatusTrue,
+			Reason:         "KubernetesVersionReady",
+			Severity:       domain.SeverityInfo,
+			LastTransition: fixedClock()(),
+		},
+	})
+
 	reconciler := &application.Reconciler{
 		Client:   client,
 		Scheme:   scheme,
-		Registry: newFakeRegistry(),
+		Registry: registry,
 		Now:      fixedClock(),
 	}
 
 	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "empty", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "default-activation", Namespace: "default"},
 	}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
 	var after preflightv1alpha1.OpenDeskPreflightCheck
 	if err := client.Get(context.Background(),
-		types.NamespacedName{Name: "empty", Namespace: "default"}, &after); err != nil {
+		types.NamespacedName{Name: "default-activation", Namespace: "default"}, &after); err != nil {
 		t.Fatalf("Get after reconcile: %v", err)
 	}
 
 	if after.Status.Phase != preflightv1alpha1.PhasePassed {
-		t.Errorf("Phase: got %q, want Passed", after.Status.Phase)
+		t.Errorf("Phase: got %q, want Passed (default activation must run)", after.Status.Phase)
 	}
-	if after.Status.Summary.ChecksTotal != 0 {
-		t.Errorf("ChecksTotal: got %d, want 0", after.Status.Summary.ChecksTotal)
+	if after.Status.Summary.ChecksTotal != 1 {
+		t.Errorf("ChecksTotal: got %d, want 1 (KubernetesVersion default-active)", after.Status.Summary.ChecksTotal)
+	}
+	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "KubernetesVersionReady" {
+		t.Errorf("Conditions: got %+v, want one KubernetesVersionReady entry", after.Status.Conditions)
 	}
 }
 
@@ -144,6 +161,59 @@ func TestReconcileNotFound(t *testing.T) {
 		NamespacedName: types.NamespacedName{Name: "gone", Namespace: "default"},
 	}); err != nil {
 		t.Fatalf("Reconcile NotFound returned error: %v", err)
+	}
+}
+
+// TestReconcileIdempotentFailed verifiziert (Befund 2 aus Review):
+// auch terminale Non-Passed-Phasen (Failed/Warning/Unknown) skippen
+// bei gleicher Generation, damit kein Status-Event-Spam entsteht.
+func TestReconcileIdempotentFailed(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	originalLastChecked := metav1.NewTime(time.Date(2026, time.May, 17, 10, 0, 0, 0, time.UTC))
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "stuck-failed",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Status: preflightv1alpha1.OpenDeskPreflightCheckStatus{
+			Phase:              preflightv1alpha1.PhaseFailed,
+			ObservedGeneration: 1,
+			Summary:            preflightv1alpha1.Summary{LastChecked: &originalLastChecked},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "stuck-failed", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "stuck-failed", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed (unchanged)", after.Status.Phase)
+	}
+	if !after.Status.Summary.LastChecked.Equal(&originalLastChecked) {
+		t.Errorf("LastChecked changed: got %v, want %v (Failed at matching generation must not re-write)",
+			after.Status.Summary.LastChecked, originalLastChecked)
 	}
 }
 
