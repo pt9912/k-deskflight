@@ -32,9 +32,14 @@ Selbst-Identifikation auf `stdout` schreibt und sauber terminiert.
 
 - Repository enthält **keine lokale Go-Toolchain-Anforderung** in den
   Pflicht-Targets.
-- `Makefile`-Targets rufen ausschließlich
-  `docker build --target <stage>` (lint/test/build) bzw.
-  `docker run` (scripts).
+- `Makefile`-Targets rufen die Build-/Test-/Lint-/Coverage-Pfade über
+  `docker build --target <stage>` und `docker run` (`govulncheck`).
+- **Carveout `make doc-refs`:** das Doc-Refs-Gate ruft
+  `bash scripts/verify-doc-refs.sh` direkt host-seitig. Ein 100-
+  Zeilen-Bash-Skript ohne Go-Toolchain-Bedarf zu containerisieren
+  wäre Overhead ohne Nutzen — der Carveout ist im Makefile-Header
+  explizit dokumentiert. Lokale `bash` (≥ 4) ist damit die einzige
+  host-seitige Vorbedingung für den PR-grünen Pfad.
 - BuildKit-Cache (`GOMODCACHE`, `GOCACHE`) wird über den `deps`-Stage
   geteilt; `--no-cache-filter <stage>` zwingt Stale-Layer-Reset bei
   `lint`/`test`/`coverage` (Pattern aus `m-trace/apps/api/Makefile`).
@@ -70,10 +75,10 @@ für Schwellen (`cyclop.max-complexity: 15`, `dupl.threshold: 150`)
 
 | Komponente | Pin in M1 | Quelle |
 | ---------- | --------- | ------ |
-| Go-Toolchain | `golang:1.26.3` | analog `m-trace/apps/api/Dockerfile` |
+| Go-Toolchain | `golang:1.26.3` (parametrisiert via `ARG GO_VERSION`, AR-019 Step 1) | analog `m-trace/apps/api/Dockerfile` |
 | `golangci-lint` | `v2.12.1-alpine` | analog `m-trace/apps/api/Dockerfile` |
 | `govulncheck` | `v1.1.4` (per `go install`) | [`ADR 0012 §2.8`](../../adr/0012-quality-gates.md) |
-| Runtime-Base | `gcr.io/distroless/static:nonroot` | [`architecture.md` §AR-019](../../../../spec/architecture.md), Step 6 |
+| Runtime-Base | `gcr.io/distroless/static-debian12:nonroot` (Debian-12-pinnte Variante; reproduzierbarer als der floating `static:nonroot`-Alias, konsistent mit `m-trace/apps/api/Dockerfile`) | [`architecture.md` §AR-019](../../../../spec/architecture.md), Step 6 |
 
 Pin-Hebungen sind Routine ohne ADR ([`ADR 0012 §2.8`/`§2.9`](../../adr/0012-quality-gates.md)); Begründung im Commit-Body genügt.
 
