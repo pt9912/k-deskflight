@@ -59,7 +59,7 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
 | Slice | Titel | Vorgänger | Status |
 | ----- | ----- | --------- | ------ |
 | M1 | Repo & Build-Skeleton | — | Done (Closure: [`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md)) |
-| M2 | CRD + Controller-Skeleton | M1 | Pending |
+| M2 | CRD + Controller-Skeleton | M1 | In Progress (siehe [`slice-M2-crd-controller-skeleton.md`](./slice-M2-crd-controller-skeleton.md)) |
 | M3 | Erste Prüfung — Kubernetes-Version | M2 | Pending |
 | M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Pending |
 | M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Pending |
@@ -415,5 +415,6 @@ Sammel-Closure-Notiz nach `done/`.
 
 In Progress. M1 geschlossen am 2026-05-17 (Closure-Notiz unter
 [`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md));
-M2–M7 weiterhin Pending. Aktivierung von M2 erfolgt durch einen eigenen
-`slice-M2-…md` in `in-progress/`.
+M2 aktiviert am 2026-05-17 (siehe
+[`slice-M2-crd-controller-skeleton.md`](./slice-M2-crd-controller-skeleton.md));
+M3–M7 weiterhin Pending.
