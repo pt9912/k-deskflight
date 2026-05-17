@@ -77,8 +77,9 @@ bekräftigt.
 ## 4. Nicht Gegenstand dieser ADR
 
 - **Wahl der DNS-Domain** für die Kubernetes-API-Gruppe und damit die
-  endgültige API-Gruppe — siehe `LH-OP-002` und den Trigger-Eintrag
-  [`docs/plan/planning/open/api-gruppe-domain.md`](../planning/open/api-gruppe-domain.md).
+  endgültige API-Gruppe — durch [`ADR 0006`](0006-api-gruppe-und-crd-scope.md)
+  geschlossen; der ursprüngliche Trigger-Eintrag liegt unter
+  [`docs/archive/api-gruppe-domain.md`](../../archive/api-gruppe-domain.md).
 - **Go-Modulpfad** in voller Form (`<host>/<owner>/k-deskflight`) und
   **Hosting-Plattform** des Repositories — entsteht spätestens mit dem
   Pflichtenheft (`LH-VM-002`).
