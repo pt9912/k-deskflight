@@ -19,11 +19,59 @@ import (
 
 	preflightv1alpha1 "github.com/pt9912/k-deskflight/api/v1alpha1"
 	"github.com/pt9912/k-deskflight/internal/hexagon/application"
+	"github.com/pt9912/k-deskflight/internal/hexagon/domain"
+	"github.com/pt9912/k-deskflight/internal/hexagon/port"
 )
 
-// newSchemeWithAPI baut das scheme für die fake-client-Tests und stoppt
-// den Test früh, wenn die scheme-Registrierung fehlschlägt — alle anderen
-// Assertions hängen davon ab.
+// fixedClock liefert einen deterministischen Zeitstempel.
+func fixedClock() func() time.Time {
+	return func() time.Time {
+		return time.Date(2026, time.May, 17, 12, 0, 0, 0, time.UTC)
+	}
+}
+
+// fakeRegistry implementiert port.CheckRegistry für Tests, ohne den
+// echten adapter-Package zu importieren (depguard `application-no-adapter`
+// gilt auch für _test.go in diesem Pfad).
+type fakeRegistry struct {
+	checks map[string]domain.Check
+}
+
+func newFakeRegistry() *fakeRegistry {
+	return &fakeRegistry{checks: make(map[string]domain.Check)}
+}
+
+func (f *fakeRegistry) Register(c domain.Check) { f.checks[c.Name()] = c }
+
+func (f *fakeRegistry) Resolve(name string) (domain.Check, bool) {
+	c, ok := f.checks[name]
+	return c, ok
+}
+
+func (f *fakeRegistry) ListByProfile(
+	_ string,
+	spec map[string]domain.CheckSpec,
+) ([]domain.Check, []port.CheckSelectionIssue) {
+	out := make([]domain.Check, 0, len(spec))
+	for name := range spec {
+		if c, ok := f.checks[name]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// stubCheck liefert ein vorgegebenes Result, ohne den echten Check-
+// Code aus internal/adapter/check/ zu importieren.
+type stubCheck struct {
+	name   string
+	result domain.Result
+}
+
+func (s stubCheck) Name() string                                              { return s.name }
+func (s stubCheck) SpecKind() string                                          { return domain.KubernetesVersionSpecKind }
+func (s stubCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result   { return s.result }
+
 func newSchemeWithAPI(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	scheme := runtime.NewScheme()
@@ -33,16 +81,15 @@ func newSchemeWithAPI(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-// TestReconcileSmokeTransitionToPassed verifiziert den M2-Minimal-Pfad
-// (slice-M2 §7 #6): leerer CR → Reconciler schreibt Phase=Passed,
-// ObservedGeneration alignment, leere Conditions, gesetztes
-// Summary.LastChecked. M3+ erweitert um echte Check-Aggregation.
-func TestReconcileSmokeTransitionToPassed(t *testing.T) {
+// TestReconcileEmptyChecks ist das M2-Erbe: CR ohne Spec.Checks führt
+// zu Phase=Passed mit ChecksTotal=0 — die Aggregator-Leerstellen-
+// Klausel deckt das.
+func TestReconcileEmptyChecks(t *testing.T) {
 	scheme := newSchemeWithAPI(t)
 
 	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       "smoke",
+			Name:       "empty",
 			Namespace:  "default",
 			Generation: 1,
 		},
@@ -54,71 +101,57 @@ func TestReconcileSmokeTransitionToPassed(t *testing.T) {
 		WithStatusSubresource(cr).
 		Build()
 
-	reconciler := &application.Reconciler{Client: client, Scheme: scheme}
-
-	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "smoke", Namespace: "default"},
-	})
-	if err != nil {
-		t.Fatalf("Reconcile returned error: %v", err)
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		Now:      fixedClock(),
 	}
-	if res.RequeueAfter != 0 {
-		t.Fatalf("expected no requeue, got %+v", res)
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "empty", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
 	}
 
 	var after preflightv1alpha1.OpenDeskPreflightCheck
-	if err := client.Get(
-		context.Background(),
-		types.NamespacedName{Name: "smoke", Namespace: "default"},
-		&after,
-	); err != nil {
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "empty", Namespace: "default"}, &after); err != nil {
 		t.Fatalf("Get after reconcile: %v", err)
 	}
 
 	if after.Status.Phase != preflightv1alpha1.PhasePassed {
-		t.Errorf("Status.Phase: got %q, want %q", after.Status.Phase, preflightv1alpha1.PhasePassed)
+		t.Errorf("Phase: got %q, want Passed", after.Status.Phase)
 	}
-	if after.Status.ObservedGeneration != cr.Generation {
-		t.Errorf("Status.ObservedGeneration: got %d, want %d", after.Status.ObservedGeneration, cr.Generation)
-	}
-	if len(after.Status.Conditions) != 0 {
-		t.Errorf("Status.Conditions: got %d entries, want 0 (M2 has no check logic)", len(after.Status.Conditions))
-	}
-	if after.Status.Summary.LastChecked == nil {
-		t.Error("Status.Summary.LastChecked: got nil, want non-nil")
+	if after.Status.Summary.ChecksTotal != 0 {
+		t.Errorf("ChecksTotal: got %d, want 0", after.Status.Summary.ChecksTotal)
 	}
 }
 
-// TestReconcileNotFound verifiziert dass der Reconcile-Pfad sauber
-// terminiert, wenn die CR zwischen Event und Get gelöscht wurde
-// (architecture.md AR-009 Phase 1: NotFound → kein Requeue).
+// TestReconcileNotFound deckt den AR-009-Phase-1-NotFound-Pfad.
 func TestReconcileNotFound(t *testing.T) {
 	scheme := newSchemeWithAPI(t)
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	reconciler := &application.Reconciler{Client: client, Scheme: scheme}
 
-	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "gone", Namespace: "default"},
-	})
-	if err != nil {
-		t.Fatalf("Reconcile on NotFound returned error: %v", err)
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		Now:      fixedClock(),
 	}
-	if res.RequeueAfter != 0 {
-		t.Errorf("expected no requeue on NotFound, got %+v", res)
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "gone", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile NotFound returned error: %v", err)
 	}
 }
 
-// TestReconcileIdempotent verifiziert die Idempotency-Klausel im
-// Reconciler: wenn Phase bereits Passed ist und ObservedGeneration mit
-// metadata.generation übereinstimmt, soll der Reconciler ohne Status-
-// Write zurückkehren (kein Hot-Loop).
+// TestReconcileIdempotent verifiziert die Generation-aligned-Skip-Klausel.
 func TestReconcileIdempotent(t *testing.T) {
 	scheme := newSchemeWithAPI(t)
 
-	// Why: metav1.Time serialisiert nur sekundengenau (RFC3339), die
-	// fake-client-Storage trunkiert deshalb. Wir nutzen ein festes
-	// sekundengenaues Literal, damit der Vergleich nach `Get` stabil ist.
-	originalLastChecked := metav1.NewTime(time.Date(2026, time.May, 17, 12, 0, 0, 0, time.UTC))
+	originalLastChecked := metav1.NewTime(time.Date(2026, time.May, 17, 11, 0, 0, 0, time.UTC))
 	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "idempotent",
@@ -128,8 +161,54 @@ func TestReconcileIdempotent(t *testing.T) {
 		Status: preflightv1alpha1.OpenDeskPreflightCheckStatus{
 			Phase:              preflightv1alpha1.PhasePassed,
 			ObservedGeneration: 1,
-			Summary: preflightv1alpha1.Summary{
-				LastChecked: &originalLastChecked,
+			Summary:            preflightv1alpha1.Summary{LastChecked: &originalLastChecked},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "idempotent", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "idempotent", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !after.Status.Summary.LastChecked.Equal(&originalLastChecked) {
+		t.Errorf("LastChecked changed: got %v, want %v", after.Status.Summary.LastChecked, originalLastChecked)
+	}
+}
+
+// TestReconcileKubernetesVersionPassed (M3 §7 #3): registrierter Check
+// liefert True/info → Phase=Passed mit KubernetesVersionReady-Condition.
+func TestReconcileKubernetesVersionPassed(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "k8s-ok",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
 			},
 		},
 	}
@@ -140,25 +219,174 @@ func TestReconcileIdempotent(t *testing.T) {
 		WithStatusSubresource(cr).
 		Build()
 
-	reconciler := &application.Reconciler{Client: client, Scheme: scheme}
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{
+		name: domain.KubernetesVersionSpecKind,
+		result: domain.Result{
+			Name:           "KubernetesVersionReady",
+			Status:         domain.StatusTrue,
+			Reason:         "KubernetesVersionReady",
+			Severity:       domain.SeverityInfo,
+			Message:        "server version 1.34.2 satisfies minimum 1.34",
+			LastTransition: fixedClock()(),
+		},
+	})
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
 
 	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "idempotent", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "k8s-ok", Namespace: "default"},
 	}); err != nil {
-		t.Fatalf("Reconcile returned error: %v", err)
+		t.Fatalf("Reconcile: %v", err)
 	}
 
 	var after preflightv1alpha1.OpenDeskPreflightCheck
-	if err := client.Get(
-		context.Background(),
-		types.NamespacedName{Name: "idempotent", Namespace: "default"},
-		&after,
-	); err != nil {
-		t.Fatalf("Get after reconcile: %v", err)
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "k8s-ok", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
 	}
 
-	if !after.Status.Summary.LastChecked.Equal(&originalLastChecked) {
-		t.Errorf("Status.Summary.LastChecked changed: got %v, want %v (idempotent path should not touch status)",
-			after.Status.Summary.LastChecked, originalLastChecked)
+	if after.Status.Phase != preflightv1alpha1.PhasePassed {
+		t.Errorf("Phase: got %q, want Passed", after.Status.Phase)
+	}
+	if after.Status.Summary.Passed != 1 {
+		t.Errorf("Summary.Passed: got %d, want 1", after.Status.Summary.Passed)
+	}
+	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "KubernetesVersionReady" {
+		t.Fatalf("Conditions: got %+v, want one KubernetesVersionReady entry", after.Status.Conditions)
+	}
+	if after.Status.Conditions[0].Severity != preflightv1alpha1.SeverityInfo {
+		t.Errorf("Condition.Severity: got %q, want info", after.Status.Conditions[0].Severity)
+	}
+}
+
+// TestReconcileKubernetesVersionFailed (M3 §7 #3): registrierter Check
+// liefert False/critical → Phase=Failed mit KubernetesVersionReady-False.
+func TestReconcileKubernetesVersionFailed(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "k8s-old",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "99.99"},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{
+		name: domain.KubernetesVersionSpecKind,
+		result: domain.Result{
+			Name:           "KubernetesVersionReady",
+			Status:         domain.StatusFalse,
+			Reason:         "KubernetesVersionTooOld",
+			Severity:       domain.SeverityCritical,
+			Message:        "server version 1.34.2 is below configured minimum 99.99",
+			LastTransition: fixedClock()(),
+		},
+	})
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "k8s-old", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "k8s-old", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed", after.Status.Phase)
+	}
+	if after.Status.Summary.Failed != 1 {
+		t.Errorf("Summary.Failed: got %d, want 1", after.Status.Summary.Failed)
+	}
+	if len(after.Status.Conditions) != 1 {
+		t.Fatalf("Conditions: got %d entries, want 1", len(after.Status.Conditions))
+	}
+	if after.Status.Conditions[0].Severity != preflightv1alpha1.SeverityCritical {
+		t.Errorf("Condition.Severity: got %q, want critical", after.Status.Conditions[0].Severity)
+	}
+	if after.Status.Conditions[0].Reason != "KubernetesVersionTooOld" {
+		t.Errorf("Condition.Reason: got %q, want KubernetesVersionTooOld", after.Status.Conditions[0].Reason)
+	}
+}
+
+// TestReconcileSpecInvalid (M3 §7): malformed Min triggers Phase=Failed
+// via Phase-2-Validation.
+func TestReconcileSpecInvalid(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "bad-spec",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "garbage"},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "bad-spec", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "bad-spec", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed", after.Status.Phase)
+	}
+	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "SpecInvalid" {
+		t.Fatalf("Conditions: got %+v, want one SpecInvalid entry", after.Status.Conditions)
 	}
 }

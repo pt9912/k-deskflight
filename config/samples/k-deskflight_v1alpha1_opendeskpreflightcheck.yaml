@@ -1,11 +1,16 @@
 ---
-# Minimal-CR für slice M2: Schema-Defaults greifen (Profile=production,
-# spec.checks.kubernetesVersion.min="1.34") — der Reconciler schreibt
-# Status.Phase=Passed mit leerer Summary, weil M2 noch keine Check-
-# Logik implementiert (Roadmap §3 M2).
+# Minimal-CR mit dem ersten echten Check (KubernetesVersion).
+# Schema-Defaults greifen für Profile (production) und für die Min-
+# Version (1.34 per ADR 0009 §2.2); das `kubernetesVersion`-Sub-
+# Objekt muss aber explizit gesetzt sein, damit der Reconciler den
+# Check aktiviert.
 apiVersion: k-deskflight.geo-terrain.net/v1alpha1
 kind: OpenDeskPreflightCheck
 metadata:
   name: smoke
   namespace: default
-spec: {}
+spec:
+  profile: production
+  checks:
+    kubernetesVersion:
+      min: "1.34"

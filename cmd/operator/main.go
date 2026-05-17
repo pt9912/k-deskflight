@@ -5,9 +5,9 @@ Licensed under the MIT License (see LICENSE at the repository root).
 */
 
 // Package main wires the k-deskflight operator (architecture.md AR-003,
-// AR-009). The entry-point is intentionally thin: register the scheme,
-// build a controller-runtime manager, attach the reconciler, install a
-// signal handler, and block on Start. All fachliche Logik lebt unter
+// AR-009). Der Entry-Point bleibt dünn: Scheme registrieren, Manager
+// bauen, Adapter + Checks + Registry konstruieren, Reconciler injizieren,
+// Signal-Handler setzen, blockieren. Alle fachliche Logik liegt unter
 // internal/hexagon/.
 package main
 
@@ -23,6 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	preflightv1alpha1 "github.com/pt9912/k-deskflight/api/v1alpha1"
+	"github.com/pt9912/k-deskflight/internal/adapter/check"
+	"github.com/pt9912/k-deskflight/internal/adapter/k8s"
 	"github.com/pt9912/k-deskflight/internal/hexagon/application"
 )
 
@@ -59,9 +61,19 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("create manager: %w", err)
 	}
 
+	// Adapter-Wiring (architecture.md AR-013, AR-009 Phase 1).
+	discoveryAdapter, err := k8s.NewDiscoveryAdapter(cfg)
+	if err != nil {
+		return fmt.Errorf("create discovery adapter: %w", err)
+	}
+
+	registry := check.NewRegistry()
+	registry.Register(check.NewKubernetesVersion(discoveryAdapter, nil))
+
 	reconciler := &application.Reconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Registry: registry,
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup reconciler: %w", err)
