@@ -182,13 +182,16 @@ Range-Selektor, Schwelle in M6), `LH-QG-004` (Boundary-Stub),
 
 **Verifikation:**
 
-- [ ] `LH-AK-001` — CRD installierbar. Strikt cluster-pflichtig
-  („lässt sich in einem Kubernetes-Cluster installieren"); attestiert
-  in Slice-M2 §10.5 mit dem ersten `kubectl apply -f
-  config/crd/…yaml` auf kind/minikube.
-- [ ] `LH-AK-002` — Operator startbar. Strikt cluster-pflichtig
-  („lässt sich in einem Kubernetes-Cluster starten"); attestiert mit
-  dem ersten `kubectl apply -k deploy/manifests/`-Rollout.
+- [x] `LH-AK-001` — CRD installierbar. Cluster-Smoke-Workflow (ADR 0013,
+  `make cluster-smoke`) hat am 2026-05-17 erstmals
+  `kubectl apply -f config/crd/…yaml` gegen kind 0.31.0 + kindest/node:v1.34.0
+  ausgeführt; `kubectl wait --for=condition=Established` grün. Run:
+  <https://github.com/pt9912/k-deskflight/actions/runs/25999750149>.
+- [x] `LH-AK-002` — Operator startbar. Derselbe Cluster-Smoke-Lauf hat
+  `kubectl apply -k …` mit Image-Override auf `k-deskflight:go`
+  ausgeführt; `kubectl wait deployment Available` grün; HTTP-Smoke
+  gegen `/healthz`, `/readyz` und `/metrics` (controller-runtime-
+  Default-Endpoints) sind reachable.
 - [x] `LH-AK-003` — Ressource verarbeitbar. Erfüllt durch fake-client-
   Reconciler-Tests (`TestReconcileSmokeTransitionToPassed`,
   `TestReconcileKubernetesVersionPassed/Failed`,
@@ -224,10 +227,12 @@ Mindestversion (`ADR 0009`).
 - [x] `LH-AK-005` — K8s-Version prüfbar. Erfüllt durch
   `adapter/check/kubernetesversion_test.go` (7 Fälle: passed/failed/
   lookup-fail/parse-fail/min-parse-fail/invalid-spec/build-suffix) +
-  Reconciler-Tests (passed/failed-Pfad mit Status-Darstellung). Der
-  discovery-Adapter selbst bleibt M3-untested (M6 envtest).
-  Cluster-Smoke gegen reale Server-Version bleibt als zusätzliches
-  observational Attest in Slice-M3 §10.5 offen.
+  Reconciler-Tests (passed/failed-Pfad mit Status-Darstellung) und
+  **zusätzlich real durch den Cluster-Smoke-Workflow attestiert**:
+  Operator gegen kindest/node:v1.34.0 schreibt `status.phase: Passed`
+  mit Condition `KubernetesVersionReady=True` und Message
+  `"server version 1.34.0 satisfies minimum 1.34"` (Run-URL in
+  Slice-M3 §10.5).
 - [x] Tests: passed-Case auf aktueller Version, failed-Case mit
   konfigurierter Min `99.99` (synthetisch).
 
