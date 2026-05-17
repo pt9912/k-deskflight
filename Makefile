@@ -72,7 +72,7 @@ doc-refs: ## Verify local markdown link targets (LH-QG-008).
 
 # ---- gate bundles ----------------------------------------------------------
 
-gates: lint test coverage-gate doc-refs ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
+gates: build lint test coverage-gate doc-refs ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
 	@echo "[gates] passed"
 
 # `govulncheck` läuft in einem golang:1.26.3-Container und installiert
