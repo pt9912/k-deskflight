@@ -57,6 +57,9 @@ func (c *ClusterResources) Name() string { return CheckNameClusterResources }
 // SpecKind erfüllt das Check-Interface.
 func (c *ClusterResources) SpecKind() string { return domain.ClusterResourcesSpecKind }
 
+// ConditionType erfüllt das Check-Interface (slice-M5 §2.2).
+func (c *ClusterResources) ConditionType() string { return ConditionTypeClusterResourcesReady }
+
 // RequiredPermissions deklariert das `list`-Recht auf Core-`nodes`
 // (slice-M5 §2.2). Group ist leer für die Core-API-Gruppe.
 func (c *ClusterResources) RequiredPermissions() []domain.PermissionRequest {

@@ -98,11 +98,15 @@ type PermissionRequest struct {
 }
 ```
 
-### 2.2 RequiredPermissions als Check-Interface-Methode
+### 2.2 RequiredPermissions + ConditionType als Check-Interface-Methoden
 
-Jeder Check deklariert seine Rechte selbst. Das verhindert, dass die
-SAR-Liste im Reconciler (Application-Layer) hardcoded landet und
-Adapter-Wissen sickert.
+Jeder Check deklariert sowohl seine **Rechte** als auch seinen
+**Condition-Type** selbst. Das verhindert, dass diese Informationen
+im Reconciler (Application-Layer) hardcoded landen und Adapter-Wissen
+sickert. `application` darf `adapter/check` nicht importieren
+(depguard `application-no-adapter`), daher kann der Runner die
+existierenden `ConditionTypeXxx*`-Konstanten der Check-Files nicht
+direkt referenzieren — die Methode am Interface löst das.
 
 **Erweiterung** von `domain.Check` (architecture.md AR-012):
 
@@ -110,10 +114,19 @@ Adapter-Wissen sickert.
 type Check interface {
     Name() string
     SpecKind() string
+    ConditionType() string                     // neu (slice-M5 §2.2)
     RequiredPermissions() []PermissionRequest  // neu (slice-M5 §2.2)
     Run(ctx context.Context, spec CheckSpec) Result
 }
 ```
+
+`ConditionType()` returniert den stabilen `Result.Name`-Wert, den der
+Check auch in seinem `Run`-Pfad setzt (z. B. `KubernetesVersionReady`
+für KubernetesVersion). Der Runner nutzt das für synthetische
+Results (RBAC/Panic/Timeout/Cancel), damit die Condition-Type-Identität
+über alle Reconcile-Pfade konsistent bleibt — Anwender sehen denselben
+Condition-Type, der nur seinen `Status`/`Reason`/`Severity` wechselt,
+keine doppelten Conditions im Status pro Check.
 
 **RequiredPermissions pro M4-Check:**
 

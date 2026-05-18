@@ -50,6 +50,9 @@ func (c *IngressClass) Name() string { return CheckNameIngressClass }
 // SpecKind erfüllt das Check-Interface.
 func (c *IngressClass) SpecKind() string { return domain.IngressClassSpecKind }
 
+// ConditionType erfüllt das Check-Interface (slice-M5 §2.2).
+func (c *IngressClass) ConditionType() string { return ConditionTypeIngressClassReady }
+
 // RequiredPermissions deklariert das `list`-Recht auf
 // `networking.k8s.io/ingressclasses` (slice-M5 §2.2).
 func (c *IngressClass) RequiredPermissions() []domain.PermissionRequest {

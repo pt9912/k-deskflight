@@ -53,6 +53,9 @@ func (c *StorageClass) Name() string { return CheckNameStorageClass }
 // SpecKind erfüllt das Check-Interface.
 func (c *StorageClass) SpecKind() string { return domain.StorageClassSpecKind }
 
+// ConditionType erfüllt das Check-Interface (slice-M5 §2.2).
+func (c *StorageClass) ConditionType() string { return ConditionTypeStorageClassReady }
+
 // RequiredPermissions deklariert das `list`-Recht auf
 // `storage.k8s.io/storageclasses`. Konsistent zu den
 // `+kubebuilder:rbac:`-Markern am Reconciler; `rbac_consistency_test.go`

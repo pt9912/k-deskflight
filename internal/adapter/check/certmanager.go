@@ -58,6 +58,9 @@ func (c *CertManager) Name() string { return CheckNameCertManager }
 // SpecKind erfüllt das Check-Interface.
 func (c *CertManager) SpecKind() string { return domain.CertManagerSpecKind }
 
+// ConditionType erfüllt das Check-Interface (slice-M5 §2.2).
+func (c *CertManager) ConditionType() string { return ConditionTypeCertManagerInstalled }
+
 // RequiredPermissions liefert eine leere Slice — die API-Gruppen-
 // Discovery läuft über den `/apis`-Endpoint und ist via
 // `system:discovery`-ClusterRole automatisch freigegeben (slice-M5 §2.2).

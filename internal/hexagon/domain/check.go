@@ -108,6 +108,14 @@ type Check interface {
 	// (in der Regel identisch zu Name).
 	SpecKind() string
 
+	// ConditionType liefert den stabilen Condition-Type-String, den der
+	// Check in seinem `Run`-Result als `Name`-Feld setzt
+	// (z. B. `KubernetesVersionReady`, slice-M5 §2.2). Der Runner nutzt
+	// das für synthetische Results (RBAC/Panic/Timeout/Cancel), damit
+	// die Condition-Type-Identität über alle Reconcile-Pfade konsistent
+	// bleibt und Anwender keine doppelten Conditions sehen.
+	ConditionType() string
+
 	// RequiredPermissions deklariert die Cluster-Rechte, die der Check
 	// für seinen `Run` benötigt (slice-M5 §2.2, AR-018). Der Reconciler
 	// ruft `port.AccessReviewer.CanI` für jede zurückgegebene Permission

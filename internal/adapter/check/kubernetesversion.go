@@ -65,6 +65,11 @@ func (k *KubernetesVersion) SpecKind() string {
 	return domain.KubernetesVersionSpecKind
 }
 
+// ConditionType erfüllt das Check-Interface (slice-M5 §2.2).
+func (k *KubernetesVersion) ConditionType() string {
+	return ConditionTypeKubernetesVersionReady
+}
+
 // RequiredPermissions liefert eine leere Slice — Server-Version wird
 // über den `/version`-Discovery-Endpoint gelesen, der durch die
 // `system:discovery`-ClusterRole implizit für jeden authentifizierten
