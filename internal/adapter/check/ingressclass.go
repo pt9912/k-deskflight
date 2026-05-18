@@ -50,6 +50,14 @@ func (c *IngressClass) Name() string { return CheckNameIngressClass }
 // SpecKind erfüllt das Check-Interface.
 func (c *IngressClass) SpecKind() string { return domain.IngressClassSpecKind }
 
+// RequiredPermissions deklariert das `list`-Recht auf
+// `networking.k8s.io/ingressclasses` (slice-M5 §2.2).
+func (c *IngressClass) RequiredPermissions() []domain.PermissionRequest {
+	return []domain.PermissionRequest{
+		{Group: "networking.k8s.io", Resource: "ingressclasses", Verb: "list"},
+	}
+}
+
 // Run prüft, ob alle konfigurierten IngressClass-Namen im Cluster
 // vorhanden sind.
 func (c *IngressClass) Run(ctx context.Context, spec domain.CheckSpec) domain.Result {

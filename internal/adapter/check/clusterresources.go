@@ -57,6 +57,14 @@ func (c *ClusterResources) Name() string { return CheckNameClusterResources }
 // SpecKind erfüllt das Check-Interface.
 func (c *ClusterResources) SpecKind() string { return domain.ClusterResourcesSpecKind }
 
+// RequiredPermissions deklariert das `list`-Recht auf Core-`nodes`
+// (slice-M5 §2.2). Group ist leer für die Core-API-Gruppe.
+func (c *ClusterResources) RequiredPermissions() []domain.PermissionRequest {
+	return []domain.PermissionRequest{
+		{Group: "", Resource: "nodes", Verb: "list"},
+	}
+}
+
 // Run summiert Allocatable-CPU/Memory über alle Ready-Nodes und
 // vergleicht gegen die konfigurierten Mindestmengen.
 func (c *ClusterResources) Run(ctx context.Context, spec domain.CheckSpec) domain.Result {

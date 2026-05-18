@@ -20,8 +20,9 @@ type stubCheck struct {
 	name string
 }
 
-func (s stubCheck) Name() string                                                    { return s.name }
-func (s stubCheck) SpecKind() string                                                { return s.name }
+func (s stubCheck) Name() string                                       { return s.name }
+func (s stubCheck) SpecKind() string                                   { return s.name }
+func (s stubCheck) RequiredPermissions() []domain.PermissionRequest    { return nil }
 func (s stubCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result {
 	return domain.Result{Name: s.name, Status: domain.StatusTrue}
 }

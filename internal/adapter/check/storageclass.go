@@ -53,6 +53,16 @@ func (c *StorageClass) Name() string { return CheckNameStorageClass }
 // SpecKind erfüllt das Check-Interface.
 func (c *StorageClass) SpecKind() string { return domain.StorageClassSpecKind }
 
+// RequiredPermissions deklariert das `list`-Recht auf
+// `storage.k8s.io/storageclasses`. Konsistent zu den
+// `+kubebuilder:rbac:`-Markern am Reconciler; `rbac_consistency_test.go`
+// (slice-M5 §2.2) erzwingt die 1:1-Deckung.
+func (c *StorageClass) RequiredPermissions() []domain.PermissionRequest {
+	return []domain.PermissionRequest{
+		{Group: "storage.k8s.io", Resource: "storageclasses", Verb: "list"},
+	}
+}
+
 // Run prüft, ob alle konfigurierten StorageClass-Namen vorhanden sind
 // und ob — falls verlangt — eine Default-StorageClass markiert ist.
 func (c *StorageClass) Run(ctx context.Context, spec domain.CheckSpec) domain.Result {

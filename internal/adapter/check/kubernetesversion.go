@@ -65,6 +65,14 @@ func (k *KubernetesVersion) SpecKind() string {
 	return domain.KubernetesVersionSpecKind
 }
 
+// RequiredPermissions liefert eine leere Slice — Server-Version wird
+// über den `/version`-Discovery-Endpoint gelesen, der durch die
+// `system:discovery`-ClusterRole implizit für jeden authentifizierten
+// Aufrufer freigegeben ist (slice-M5 §2.2).
+func (k *KubernetesVersion) RequiredPermissions() []domain.PermissionRequest {
+	return nil
+}
+
 // Run führt die Versions-Discovery + Vergleich aus und liefert ein
 // normalisiertes Result. Nicht-Spec-Match wird vom Aufrufer (Registry/
 // Reconciler) abgefangen, defensiv prüfen wir hier trotzdem.

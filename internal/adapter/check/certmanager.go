@@ -58,6 +58,13 @@ func (c *CertManager) Name() string { return CheckNameCertManager }
 // SpecKind erfüllt das Check-Interface.
 func (c *CertManager) SpecKind() string { return domain.CertManagerSpecKind }
 
+// RequiredPermissions liefert eine leere Slice — die API-Gruppen-
+// Discovery läuft über den `/apis`-Endpoint und ist via
+// `system:discovery`-ClusterRole automatisch freigegeben (slice-M5 §2.2).
+func (c *CertManager) RequiredPermissions() []domain.PermissionRequest {
+	return nil
+}
+
 // Run prüft, ob die cert-manager-API-Gruppe registriert ist.
 func (c *CertManager) Run(ctx context.Context, spec domain.CheckSpec) domain.Result {
 	if _, ok := spec.(domain.CertManagerSpec); !ok || spec.Kind() != c.SpecKind() {

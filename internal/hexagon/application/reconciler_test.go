@@ -70,11 +70,14 @@ func (f *fakeRegistry) ListByProfile(
 // stubCheck liefert ein vorgegebenes Result, ohne den echten Check-
 // Code aus internal/adapter/check/ zu importieren. `kind` bleibt
 // für Tests, die nur KubernetesVersion brauchen, optional und fällt
-// auf den KubernetesVersion-SpecKind zurück.
+// auf den KubernetesVersion-SpecKind zurück. `permissions` bleibt
+// optional (Default leer) — Tests, die SAR-Pfade nicht aktivieren,
+// brauchen nichts zu setzen.
 type stubCheck struct {
-	name   string
-	kind   string
-	result domain.Result
+	name        string
+	kind        string
+	result      domain.Result
+	permissions []domain.PermissionRequest
 }
 
 func (s stubCheck) Name() string { return s.name }
@@ -84,6 +87,7 @@ func (s stubCheck) SpecKind() string {
 	}
 	return s.kind
 }
+func (s stubCheck) RequiredPermissions() []domain.PermissionRequest { return s.permissions }
 func (s stubCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result { return s.result }
 
 // recordingCheck verhält sich wie stubCheck, schreibt aber den
@@ -91,14 +95,16 @@ func (s stubCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result { re
 // Profile-Default-Tests, die verifizieren, dass der Reconciler die
 // richtigen Werte an den Check übergibt.
 type recordingCheck struct {
-	name     string
-	kind     string
-	result   domain.Result
-	received *domain.CheckSpec
+	name        string
+	kind        string
+	result      domain.Result
+	permissions []domain.PermissionRequest
+	received    *domain.CheckSpec
 }
 
-func (s *recordingCheck) Name() string     { return s.name }
-func (s *recordingCheck) SpecKind() string { return s.kind }
+func (s *recordingCheck) Name() string                                    { return s.name }
+func (s *recordingCheck) SpecKind() string                                { return s.kind }
+func (s *recordingCheck) RequiredPermissions() []domain.PermissionRequest { return s.permissions }
 func (s *recordingCheck) Run(_ context.Context, spec domain.CheckSpec) domain.Result {
 	if s.received != nil {
 		*s.received = spec

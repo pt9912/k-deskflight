@@ -108,6 +108,15 @@ type Check interface {
 	// (in der Regel identisch zu Name).
 	SpecKind() string
 
+	// RequiredPermissions deklariert die Cluster-Rechte, die der Check
+	// für seinen `Run` benötigt (slice-M5 §2.2, AR-018). Der Reconciler
+	// ruft `port.AccessReviewer.CanI` für jede zurückgegebene Permission
+	// vor dem `Run` auf; fehlende Rechte führen zu `Status: Unknown` +
+	// `Reason: RBACInsufficient`. Discovery-basierte Checks
+	// (z. B. ServerVersion, ServerGroups) brauchen keine zusätzlichen
+	// Rechte und liefern eine leere Slice.
+	RequiredPermissions() []PermissionRequest
+
 	// Run führt den Check aus und liefert ein normalisiertes Result.
 	Run(ctx context.Context, spec CheckSpec) Result
 }
