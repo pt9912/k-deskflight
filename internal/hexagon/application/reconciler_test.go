@@ -62,15 +62,43 @@ func (f *fakeRegistry) ListByProfile(
 }
 
 // stubCheck liefert ein vorgegebenes Result, ohne den echten Check-
-// Code aus internal/adapter/check/ zu importieren.
+// Code aus internal/adapter/check/ zu importieren. `kind` bleibt
+// für Tests, die nur KubernetesVersion brauchen, optional und fällt
+// auf den KubernetesVersion-SpecKind zurück.
 type stubCheck struct {
 	name   string
+	kind   string
 	result domain.Result
 }
 
-func (s stubCheck) Name() string                                              { return s.name }
-func (s stubCheck) SpecKind() string                                          { return domain.KubernetesVersionSpecKind }
-func (s stubCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result   { return s.result }
+func (s stubCheck) Name() string { return s.name }
+func (s stubCheck) SpecKind() string {
+	if s.kind == "" {
+		return domain.KubernetesVersionSpecKind
+	}
+	return s.kind
+}
+func (s stubCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result { return s.result }
+
+// recordingCheck verhält sich wie stubCheck, schreibt aber den
+// empfangenen CheckSpec in das Ziel-Pointer-Feld. Verwendet für
+// Profile-Default-Tests, die verifizieren, dass der Reconciler die
+// richtigen Werte an den Check übergibt.
+type recordingCheck struct {
+	name     string
+	kind     string
+	result   domain.Result
+	received *domain.CheckSpec
+}
+
+func (s *recordingCheck) Name() string     { return s.name }
+func (s *recordingCheck) SpecKind() string { return s.kind }
+func (s *recordingCheck) Run(_ context.Context, spec domain.CheckSpec) domain.Result {
+	if s.received != nil {
+		*s.received = spec
+	}
+	return s.result
+}
 
 func newSchemeWithAPI(t *testing.T) *runtime.Scheme {
 	t.Helper()
@@ -85,6 +113,12 @@ func newSchemeWithAPI(t *testing.T) *runtime.Scheme {
 // Default-Aktivierungs-Verhalten (Befund 1 aus Review nach Push c93683a..315b5dd):
 // Eine CR ohne expliziten checks.kubernetesVersion-Block aktiviert den
 // Check trotzdem, mit dem Default-Min aus ADR 0009 §2.2.
+//
+// Hinweis ab M4: `buildSpecMap` aktiviert per Default zusätzlich
+// cert-manager und clusterResources (slice-M4 §2.2). Dieser Test
+// registriert bewusst nur KubernetesVersion in der fakeRegistry, damit
+// die Assertion auf K8s-Version fokussiert bleibt — die Multi-Check-
+// Default-Aktivierung deckt `TestReconcileMultiCheckAllPassed` ab.
 func TestReconcileDefaultActivatesKubernetesVersion(t *testing.T) {
 	scheme := newSchemeWithAPI(t)
 
@@ -458,5 +492,272 @@ func TestReconcileSpecInvalid(t *testing.T) {
 	}
 	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "SpecInvalid" {
 		t.Fatalf("Conditions: got %+v, want one SpecInvalid entry", after.Status.Conditions)
+	}
+}
+
+// registerAllM4StubChecks ist ein Test-Helper, der die fünf MVP-Checks
+// (KubernetesVersion + die vier M4-Checks) als stubs in die fakeRegistry
+// einträgt. Jeder Stub liefert ein vorgegebenes Result-Tripel — die
+// Tests selbst wählen Status/Severity, der Helper sorgt nur für
+// Namens-Vollständigkeit.
+func registerAllM4StubChecks(reg *fakeRegistry, results map[string]domain.Result) {
+	specs := []struct {
+		name string
+		kind string
+	}{
+		{domain.KubernetesVersionSpecKind, domain.KubernetesVersionSpecKind},
+		{domain.StorageClassSpecKind, domain.StorageClassSpecKind},
+		{domain.IngressClassSpecKind, domain.IngressClassSpecKind},
+		{domain.CertManagerSpecKind, domain.CertManagerSpecKind},
+		{domain.ClusterResourcesSpecKind, domain.ClusterResourcesSpecKind},
+	}
+	for _, s := range specs {
+		reg.Register(stubCheck{
+			name:   s.name,
+			kind:   s.kind,
+			result: results[s.name],
+		})
+	}
+}
+
+// TestReconcileMultiCheckAllPassed (slice-M4 §3.3 / §7): alle aktiven
+// Checks liefern True/info → Phase=Passed, fünf Conditions, Summary
+// summiert korrekt. Sample-CR setzt StorageClass und IngressClass
+// explizit; KubernetesVersion + CertManager + ClusterResources werden
+// per Default aktiviert.
+func TestReconcileMultiCheckAllPassed(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "multi-pass",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+				StorageClass:      &preflightv1alpha1.StorageClassCheckSpec{Names: []string{"standard"}, RequireDefault: true},
+				IngressClass:      &preflightv1alpha1.IngressClassCheckSpec{Names: []string{"nginx"}},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	now := fixedClock()()
+	registry := newFakeRegistry()
+	registerAllM4StubChecks(registry, map[string]domain.Result{
+		domain.KubernetesVersionSpecKind: passedResult("KubernetesVersionReady", "KubernetesVersionReady", now),
+		domain.StorageClassSpecKind:      passedResult("StorageClassReady", "StorageClassReady", now),
+		domain.IngressClassSpecKind:      passedResult("IngressClassReady", "IngressClassReady", now),
+		domain.CertManagerSpecKind:       passedResult("CertManagerInstalled", "CertManagerInstalled", now),
+		domain.ClusterResourcesSpecKind:  passedResult("ClusterResourcesReady", "ResourcesSufficient", now),
+	})
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "multi-pass", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "multi-pass", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if after.Status.Phase != preflightv1alpha1.PhasePassed {
+		t.Errorf("Phase: got %q, want Passed", after.Status.Phase)
+	}
+	if after.Status.Summary.ChecksTotal != 5 {
+		t.Errorf("ChecksTotal: got %d, want 5 (KubernetesVersion + 4 M4 checks)", after.Status.Summary.ChecksTotal)
+	}
+	if after.Status.Summary.Passed != 5 {
+		t.Errorf("Summary.Passed: got %d, want 5", after.Status.Summary.Passed)
+	}
+	if len(after.Status.Conditions) != 5 {
+		t.Errorf("Conditions: got %d, want 5; entries=%+v", len(after.Status.Conditions), after.Status.Conditions)
+	}
+}
+
+// TestReconcileMultiCheckMixedFailed (slice-M4 §3.3 / §7): ein
+// critical-Failed kollabiert die Gesamtphase auf Failed, andere
+// Passed-Checks bleiben mit eigenen Conditions sichtbar.
+func TestReconcileMultiCheckMixedFailed(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "multi-mixed",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+				StorageClass:      &preflightv1alpha1.StorageClassCheckSpec{Names: []string{"missing-class"}},
+				IngressClass:      &preflightv1alpha1.IngressClassCheckSpec{Names: []string{"nginx"}},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	now := fixedClock()()
+	registry := newFakeRegistry()
+	registerAllM4StubChecks(registry, map[string]domain.Result{
+		domain.KubernetesVersionSpecKind: passedResult("KubernetesVersionReady", "KubernetesVersionReady", now),
+		domain.StorageClassSpecKind: {
+			Name:           "StorageClassReady",
+			Status:         domain.StatusFalse,
+			Reason:         "StorageClassMissing",
+			Severity:       domain.SeverityCritical,
+			Message:        "missing storage classes: missing-class",
+			LastTransition: now,
+		},
+		domain.IngressClassSpecKind:     passedResult("IngressClassReady", "IngressClassReady", now),
+		domain.CertManagerSpecKind:      passedResult("CertManagerInstalled", "CertManagerInstalled", now),
+		domain.ClusterResourcesSpecKind: passedResult("ClusterResourcesReady", "ResourcesSufficient", now),
+	})
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "multi-mixed", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "multi-mixed", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed (one critical fail collapses overall phase)", after.Status.Phase)
+	}
+	if after.Status.Summary.Failed != 1 {
+		t.Errorf("Summary.Failed: got %d, want 1", after.Status.Summary.Failed)
+	}
+	if after.Status.Summary.Passed != 4 {
+		t.Errorf("Summary.Passed: got %d, want 4", after.Status.Summary.Passed)
+	}
+	if len(after.Status.Conditions) != 5 {
+		t.Errorf("Conditions: got %d, want 5; entries=%+v", len(after.Status.Conditions), after.Status.Conditions)
+	}
+}
+
+// TestReconcileProfileDefaultsProduction (slice-M4 §2.3 / §3.3):
+// production-Profil setzt ClusterResources auf 4 CPU / 8Gi, wenn die
+// CR keinen expliziten Sub-Spec liefert.
+func TestReconcileProfileDefaultsProduction(t *testing.T) {
+	assertClusterResourcesDefaults(t, preflightv1alpha1.ProfileProduction,
+		domain.DefaultClusterResourcesMinCPUProduction,
+		domain.DefaultClusterResourcesMinMemoryProduction)
+}
+
+// TestReconcileProfileDefaultsEvaluation (slice-M4 §2.3 / §3.3):
+// evaluation-Profil setzt ClusterResources auf 2 CPU / 4Gi.
+func TestReconcileProfileDefaultsEvaluation(t *testing.T) {
+	assertClusterResourcesDefaults(t, preflightv1alpha1.ProfileEvaluation,
+		domain.DefaultClusterResourcesMinCPUEvaluation,
+		domain.DefaultClusterResourcesMinMemoryEvaluation)
+}
+
+func assertClusterResourcesDefaults(t *testing.T, profile preflightv1alpha1.Profile, wantCPU, wantMem string) {
+	t.Helper()
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "profile-defaults-" + string(profile),
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: profile,
+			// Bewusst leerer Checks-Block — ClusterResources soll per
+			// Profile-Default aktiviert werden.
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	var receivedSpec domain.CheckSpec
+	registry := newFakeRegistry()
+	registry.Register(&recordingCheck{
+		name:     domain.ClusterResourcesSpecKind,
+		kind:     domain.ClusterResourcesSpecKind,
+		received: &receivedSpec,
+		result: domain.Result{
+			Name:           "ClusterResourcesReady",
+			Status:         domain.StatusTrue,
+			Reason:         "ResourcesSufficient",
+			Severity:       domain.SeverityInfo,
+			LastTransition: fixedClock()(),
+		},
+	})
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	got, ok := receivedSpec.(domain.ClusterResourcesSpec)
+	if !ok {
+		t.Fatalf("recorded spec is %T, want ClusterResourcesSpec", receivedSpec)
+	}
+	if got.MinCPU != wantCPU {
+		t.Errorf("MinCPU for profile %q: got %q, want %q", profile, got.MinCPU, wantCPU)
+	}
+	if got.MinMemory != wantMem {
+		t.Errorf("MinMemory for profile %q: got %q, want %q", profile, got.MinMemory, wantMem)
+	}
+}
+
+// passedResult ist ein kleiner Test-Helper für die Multi-Check-Tests.
+func passedResult(condType, reason string, now time.Time) domain.Result {
+	return domain.Result{
+		Name:           condType,
+		Status:         domain.StatusTrue,
+		Reason:         reason,
+		Severity:       domain.SeverityInfo,
+		LastTransition: now,
 	}
 }

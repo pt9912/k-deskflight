@@ -84,12 +84,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	specs, validationErrs := buildSpecMap(runCtx, &cr.Spec.Checks)
+	profile := profileWithDefault(cr.Spec.Profile)
+	defaults := defaultsForProfile(profile)
+
+	specs, validationErrs := buildSpecMap(runCtx, &cr.Spec.Checks, defaults)
 	if len(validationErrs) > 0 {
 		return ctrl.Result{}, r.writeStatus(runCtx, &cr, r.specInvalidOutput(validationErrs))
 	}
 
-	profile := profileWithDefault(cr.Spec.Profile)
 	active, issues := r.Registry.ListByProfile(profile, specs)
 	if len(issues) > 0 {
 		return ctrl.Result{}, r.writeStatus(runCtx, &cr, r.selectionIssueOutput(issues, len(specs)))
@@ -272,37 +274,104 @@ type specError struct {
 	err   error
 }
 
+// profileDefaults bündelt die code-seitigen Defaults, die pro Profile
+// in `buildSpecMap` greifen, wenn der Anwender keine expliziten Werte
+// gesetzt hat (slice-M4 §2.3). Aktuell nur für ClusterResources
+// relevant; Storage/Ingress haben keine sinnvollen Profile-Defaults
+// (Existenz ist binär, kein Floor möglich), cert-manager ist
+// parameterlos.
+type profileDefaults struct {
+	clusterResourcesMinCPU    string
+	clusterResourcesMinMemory string
+}
+
+// defaultsForProfile mappt den Profile-String auf die zugehörigen
+// Code-Defaults. Unbekannte Profile-Werte fallen auf Production zurück
+// — das CRD-OpenAPI-Enum (`production|evaluation`) verhindert das
+// normalerweise, aber wir behalten den defensiven Pfad.
+func defaultsForProfile(profile string) profileDefaults {
+	switch profile {
+	case string(preflightv1alpha1.ProfileEvaluation):
+		return profileDefaults{
+			clusterResourcesMinCPU:    domain.DefaultClusterResourcesMinCPUEvaluation,
+			clusterResourcesMinMemory: domain.DefaultClusterResourcesMinMemoryEvaluation,
+		}
+	default:
+		return profileDefaults{
+			clusterResourcesMinCPU:    domain.DefaultClusterResourcesMinCPUProduction,
+			clusterResourcesMinMemory: domain.DefaultClusterResourcesMinMemoryProduction,
+		}
+	}
+}
+
 // buildSpecMap übersetzt die api/v1alpha1.ChecksSpec in eine
 // `map[string]domain.CheckSpec`, ruft auf jeder Sub-Spec `Validate`
 // und sammelt Fehler.
 //
-// MVP-Default: KubernetesVersion ist im MVP-Profil immer aktiv —
-// auch wenn die CR `spec: {}` oder ohne `checks`-Block angelegt wird.
-// Begründung: ADR 0009 §2.2 setzt einen normativen Min-Wert
-// (`DefaultKubernetesVersionMin`), und Roadmap §3 M3 verlangt das
-// Verhalten "spec ohne explizites kubernetesVersion läuft mit Default".
-// Der CRD-`+kubebuilder:default="1.34"` greift nur auf
-// `kubernetesVersion.min` und nicht auf das ganze `kubernetesVersion`-
-// Sub-Objekt, deshalb fängt der Reconciler den nil-Fall ab.
-// M4+ erweitert um StorageClass/IngressClass/cert-manager/Resources;
-// die Profile-Auswahl (welche Defaults für welches Profil aktiv sind)
-// kommt mit M4 in `Registry.ListByProfile`.
+// **Default-Aktivierung pro Check** (slice-M4 §2.2):
+//
+//   - KubernetesVersion: immer aktiv (ADR 0009 §2.2 — `DefaultKubernetesVersionMin`).
+//   - StorageClass: nur bei explizitem Sub-Spec.
+//   - IngressClass: nur bei explizitem Sub-Spec.
+//   - CertManager: immer aktiv (parameterlos, reine Existence-Prüfung).
+//   - ClusterResources: immer aktiv mit Profile-Defaults aus `defaults`
+//     (slice-M4 §2.3 — production 4 CPU/8Gi, evaluation 2 CPU/4Gi).
+//
+// Explizite User-Werte überschreiben Profile-Defaults feldweise; ein
+// leeres Sub-Spec `clusterResources: {}` läuft also nach wie vor mit den
+// Profile-Defaults durch. Die CRD-Schema-Defaults aus
+// `api/v1alpha1/opendeskpreflightcheck_types.go` greifen nur für
+// KubernetesVersion.Min (`"1.34"`), nicht für die M4-Felder.
 func buildSpecMap(
 	ctx context.Context,
 	checks *preflightv1alpha1.ChecksSpec,
+	defaults profileDefaults,
 ) (map[string]domain.CheckSpec, []specError) {
 	specs := make(map[string]domain.CheckSpec)
 	var errs []specError
+
+	add := func(kind string, spec domain.CheckSpec) {
+		if err := spec.Validate(ctx); err != nil {
+			errs = append(errs, specError{check: kind, err: err})
+			return
+		}
+		specs[kind] = spec
+	}
 
 	versionSpec := domain.KubernetesVersionSpec{Min: domain.DefaultKubernetesVersionMin}
 	if checks.KubernetesVersion != nil && checks.KubernetesVersion.Min != "" {
 		versionSpec.Min = checks.KubernetesVersion.Min
 	}
-	if err := versionSpec.Validate(ctx); err != nil {
-		errs = append(errs, specError{check: domain.KubernetesVersionSpecKind, err: err})
-	} else {
-		specs[domain.KubernetesVersionSpecKind] = versionSpec
+	add(domain.KubernetesVersionSpecKind, versionSpec)
+
+	if checks.StorageClass != nil {
+		add(domain.StorageClassSpecKind, domain.StorageClassSpec{
+			Names:          append([]string(nil), checks.StorageClass.Names...),
+			RequireDefault: checks.StorageClass.RequireDefault,
+		})
 	}
+
+	if checks.IngressClass != nil {
+		add(domain.IngressClassSpecKind, domain.IngressClassSpec{
+			Names: append([]string(nil), checks.IngressClass.Names...),
+		})
+	}
+
+	add(domain.CertManagerSpecKind, domain.CertManagerSpec{})
+
+	resourcesSpec := domain.ClusterResourcesSpec{
+		MinCPU:    defaults.clusterResourcesMinCPU,
+		MinMemory: defaults.clusterResourcesMinMemory,
+	}
+	if checks.ClusterResources != nil {
+		if v := checks.ClusterResources.MinCPU; v != "" {
+			resourcesSpec.MinCPU = v
+		}
+		if v := checks.ClusterResources.MinMemory; v != "" {
+			resourcesSpec.MinMemory = v
+		}
+	}
+	add(domain.ClusterResourcesSpecKind, resourcesSpec)
 
 	if len(errs) > 0 {
 		return specs, errs
