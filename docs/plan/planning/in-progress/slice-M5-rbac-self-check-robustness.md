@@ -34,14 +34,20 @@ ist als Pflicht-Konvention im Status- und Log-Pfad verankert
   Reconciler-Outer-Recover. Einzelne Check-Fehler erzeugen `Unknown`,
   nicht Abbruch (`LH-NF-005`, `LH-AK-010`).
 - [x] Per-Check-Timeout (`AR-009 §4 Step 4`): Hänger einzelner Checks
-  blockieren den Reconcile nicht. **Cause-aware** Klassifikation
-  (Review-Befund 2): `DeadlineExceeded` → Reason `Timeout` (critical),
-  `Canceled` → Reason `ReconcileCanceled` (info).
+  blockieren den Reconcile nicht. **Cause-aware** Klassifikation über
+  `context.WithTimeoutCause` + `context.Cause(runCtx)`: unser eigener
+  Per-Check-Deadline → Reason `Timeout` (critical), ererbter
+  Parent-Deadline → Reason `ReconcileTimeout` (critical), Cancel →
+  Reason `ReconcileCanceled` (info). **Race-Härtung** beim
+  `<-resultCh`-Fall: bei gleichzeitigem Context-End gewinnt die
+  Context-Klassifikation gegen das Check-Result (Folge-Review).
 - [x] Secret-Output-Filter aktiv (`LH-SEC-002`, `LH-NF-007`,
-  `LH-AK-012`) — Tests prüfen, dass kein Secret-Inhalt in
-  Logs/Events/Status landet. Im MVP gibt es noch keine externen
-  Secrets (`ADR 0010`), der Filter ist als Pflicht-Hook für v0.2
-  verankert.
+  `LH-AK-012`) — **zwei** Hook-Funktionen: `SanitizeMessage` (String-
+  Pfad für Status-/Event-Texte) und `SanitizeAttrs` (Attribut-Pfad
+  für `slog.LogAttrs`, Folge-Review). Tests prüfen, dass kein
+  Secret-Inhalt in Logs/Events/Status landet — inkl. strukturierter
+  slog-Attrs. Im MVP gibt es noch keine externen Secrets
+  (`ADR 0010`), die Hooks sind Identitäts-Stubs für v0.2.
 - [x] Keine destruktiven Aktionen (`LH-SEC-005`) — verbleibt
   Konventions-Item, Tests verifizieren via depguard-Profil und
   RBAC-Audit.
@@ -293,50 +299,93 @@ Slice-M5 nutzt einen **hartkodierten 30 s-Default** (AR-009 §4 Step 4
 Default-Wert). Kein Env-Override in M5 — der gehört zu `AR-010.1`
 zusammen mit `OPERATOR_STRICT_CONFIG` und kommt v0.2.
 
-**`runCtx.Done()`-Diskriminierung** (Review-Befund 2): `runCtx =
-context.WithTimeout(parentCtx, 30s)` schließt zwei verschiedene
-Ende-Ursachen ein — ein echter Per-Check-Timeout
-(`context.DeadlineExceeded`) und ein Parent-Cancel
-(`context.Canceled`, z. B. Operator-Shutdown, Manager-Stop). Beide
-liefern wir nicht als denselben `Timeout`-Reason; stattdessen
-unterscheiden wir nach `runCtx.Err()`:
+**Drei Ende-Ursachen** unterscheiden (Review-Befund 2 + Folge-
+Review): `runCtx = context.WithTimeoutCause(parentCtx, 30s,
+errPerCheckTimeout)` erbt vom Parent und kann auf drei Wegen
+beendet werden — unseren eigenen Per-Check-Deadline (Sentinel
+`errPerCheckTimeout`), eine ererbte Parent-Deadline
+(`RECONCILE_TIMEOUT_SECONDS` oder ein orchestrierter
+Aufrufer-Deadline), oder ein expliziter Parent-Cancel
+(Operator-Shutdown, Manager-Stop). Wir differenzieren über
+`context.Cause(runCtx)` plus `runCtx.Err()`:
 
-| `runCtx.Err()` | Reason | Severity | Begründung |
-| -------------- | ------ | -------- | ---------- |
-| `context.DeadlineExceeded` | `Timeout` | `critical` | echte Hänger im Check, Anwender muss handeln |
-| `context.Canceled` (parent-cancel) | `ReconcileCanceled` | `info` | Operator-Shutdown / Manager-Stop; kein Fehler im Check, Reconcile wird sowieso neu geplant |
+| `runCtx.Err()` | `context.Cause(runCtx)` | Reason | Severity | Begründung |
+| -------------- | ----------------------- | ------ | -------- | ---------- |
+| `DeadlineExceeded` | `errPerCheckTimeout` | `Timeout` | `critical` | echter Hänger im Check, Anwender muss handeln |
+| `DeadlineExceeded` | sonst (Parent-Deadline) | `ReconcileTimeout` | `critical` | übergeordnete Reconcile-Frist ausgelaufen, Operator/Cluster zu langsam |
+| `Canceled` | beliebig | `ReconcileCanceled` | `info` | Operator-Shutdown / Manager-Stop; kein Fehler im Check, Reconcile wird neu geplant |
 
-Severity `info` bei `ReconcileCanceled` heißt: das Phase-Mapping
+`Severity` `info` bei `ReconcileCanceled` heißt: das Phase-Mapping
 über `AR-014` schwenkt auf `Warning` (mindestens ein non-passed-
 Result), aber der Aggregator-Eintrag in `Summary.Warning` macht es
-nicht zu einem `Failed`. Operatoren sehen damit explizit „abgebrochen
-vor Abschluss" statt „durchgelaufen mit Fehler".
+nicht zu einem `Failed`. Operatoren sehen damit explizit
+„abgebrochen vor Abschluss" statt „durchgelaufen mit Fehler".
+
+`Severity` `critical` bei `ReconcileTimeout` ist absichtlich gleich
+zu `Timeout` — die Differenzierung dient der Diagnose (welcher Layer
+hat das Limit ausgelöst), nicht dem Phase-Mapping.
+
+**Race-Härtung beim `<-resultCh`-Fall** (Review-Befund 1): wenn
+`check.Run` exakt zum Timeout-Zeitpunkt fertig wird, hat Go-`select`
+nicht-deterministische Auswahl zwischen `resultCh` und
+`runCtx.Done()`. Wir validieren nach `<-resultCh` deshalb zusätzlich
+`runCtx.Err()` — wenn der Context bereits in `Done`-Zustand ist,
+gewinnt die Context-Klassifikation (`Timeout` /
+`ReconcileTimeout` / `ReconcileCanceled`) gegen das vermeintliche
+Check-Result. Damit ist die Klassifikation stabil unabhängig vom
+exakten Scheduler-Verhalten.
 
 Mechanik (`runWithTimeout` in `runner.go`):
 
 ```go
-runCtx, cancel := context.WithTimeout(parentCtx, checkTimeout)
-defer cancel()
-resultCh := make(chan domain.Result, 1)
-go func() {
-    defer func() {
-        if r := recover(); r != nil {
-            // Late-Recover-Pfad — Goroutine darf nicht abrauchen.
-            // Outer recover in runCheckSafely fängt den
-            // Hauptpfad bereits; dieser hier ist defensive Tiefe.
-            resultCh <- internalErrorResult(check)
-        }
+var errPerCheckTimeout = errors.New("per-check timeout exceeded")
+
+func runWithTimeout(
+    parentCtx context.Context,
+    check domain.Check,
+    spec domain.CheckSpec,
+    checkTimeout time.Duration,
+) domain.Result {
+    runCtx, cancel := context.WithTimeoutCause(parentCtx, checkTimeout, errPerCheckTimeout)
+    defer cancel()
+    resultCh := make(chan domain.Result, 1)
+    go func() {
+        defer func() {
+            if r := recover(); r != nil {
+                // Late-Recover-Pfad — Goroutine darf nicht abrauchen.
+                // runCheckSafely fängt den Hauptpfad; dieser ist
+                // defensive Tiefe.
+                resultCh <- internalErrorResult(check)
+            }
+        }()
+        resultCh <- check.Run(runCtx, spec)
     }()
-    resultCh <- check.Run(runCtx, spec)
-}()
-select {
-case res := <-resultCh:
-    return res
-case <-runCtx.Done():
-    if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-        return timeoutResult(check, checkTimeout)
+    select {
+    case res := <-resultCh:
+        // Race-Härtung: wenn Context-End genau zur gleichen Zeit kam,
+        // gewinnt die Context-Klassifikation gegen das Check-Result.
+        if runCtx.Err() != nil {
+            return classifyContextEnd(check, runCtx, checkTimeout)
+        }
+        return res
+    case <-runCtx.Done():
+        return classifyContextEnd(check, runCtx, checkTimeout)
     }
-    return reconcileCanceledResult(check)
+}
+
+func classifyContextEnd(check domain.Check, runCtx context.Context, t time.Duration) domain.Result {
+    switch {
+    case errors.Is(runCtx.Err(), context.DeadlineExceeded):
+        if errors.Is(context.Cause(runCtx), errPerCheckTimeout) {
+            return timeoutResult(check, t)
+        }
+        return reconcileTimeoutResult(check)
+    case errors.Is(runCtx.Err(), context.Canceled):
+        return reconcileCanceledResult(check)
+    default:
+        // Soll nicht passieren — defensiv als InternalError.
+        return internalErrorResult(check)
+    }
 }
 ```
 
@@ -347,27 +396,67 @@ AR-009 §4 Worker-Pool-Variante; M5 macht sequenziell pro Check.
 
 Reason-Code-Konstanten:
 
-- `reasonCheckTimeout = "Timeout"`
-- `reasonReconcileCanceled = "ReconcileCanceled"`
+- `reasonCheckTimeout = "Timeout"` (eigener Per-Check-Deadline)
+- `reasonReconcileTimeout = "ReconcileTimeout"` (Parent-Deadline)
+- `reasonReconcileCanceled = "ReconcileCanceled"` (Cancel)
 - `reasonInternalError = "InternalError"` (Panic-Pfad, §2.4)
 
 ### 2.6 Secret-Output-Filter als Pflicht-Hook
 
 Verankerung statt Implementation: im MVP gibt es keine externen
-Secrets (ADR 0010), also gibt es nichts zu filtern. Der Filter ist
-eine `application/secret_filter.go`-Funktion `SanitizeMessage(msg
-string) string`, die in M5 die Identitätsfunktion ist (return msg),
-aber an drei Pflicht-Aufrufstellen läuft:
+Secrets (ADR 0010), also gibt es nichts zu filtern. Das
+`application/secret_filter.go`-Modul exponiert **zwei** Hook-
+Funktionen, die in M5 jeweils Identitäts-Stubs sind, in v0.2 aber
+echte Maskierung übernehmen:
 
-- Vor jedem `Status().Update`-Call im Reconciler.
-- Vor jedem `slog.*`-Call mit Message-Inhalt aus Check-Results.
-- Vor jedem K8s-Event (sobald wir Events schreiben — aktuell nicht
-  im MVP).
+- `SanitizeMessage(msg string) string` — String-Pfad für
+  `Result.Message`, `Condition.Message`, Event-Message-Texte.
+- `SanitizeAttrs(attrs ...slog.Attr) []slog.Attr` — Attribut-Pfad
+  für `slog.LogAttrs`. Iteriert die Attrs und maskiert
+  Value-Inhalte (`slog.AnyValue`, `slog.StringValue` etc.) gemäß
+  derselben Pattern wie `SanitizeMessage`. **Wichtig** (Review-
+  Befund 3): strukturierte Observability darf nicht am Filter
+  vorbei vertrauliche Werte loggen, daher braucht es einen
+  Attribut-bewussten Hook neben dem reinen String-Hook.
 
-Tests fixieren das Aufruf-Pattern (Mock-Sanitizer zählt
-Invocations). v0.2 ersetzt die Identität durch eine echte
-Secret-Pattern-Maskierung; das Pflicht-Hook-Pattern verhindert, dass
-Aufrufstellen vergessen werden.
+Plus ein Wrapper für den heißen Pfad:
+
+- `LogResult(logger *slog.Logger, level slog.Level, msg string,
+  result domain.Result, extra ...slog.Attr)` — kombiniert beide
+  Hooks: sanitized den Message-String, sanitized die Attrs (sowohl
+  abgeleitete aus `Result` als auch zusätzliche aus `extra`), und
+  ruft dann `logger.LogAttrs(level, …)`. Pflicht für jeden Log-Call,
+  der Check-Result-Daten oder externe Inputs durchreicht (z. B.
+  Panic-Stack, SAR-Error-Wrap, RBACCheckFailed-Detail).
+
+**Pflicht-Aufrufstellen in M5:**
+
+| Stelle | Hook | Begründung |
+| ------ | ---- | ---------- |
+| Vor jedem `Status().Update`-Call im Reconciler | `SanitizeMessage` auf `Condition.Message` und `Summary`-Felder | Status landet im CR und wird vom User gelesen |
+| Panic-Recovery in `runCheckSafely` und Goroutine in `runWithTimeout` | `SanitizeAttrs` auf `slog.Any("recover", r)` und `slog.Any("stack", debug.Stack())` | recover-Wert ist `interface{}` aus dem Check, könnte beliebige Werte enthalten |
+| RBACCheckFailed-Logger in §2.3 | `SanitizeAttrs` auf `slog.Any("err", err)` | SAR-Error könnte API-Response-Body mit Token-Echo enthalten |
+| Per-Reconcile-Summary-Log am Ende von `Reconcile` | `LogResult` pro Result, sanitized Message + Attrs | konsolidiert die Result-Sicht für Oncall |
+| Künftige K8s-Events (außerhalb M5) | `SanitizeMessage` | Events sind über `kubectl describe` sichtbar |
+
+Tests in `secret_filter_test.go` fixieren das Aufruf-Pattern (Mock-
+Sanitizer zählt Invocations und prüft, dass alle Pflicht-Stellen
+durchlaufen). Zusätzlich verifiziert ein Konventions-Test, dass
+keine direkten `logger.Info(..., "key", value)`-Calls mit
+Result-/Check-Daten im neuen Code stehen — alle gehen über
+`LogResult` oder explizite Sanitize-Calls.
+
+**Erwartung an aktuellen M4-Reconciler-Logger-Stand:** der
+existierende `logger.Info("reconciled", "name", req.Name, …)`-Call
+in `Reconcile()` ist sicher (Namespace/Name sind keine Secrets,
+Phase/Counters sind aggregierte Counts). M5 lässt diesen Call
+unverändert; die Sanitize-Pflicht greift für die **neuen** Log-
+Calls aus §2.3 (RBACCheckFailed), §2.4 (Panic-Recovery) und §2.6
+(Per-Result-Log).
+
+v0.2 ersetzt die Identität durch echte Secret-Pattern-Maskierung
+(z. B. Bearer-Token-Muster, Base64-Blob-Heuristik); das Pflicht-
+Hook-Pattern verhindert, dass Aufrufstellen vergessen werden.
 
 ### 2.7 Keine destruktiven Aktionen als depguard-Test
 
@@ -397,7 +486,7 @@ existieren. CR/Status-Update-Verben sind whitelisted (LH-F-004).
 | `internal/hexagon/port/access_review.go` | `port.AccessReviewer`-Interface mit `CanI(ctx, PermissionRequest) (bool, error)`. |
 | `internal/adapter/k8s/access_review.go` | `AccessReviewAdapter` implementiert `port.AccessReviewer` via `kubernetes.Interface.AuthorizationV1().SelfSubjectAccessReviews().Create`. Mapping `PermissionRequest` → `authorizationv1.ResourceAttributes`. |
 | `internal/hexagon/application/runner.go` | Sequentielle Check-Runner-Helper `runWithTimeout(ctx, check, spec, timeout)` mit per-Check-Recover (slice-M5 §2.4) und 30s-Default-Timeout (§2.5). Verlagert die `runChecks`-Logik aus `reconciler.go` und ergänzt SAR-Pre-Execution-Pfad (§2.3). |
-| `internal/hexagon/application/secret_filter.go` | `SanitizeMessage(msg string) string` — in M5 Identitätsfunktion; Pflicht-Hook für v0.2 (§2.6). |
+| `internal/hexagon/application/secret_filter.go` | Zwei Identitäts-Hooks plus ein Wrapper für M5 (§2.6): `SanitizeMessage(msg string) string` für String-Pfade (Status, Events), `SanitizeAttrs(attrs ...slog.Attr) []slog.Attr` für strukturierte `slog`-Attribute, und `LogResult(logger, level, msg, result, extra...)` als Pflicht-Aufruf für Result-bezogene Logs. Implementierungen sind in M5 Identität, v0.2 hebt sie auf echte Pattern-Maskierung. |
 | `internal/hexagon/application/destructive_audit_test.go` | Code-Audit-Test gegen `+kubebuilder:rbac:`-Marker im Reconciler, verifiziert `LH-SEC-005` (§2.7). |
 | `internal/hexagon/application/rbac_consistency_test.go` | Konsistenz-Test (Review-Befund 4): vergleicht die `+kubebuilder:rbac:`-Marker am Reconciler gegen die `RequiredPermissions()` aller registrierten Checks. Fehler bei Drift in beide Richtungen. Shared `go/parser`-Helper mit `destructive_audit_test.go`. |
 
@@ -533,9 +622,14 @@ Vorbereitet, aktiv ab späterer Slice:
    Reconciler-Outer-Panic via `reconciler_test.go` (Phase=Unknown,
    Condition=ReconcileError, Reason=ReconcilePanic).
 10. **`LH-AK-012` Keine Secret-Leaks** — `secret_filter_test.go`
-    fixiert das Aufruf-Pattern; alle Check-Tests verifizieren, dass
-    Result.Message keine secret-typischen Substrings enthält
-    (defensive Pflicht-Konvention).
+    fixiert das Aufruf-Pattern für **beide** Hooks: `SanitizeMessage`
+    auf Status-/Event-Pfaden, `SanitizeAttrs` auf allen neuen
+    `slog.LogAttrs`-Calls (Panic-Recovery in §2.4, RBACCheckFailed in
+    §2.3, Per-Result-Summary in §2.6). Mock-Sanitizer zählt
+    Invocations und prüft, dass alle Pflicht-Stellen durchlaufen.
+    Konventions-Test verifiziert zusätzlich, dass keine
+    `logger.Info(..., key, value)`-Calls mit Result-/Check-Daten am
+    Filter vorbei gehen.
 11. **`LH-AK-015` Minimalrechte dokumentiert** — Konsistenz zwischen
     den `RequiredPermissions`-Returns (§2.2) und den
     `+kubebuilder:rbac:`-Markern am Reconciler ist via
@@ -602,6 +696,20 @@ Vorbereitet, aktiv ab späterer Slice:
   bricht den parent-Context ab, der Goroutine sieht das. Worker-
   Leaks bleiben theoretisch möglich, sind aber von M5-`runner`-
   Tests abgedeckt.
+- **Go-`select`-Race im `runWithTimeout`-Wrapper** (Folge-Review-
+  Befund 1): Wenn `check.Run` exakt zum Timeout-Zeitpunkt fertig
+  wird, ist die Auswahl zwischen `<-resultCh` und `<-runCtx.Done()`
+  nicht-deterministisch. Mitigation: nach `<-resultCh` validieren
+  wir zusätzlich `runCtx.Err()` — bei Context-End gewinnt die
+  Context-Klassifikation. Damit ist die Reason-Klassifikation
+  unabhängig vom exakten Scheduler-Verhalten.
+- **Strukturierte slog-Attrs am Sanitize-Filter vorbei** (Folge-
+  Review-Befund 3): `SanitizeMessage(msg string) string` alleine
+  fängt keine Werte aus `slog.Any(...)`-Attrs. Mitigation: zweiter
+  Hook `SanitizeAttrs(...slog.Attr) []slog.Attr` plus ein
+  `LogResult`-Wrapper als Pflicht-Aufruf. Konventions-Test verbietet
+  direkte `logger.Info(..., key, value)`-Calls mit
+  Result-/Check-Daten.
 - **Panic-Recovery maskiert echte Programmierfehler:** ein recover
   in `runner.go` verhindert, dass ein Panic den Operator beendet
   — gut für `LH-AK-010` Robustheit, schlecht für
