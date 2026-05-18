@@ -89,7 +89,7 @@ func TestRunCheckSafelyPassedNoPermissions(t *testing.T) {
 	}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Status != domain.StatusTrue || got.Reason != "KubernetesVersionReady" {
 		t.Errorf("got %+v, want passed", got)
@@ -122,7 +122,7 @@ func TestRunCheckSafelyRBACInsufficient(t *testing.T) {
 	}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if runCalled {
 		t.Errorf("check.Run must NOT be called when permissions denied")
@@ -163,7 +163,7 @@ func TestRunCheckSafelyRBACCheckFailed(t *testing.T) {
 	}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Reason != "RBACCheckFailed" {
 		t.Errorf("Reason: got %q, want RBACCheckFailed", got.Reason)
@@ -197,7 +197,7 @@ func TestRunCheckSafelyCheckFailedPrecedence(t *testing.T) {
 	}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Reason != "RBACCheckFailed" {
 		t.Errorf("Reason: got %q, want RBACCheckFailed (failed > denied precedence)", got.Reason)
@@ -226,7 +226,7 @@ func TestRunCheckSafelyPanicInCanI(t *testing.T) {
 	}()
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Reason != "InternalError" {
 		t.Errorf("Reason: got %q, want InternalError", got.Reason)
@@ -249,7 +249,7 @@ func TestRunCheckSafelyPanicInRun(t *testing.T) {
 	}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Reason != "InternalError" {
 		t.Errorf("Reason: got %q, want InternalError", got.Reason)
@@ -286,7 +286,7 @@ func TestRunCheckSafelyParentDeadlineExceeded(t *testing.T) {
 	defer cancel()
 
 	got := application.RunCheckSafely(
-		ctx, nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime())
+		ctx, nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Reason != "ReconcileTimeout" {
 		t.Errorf("Reason: got %q, want ReconcileTimeout (Parent-Deadline)", got.Reason)
@@ -317,7 +317,7 @@ func TestRunCheckSafelyParentCancel(t *testing.T) {
 	}()
 
 	got := application.RunCheckSafely(
-		ctx, nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime())
+		ctx, nil, &fakeReviewer{}, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Reason != "ReconcileCanceled" {
 		t.Errorf("Reason: got %q, want ReconcileCanceled", got.Reason)
@@ -349,7 +349,7 @@ func TestRunCheckSafelyConditionTypeFromCheck(t *testing.T) {
 	}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	if got.Name != "StorageClassReady" {
 		t.Errorf("Result.Name: got %q, want %q (Check.ConditionType, NICHT Spec-Kind)",
@@ -376,8 +376,8 @@ func TestPermissionCacheDedupesSameRequest(t *testing.T) {
 	}
 
 	cache := application.NewPermissionCache()
-	application.RunCheckSafely(context.Background(), nil, rev, cache, chk1, nil, fixedTime())
-	application.RunCheckSafely(context.Background(), nil, rev, cache, chk2, nil, fixedTime())
+	application.RunCheckSafely(context.Background(), nil, rev, cache, chk1, nil, fixedTime(), 0)
+	application.RunCheckSafely(context.Background(), nil, rev, cache, chk2, nil, fixedTime(), 0)
 
 	if got := rev.calls.Load(); got != 1 {
 		t.Errorf("CanI calls: got %d, want 1 (cache dedupe)", got)
@@ -400,7 +400,7 @@ func TestRunCheckSafelyLastTransitionUsesClock(t *testing.T) {
 	chk := &runnerCheck{name: "c", conditionType: "CReady", perms: []domain.PermissionRequest{perm}}
 
 	got := application.RunCheckSafely(
-		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime())
+		context.Background(), nil, rev, application.NewPermissionCache(), chk, nil, fixedTime(), 0)
 
 	want := time.Date(2026, time.May, 18, 12, 0, 0, 0, time.UTC)
 	if !got.LastTransition.Equal(want) {

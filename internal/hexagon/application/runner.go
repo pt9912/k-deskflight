@@ -71,6 +71,10 @@ func NewPermissionCache() PermissionCache {
 // nicht den Reconciler-Outer-Recover triggert, sondern nur den
 // betroffenen Check auf `Unknown`/`InternalError` degradiert.
 //
+// `checkTimeout = 0` fällt auf `defaultCheckTimeout` zurück (30 s,
+// slice-M5 §2.5). Tests, die den Per-Check-Timeout-Pfad ausüben
+// wollen, übergeben einen kürzeren Wert.
+//
 // Outcome-Reihenfolge (slice-M5 §2.3):
 //
 //  1. `RBACCheckFailed` gewinnt vor `RBACInsufficient` — Auth-
@@ -86,6 +90,7 @@ func RunCheckSafely(
 	check domain.Check,
 	spec domain.CheckSpec,
 	now func() time.Time,
+	checkTimeout time.Duration,
 ) (res domain.Result) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -102,6 +107,10 @@ func RunCheckSafely(
 		}
 	}()
 
+	if checkTimeout <= 0 {
+		checkTimeout = defaultCheckTimeout
+	}
+
 	insufficient, checkFailed := classifyPermissions(ctx, logger, reviewer, cache, check)
 	switch {
 	case len(checkFailed) > 0:
@@ -110,7 +119,7 @@ func RunCheckSafely(
 		return rbacInsufficientResult(check, insufficient, now())
 	}
 
-	return runWithTimeout(ctx, check, spec, defaultCheckTimeout, now)
+	return runWithTimeout(ctx, check, spec, checkTimeout, now)
 }
 
 // classifyPermissions iteriert die `RequiredPermissions` eines Checks

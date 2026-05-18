@@ -13,6 +13,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -21,11 +23,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	preflightv1alpha1 "github.com/pt9912/k-deskflight/api/v1alpha1"
 	"github.com/pt9912/k-deskflight/internal/hexagon/domain"
 	"github.com/pt9912/k-deskflight/internal/hexagon/port"
+)
+
+// Reconciler-Konstanten für Outer-Recover-Pfade (slice-M5 §2.4).
+const (
+	conditionTypeReconcileError = "ReconcileError"
+	reasonReconcilePanic        = "ReconcilePanic"
 )
 
 // defaultReconcileTimeout deckelt einen Reconcile-Lauf
@@ -36,14 +43,37 @@ const defaultReconcileTimeout = 120 * time.Second
 
 // Reconciler reconciles OpenDeskPreflightCheck resources
 // (architecture.md AR-009). M3 implementiert die Phasen 1+3+4
-// (sequenziell, ohne Worker-Pool) + 5 + 6. Voller AR-009-Pfad
-// (Worker-Pool, Panic-Boundary, Cross-Constraint-Härtung) kommt
-// mit M5.
+// (sequenziell, ohne Worker-Pool) + 5 + 6. Mit M5 kommen
+// Per-Check-Timeout, SAR-Pre-Execution, Per-Check- und Outer-Recover
+// sowie Secret-Sanitize-Hooks dazu. Voller AR-009-Pfad mit
+// Worker-Pool + OPERATOR_STRICT_CONFIG bleibt v0.2.
 type Reconciler struct {
 	client.Client
+
 	Scheme   *runtime.Scheme
 	Registry port.CheckRegistry
-	Now      func() time.Time
+
+	// AccessReviewer prüft Cluster-Rechte pro Check vor dem Run
+	// (slice-M5 §2.3). Nil-safe für Tests, die keine Permissions
+	// auf ihren Stubs deklarieren — wenn ein Check `RequiredPermissions`
+	// liefert, MUSS `AccessReviewer` gesetzt sein (sonst panickt der
+	// CanI-Call und wird vom Per-Check-Recover als InternalError
+	// klassifiziert).
+	AccessReviewer port.AccessReviewer
+
+	// Logger ist der strukturierte Logger für Reconcile-Diagnose,
+	// SAR-Fehler, Panic-Traces und Per-Result-Summary (slice-M5 §2.6).
+	// Nil fällt auf `slog.Default()` zurück, damit M3/M4-Tests keine
+	// Setup-Pflicht haben.
+	Logger *slog.Logger
+
+	// CheckTimeout deckelt einen einzelnen Check-Lauf (slice-M5 §2.5).
+	// `0` fällt auf den 30 s-Default (`runner.go.defaultCheckTimeout`).
+	// Tests, die den Per-Check-Timeout-Pfad ausüben, setzen einen
+	// kürzeren Wert.
+	CheckTimeout time.Duration
+
+	Now func() time.Time
 }
 
 // +kubebuilder:rbac:groups=k-deskflight.geo-terrain.net,resources=opendeskpreflightchecks,verbs=get;list;watch
@@ -56,19 +86,57 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 
 // Reconcile implements the controller-runtime Reconcile interface.
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
+// Outer-defer-recover am Anfang (slice-M5 §2.4): jeder Panic, der
+// vom Per-Check-Recover in `runner.go` nicht abgefangen wurde (z. B.
+// in `buildSpecMap`, im Aggregator, in `writeStatus`), landet hier
+// und endet als Phase=Unknown + Condition=ReconcileError + Reason=
+// ReconcilePanic, sofern das CR-Objekt schon geladen ist. Andernfalls
+// wird der Panic nur geloggt und der Reconcile mit Fehler beendet
+// (controller-runtime re-queued).
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	runCtx, cancel := context.WithTimeout(ctx, defaultReconcileTimeout)
 	defer cancel()
 
 	var cr preflightv1alpha1.OpenDeskPreflightCheck
+	var crLoaded bool
+
+	defer func() {
+		rec := recover()
+		if rec == nil {
+			return
+		}
+		r.logger().LogAttrs(ctx, slog.LevelError, "panic recovered in Reconcile",
+			SanitizeAttrs(
+				slog.String("name", req.Name),
+				slog.String("namespace", req.Namespace),
+				slog.Any("recover", rec),
+				slog.String("stack", string(debug.Stack())),
+			)...,
+		)
+		retErr = fmt.Errorf("reconcile panic: %v", rec)
+		result = ctrl.Result{}
+
+		// Best-effort: Status auf Unknown + ReconcileError schreiben,
+		// falls der CR bereits geladen ist. Ein erneuter Panic im
+		// writeStatus-Pfad wird mit einem zweiten inneren Recover
+		// stumm gefangen, damit der Reconciler nicht in einer
+		// Panic-Schleife landet.
+		if !crLoaded {
+			return
+		}
+		func() {
+			defer func() { _ = recover() }()
+			_ = r.writeStatus(runCtx, &cr, r.reconcilePanicOutput(rec))
+		}()
+	}()
+
 	if err := r.Get(runCtx, req.NamespacedName, &cr); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get OpenDeskPreflightCheck: %w", err)
 	}
+	crLoaded = true
 
 	if r.isAlreadyReconciled(&cr) {
 		return ctrl.Result{}, nil
@@ -104,15 +172,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	results := r.runChecks(runCtx, active, specs)
 	out := Aggregate(results, r.now())
 
-	logger.Info("reconciled",
-		"name", req.Name,
-		"namespace", req.Namespace,
-		"phase", out.Phase,
-		"generation", cr.Generation,
-		"checksTotal", out.Summary.ChecksTotal,
-		"failed", out.Summary.Failed,
-		"warning", out.Summary.Warning,
-		"unknown", out.Summary.Unknown,
+	// Per-Result-Diagnose-Log (slice-M5 §2.6, Folge-Review-Befund 3):
+	// jeder Result-Eintrag wandert über LogResult, damit beide
+	// Sanitize-Hooks (Message + Attrs) anliegen.
+	for _, res := range results {
+		LogResult(runCtx, r.logger(), slog.LevelInfo, "check result",
+			res,
+			slog.String("name", req.Name),
+			slog.String("namespace", req.Namespace),
+		)
+	}
+
+	r.logger().LogAttrs(runCtx, slog.LevelInfo, "reconciled",
+		SanitizeAttrs(
+			slog.String("name", req.Name),
+			slog.String("namespace", req.Namespace),
+			slog.String("phase", string(out.Phase)),
+			slog.Int64("generation", cr.Generation),
+			slog.Int("checksTotal", int(out.Summary.ChecksTotal)),
+			slog.Int("passed", int(out.Summary.Passed)),
+			slog.Int("failed", int(out.Summary.Failed)),
+			slog.Int("warning", int(out.Summary.Warning)),
+			slog.Int("unknown", int(out.Summary.Unknown)),
+		)...,
 	)
 
 	return ctrl.Result{}, r.writeStatus(runCtx, &cr, out)
@@ -131,6 +213,15 @@ func (r *Reconciler) now() time.Time {
 		return r.Now()
 	}
 	return time.Now()
+}
+
+// logger returns the configured slog logger or the default; nil-safe
+// for tests, die keinen Logger inject (slice-M5 §2.6).
+func (r *Reconciler) logger() *slog.Logger {
+	if r.Logger != nil {
+		return r.Logger
+	}
+	return slog.Default()
 }
 
 // isAlreadyReconciled überspringt den Reconcile, wenn die aktuelle
@@ -159,18 +250,25 @@ func (r *Reconciler) isAlreadyReconciled(cr *preflightv1alpha1.OpenDeskPreflight
 	return false
 }
 
+// runChecks orchestriert die Check-Pipeline via `RunCheckSafely`
+// (slice-M5 §2.3, §2.4, §2.5): SAR-Pre-Execution, Per-Check-Recover,
+// Per-Check-Timeout. Ein Run-lokaler `PermissionCache` dedupliziert
+// SAR-Calls; mehrere Checks mit derselben Permission teilen sich das
+// Ergebnis.
 func (r *Reconciler) runChecks(
 	ctx context.Context,
 	active []domain.Check,
 	specs map[string]domain.CheckSpec,
 ) []domain.Result {
+	cache := NewPermissionCache()
 	results := make([]domain.Result, 0, len(active))
 	for _, check := range active {
 		spec, ok := specs[check.Name()]
 		if !ok {
 			continue
 		}
-		results = append(results, check.Run(ctx, spec))
+		res := RunCheckSafely(ctx, r.logger(), r.AccessReviewer, cache, check, spec, r.now, r.CheckTimeout)
+		results = append(results, res)
 	}
 	return results
 }
@@ -199,6 +297,11 @@ func (r *Reconciler) markPhase(
 // writeStatus persistiert das AggregationOutput in den CR-Status
 // (AR-009 Phase 6). ObservedGeneration wird auf
 // metadata.generation gehoben.
+//
+// **Sanitize-Pflicht** (slice-M5 §2.6): vor jedem `Status().Update`
+// läuft `SanitizeMessage` über alle Condition-Message-Felder. In M5
+// ist das die Identitätsfunktion; das Aufruf-Pattern verankert die
+// Stelle für v0.2-Pattern-Maskierung.
 func (r *Reconciler) writeStatus(
 	ctx context.Context,
 	cr *preflightv1alpha1.OpenDeskPreflightCheck,
@@ -207,12 +310,51 @@ func (r *Reconciler) writeStatus(
 	cr.Status.Phase = out.Phase
 	cr.Status.ObservedGeneration = cr.Generation
 	cr.Status.Summary = out.Summary
-	cr.Status.Conditions = out.Conditions
+	cr.Status.Conditions = sanitizeConditions(out.Conditions)
 
 	if err := r.Status().Update(ctx, cr); err != nil {
 		return fmt.Errorf("update OpenDeskPreflightCheck status: %w", err)
 	}
 	return nil
+}
+
+// sanitizeConditions wendet SanitizeMessage auf jedes Condition.Message
+// an (slice-M5 §2.6). Returnt eine neue Slice, damit der Aufrufer das
+// Original nicht versehentlich teilt.
+func sanitizeConditions(in []preflightv1alpha1.Condition) []preflightv1alpha1.Condition {
+	if len(in) == 0 {
+		return in
+	}
+	out := make([]preflightv1alpha1.Condition, len(in))
+	copy(out, in)
+	for i := range out {
+		out[i].Message = SanitizeMessage(out[i].Message)
+	}
+	return out
+}
+
+// reconcilePanicOutput baut das AggregationOutput für den Outer-Recover-
+// Pfad (slice-M5 §2.4): Phase=Unknown, Condition=ReconcileError mit
+// Reason=ReconcilePanic. Die Panic-Detail-Message wird sanitisiert,
+// damit eventuelle Variablenwerte aus dem panicking-Frame nicht
+// ungefiltert im Status landen (LH-SEC-002).
+func (r *Reconciler) reconcilePanicOutput(panicVal interface{}) AggregationOutput {
+	now := r.now().UTC()
+	return AggregationOutput{
+		Phase: preflightv1alpha1.PhaseUnknown,
+		Summary: preflightv1alpha1.Summary{
+			ChecksTotal: 0,
+			LastChecked: ptrMetaTime(metav1.NewTime(now)),
+		},
+		Conditions: []preflightv1alpha1.Condition{{
+			Type:               conditionTypeReconcileError,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonReconcilePanic,
+			Message:            fmt.Sprintf("reconcile panic recovered: %v", panicVal),
+			LastTransitionTime: metav1.NewTime(now),
+			Severity:           preflightv1alpha1.SeverityCritical,
+		}},
+	}
 }
 
 // specInvalidOutput formuliert die Phase-Failed-Antwort, wenn

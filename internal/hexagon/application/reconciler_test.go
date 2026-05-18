@@ -777,6 +777,261 @@ func assertClusterResourcesDefaults(t *testing.T, profile preflightv1alpha1.Prof
 	}
 }
 
+// fakeAccessReviewer ist ein konfigurierbarer port.AccessReviewer für
+// die slice-M5-Reconciler-Tests. `outcomes` mapped CanonicalString →
+// (allowed, err); Default ist (true, nil).
+type fakeAccessReviewer struct {
+	outcomes map[string]struct {
+		allowed bool
+		err     error
+	}
+}
+
+func (f *fakeAccessReviewer) CanI(_ context.Context, req domain.PermissionRequest) (bool, error) {
+	if o, ok := f.outcomes[req.CanonicalString()]; ok {
+		return o.allowed, o.err
+	}
+	return true, nil
+}
+
+// panickingCheck panickt während Run; wird vom Per-Check-Recover
+// (RunCheckSafely) als InternalError klassifiziert (slice-M5 §2.4).
+type panickingCheck struct{}
+
+func (panickingCheck) Name() string                                    { return domain.KubernetesVersionSpecKind }
+func (panickingCheck) SpecKind() string                                { return domain.KubernetesVersionSpecKind }
+func (panickingCheck) ConditionType() string                           { return "KubernetesVersionReady" }
+func (panickingCheck) RequiredPermissions() []domain.PermissionRequest { return nil }
+func (panickingCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result {
+	panic("synthetic check panic")
+}
+
+// hangingCheck blockiert bis ctx.Done(); simuliert Per-Check-Timeout
+// (slice-M5 §2.5).
+type hangingCheck struct{}
+
+func (hangingCheck) Name() string                                    { return domain.KubernetesVersionSpecKind }
+func (hangingCheck) SpecKind() string                                { return domain.KubernetesVersionSpecKind }
+func (hangingCheck) ConditionType() string                           { return "KubernetesVersionReady" }
+func (hangingCheck) RequiredPermissions() []domain.PermissionRequest { return nil }
+func (hangingCheck) Run(ctx context.Context, _ domain.CheckSpec) domain.Result {
+	<-ctx.Done()
+	return domain.Result{Name: "KubernetesVersionReady", Status: domain.StatusTrue}
+}
+
+// panickingRegistry panickt in ListByProfile; testet den Outer-Recover
+// (slice-M5 §2.4).
+type panickingRegistry struct{}
+
+func (panickingRegistry) Register(_ domain.Check)               {}
+func (panickingRegistry) Resolve(_ string) (domain.Check, bool) { return nil, false }
+func (panickingRegistry) ListByProfile(_ string, _ map[string]domain.CheckSpec) ([]domain.Check, []port.CheckSelectionIssue) {
+	panic("synthetic registry panic")
+}
+
+// TestReconcileRBACInsufficient (slice-M5 §7 #12): CanI returnt
+// (false, nil) für eine deklarierte Permission → Result Unknown +
+// Reason RBACInsufficient + Severity critical.
+func TestReconcileRBACInsufficient(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "rbac-denied",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+			},
+		},
+	}
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).WithStatusSubresource(cr).Build()
+
+	perm := domain.PermissionRequest{Group: "storage.k8s.io", Resource: "storageclasses", Verb: "list"}
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{
+		name:          domain.KubernetesVersionSpecKind,
+		kind:          domain.KubernetesVersionSpecKind,
+		conditionType: "KubernetesVersionReady",
+		permissions:   []domain.PermissionRequest{perm},
+		result:        domain.Result{Name: "KubernetesVersionReady", Status: domain.StatusTrue},
+	})
+	reviewer := &fakeAccessReviewer{outcomes: map[string]struct {
+		allowed bool
+		err     error
+	}{perm.CanonicalString(): {allowed: false}}}
+
+	reconciler := &application.Reconciler{
+		Client:         client,
+		Scheme:         scheme,
+		Registry:       registry,
+		AccessReviewer: reviewer,
+		Now:            fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "rbac-denied", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "rbac-denied", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseUnknown {
+		t.Errorf("Phase: got %q, want Unknown", after.Status.Phase)
+	}
+	if len(after.Status.Conditions) != 1 {
+		t.Fatalf("Conditions: got %d, want 1", len(after.Status.Conditions))
+	}
+	if after.Status.Conditions[0].Reason != "RBACInsufficient" {
+		t.Errorf("Reason: got %q, want RBACInsufficient", after.Status.Conditions[0].Reason)
+	}
+}
+
+// TestReconcilePerCheckPanic (slice-M5 §7 #9): Panic in Check.Run wird
+// vom Per-Check-Recover gefangen → Result Unknown/InternalError. Der
+// Reconciler kommt ans Ende durch und schreibt Status.
+func TestReconcilePerCheckPanic(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "check-panic",
+			Namespace:  "default",
+			Generation: 1,
+		},
+	}
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).WithStatusSubresource(cr).Build()
+
+	registry := newFakeRegistry()
+	registry.checks[domain.KubernetesVersionSpecKind] = panickingCheck{}
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "check-panic", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v (per-check-recover must NOT propagate)", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "check-panic", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(after.Status.Conditions) == 0 {
+		t.Fatal("Conditions: empty (per-check-recover must produce InternalError result)")
+	}
+	if after.Status.Conditions[0].Reason != "InternalError" {
+		t.Errorf("Reason: got %q, want InternalError", after.Status.Conditions[0].Reason)
+	}
+}
+
+// TestReconcilePerCheckTimeout (slice-M5 §7 #9): Check hängt länger
+// als CheckTimeout → Result Unknown/Timeout. 50ms-CheckTimeout für
+// deterministische Test-Laufzeit.
+func TestReconcilePerCheckTimeout(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "check-timeout",
+			Namespace:  "default",
+			Generation: 1,
+		},
+	}
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).WithStatusSubresource(cr).Build()
+
+	registry := newFakeRegistry()
+	registry.checks[domain.KubernetesVersionSpecKind] = hangingCheck{}
+
+	reconciler := &application.Reconciler{
+		Client:       client,
+		Scheme:       scheme,
+		Registry:     registry,
+		CheckTimeout: 50 * time.Millisecond,
+		Now:          fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "check-timeout", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "check-timeout", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(after.Status.Conditions) == 0 {
+		t.Fatal("Conditions: empty (timeout-recover must produce Timeout result)")
+	}
+	if after.Status.Conditions[0].Reason != "Timeout" {
+		t.Errorf("Reason: got %q, want Timeout", after.Status.Conditions[0].Reason)
+	}
+	if after.Status.Conditions[0].Severity != preflightv1alpha1.SeverityCritical {
+		t.Errorf("Severity: got %q, want critical", after.Status.Conditions[0].Severity)
+	}
+}
+
+// TestReconcileOuterPanic (slice-M5 §7 #9): Panic AUSSERHALB der
+// Per-Check-Pipeline (z. B. in der Registry) wird vom Reconciler-Outer-
+// Recover gefangen → Status Phase=Unknown, Condition=ReconcileError,
+// Reason=ReconcilePanic.
+func TestReconcileOuterPanic(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "outer-panic",
+			Namespace:  "default",
+			Generation: 1,
+		},
+	}
+	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).WithStatusSubresource(cr).Build()
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: panickingRegistry{},
+		Now:      fixedClock(),
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "outer-panic", Namespace: "default"},
+	})
+	if err == nil {
+		t.Errorf("Reconcile: expected error from outer-recover, got nil")
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if getErr := client.Get(context.Background(),
+		types.NamespacedName{Name: "outer-panic", Namespace: "default"}, &after); getErr != nil {
+		t.Fatalf("Get: %v", getErr)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseUnknown {
+		t.Errorf("Phase: got %q, want Unknown (best-effort outer-recover status write)", after.Status.Phase)
+	}
+	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "ReconcileError" {
+		t.Fatalf("Conditions: got %+v, want one ReconcileError entry", after.Status.Conditions)
+	}
+	if after.Status.Conditions[0].Reason != "ReconcilePanic" {
+		t.Errorf("Reason: got %q, want ReconcilePanic", after.Status.Conditions[0].Reason)
+	}
+}
+
 // passedResult ist ein kleiner Test-Helper für die Multi-Check-Tests.
 func passedResult(condType, reason string, now time.Time) domain.Result {
 	return domain.Result{
