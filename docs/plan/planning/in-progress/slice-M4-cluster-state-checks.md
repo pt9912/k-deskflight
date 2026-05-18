@@ -154,16 +154,30 @@ unterschiedlich enden:
 | ClusterResources mit Production-Defaults | failed (kind-Worker meist < 4 CPU) |
 
 **Entscheidung:** Smoke-Pipeline installiert in der Prep-Phase
-`ingress-nginx` und `cert-manager` per `kubectl apply` (statische
-Manifeste, gepinnte Versionen; keine Helm-Pflicht für die Smoke).
-**Manifest-Quelle ist verbindlich der Repo-Spiegel unter
-`hack/cluster-smoke/` — Smoke zieht die Manifeste nicht zur Laufzeit
-aus dem Netz**, damit die Pipeline reproducible und offline lauffähig
-bleibt (siehe §9 für die Begründung). Smoke-CR konfiguriert alle vier
-Checks mit Werten, die gegen bare-kind + die vorinstallierten
-Manifeste **passed** sind (`MinCPU: "1"`, `MinMemory: "1Gi"`,
-`IngressClass.Names: ["nginx"]`). Damit attestiert ein einziger
-Smoke-Run alle vier `LH-AK-*`-Items in der passed-Variante real;
+**Minimal-Cluster-Stubs** statt voller Controller-Installationen:
+eine winzige CRD `smokestubs.cert-manager.io` (erfüllt
+`HasAPIGroup(cert-manager.io)` über die Discovery-API) und eine
+`IngressClass`-Resource `nginx` ohne Controller-Pod (erfüllt
+`ListIngressClasses`). **Manifest-Quelle ist verbindlich der
+Repo-Spiegel unter `hack/cluster-smoke/`** — Smoke zieht nichts
+zur Laufzeit aus dem Netz, die Stubs sind komplett self-contained.
+
+**Begründung für die Stub-Wahl:** Die M4-Checks sind ausschließlich
+Existence-orientiert (`HasAPIGroup`, `ListIngressClasses`); reale
+cert-manager- bzw. ingress-nginx-Controller (mit Webhooks, Pods,
+RBAC) sind für M4 nicht nötig. Volle Controller-Installation
+verschiebt sich auf v0.2 zusammen mit `LH-F-014` (ClusterIssuer-
+Detailprüfung), wo Reachability- und Reconcile-Pfade reale
+Controller voraussetzen. Vorteil der Stub-Wahl: ~50 Zeilen YAML
+gegen ~230 KB Upstream-Manifeste — kein Pin-Pflege, kein
+License-Mirror, schnelle Smoke-Laufzeit.
+
+Smoke-CR konfiguriert alle vier M4-Checks mit Werten, die gegen
+bare-kind + die Stubs **passed** sind: `StorageClass.Names: ["standard"]`
++ `RequireDefault: true` (kind-Default), `IngressClass.Names: ["nginx"]`
+(Stub-Resource), `CertManager: {}` (Stub-CRD), `ClusterResources.MinCPU:
+"1"`, `MinMemory: "1Gi"` (kind-Worker passen). Damit attestiert ein
+einziger Smoke-Run alle vier `LH-AK-006..009` in der passed-Variante;
 failed-Pfade bleiben Unit-Test-Pflicht.
 
 Alternative überprüft: separate „expected-fail"-Smoke-CRs für die
@@ -178,8 +192,7 @@ deterministischer ab.
 | `k8s.io/api/storage/v1`, `…/networking/v1`, `…/core/v1` | identisch zur transitiven Auflösung aus controller-runtime v0.24.1 | unverändert |
 | `k8s.io/client-go/kubernetes` (Typed Clientset) | identisch zur transitiven Auflösung aus controller-runtime v0.24.1 | als Direct-Require promotet |
 | `k8s.io/apimachinery/pkg/api/resource` | identisch zur transitiven Auflösung | bereits Direct-Require über M2-Status-Typen |
-| ingress-nginx Manifest (Smoke) | v1.13.x (kind-kompatibel, Floor v1.32+) | Repo-Spiegel `hack/cluster-smoke/ingress-nginx.yaml` (siehe §2.6) |
-| cert-manager Manifest (Smoke) | v1.20.x (kind-kompatibel) | Repo-Spiegel `hack/cluster-smoke/cert-manager.yaml` (siehe §2.6) |
+| Cluster-State-Stub-Manifest (Smoke) | n/a — handgeschriebener Minimal-YAML (kein Upstream-Pin) | Repo-Datei `hack/cluster-smoke/cluster-state-stubs.yaml` (siehe §2.6) |
 
 ---
 
@@ -215,7 +228,7 @@ deterministischer ab.
 | `internal/adapter/k8s/discovery.go` | Wenn nicht aufgespalten: bleibt für `ServerVersion` zuständig. Wenn aufgespalten (siehe Reihenfolge-Schritt 1): wird zu `ServerVersionAdapter` und teilt einen gemeinsamen `*kubernetes.Clientset` mit den vier neuen Adaptern. **Empfehlung:** gemeinsamer `clientset` + `discoveryClient` zentral in einer neuen Konstruktor-Bündel-Funktion `NewClusterClients(cfg)`. |
 | `cmd/operator/main.go` | Wiring: `kubernetes.NewForConfig(cfg)` als gemeinsame Quelle; jeweils ein Adapter pro Discovery-Port konstruieren; `registry.Register(...)` für die vier neuen Checks. `Now`-Override bleibt single-shot `time.Now`. |
 | `config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.yaml` | Erweitert um vollständiges Sub-Spec-Beispiel pro Check (oder zweites Sample-File `…_full.yaml`); Werte gegen bare-kind-Smoke passed. |
-| `scripts/cluster-smoke.sh` | Prep-Phase erweitert: `kubectl apply -f hack/cluster-smoke/ingress-nginx.yaml`, `kubectl apply -f hack/cluster-smoke/cert-manager.yaml`, `kubectl wait` auf die jeweiligen Deployments. **Keine URL-Konstanten im Skript** — die Manifeste werden ausschließlich aus dem Repo-Spiegel appliziert (siehe §2.6/§9). Upstream-Version steht als Kommentar in den gespiegelten Files, nicht als Skript-Variable. |
+| `scripts/cluster-smoke.sh` | Prep-Phase erweitert: `kubectl apply -f hack/cluster-smoke/cluster-state-stubs.yaml` (Stub-CRD für `cert-manager.io` plus IngressClass `nginx`, siehe §2.6). Kein `kubectl wait` nötig — Stubs enthalten keine Controller-Pods. **Keine URL-Konstanten im Skript** — Stubs sind hand-geschrieben, kein Upstream-Mirror. Step-8-Assertion-Logik erweitert: statt nur `conditions[0].type` zu prüfen, iteriert das Skript über die fünf erwarteten Conditions (`CertManagerInstalled`, `ClusterResourcesReady`, `IngressClassReady`, `KubernetesVersionReady`, `StorageClassReady`) und verifiziert für jede `status=True`. |
 
 ### 3.3 Neue Test-Dateien
 
@@ -301,10 +314,13 @@ bleibt.
    ClusterResources-Werte liefert. Multi-Check-Reconciler-Tests
    (Multi-passed, gemischt-failed, Profile-Defaults).
 5. **Wiring + Beispiel + Smoke-Skript.** `cmd/operator/main.go` zieht
-   `kubernetes.NewForConfig` + vier Adapter + vier `registry.Register`.
+   `NewClusterClients` + vier Adapter + vier `registry.Register`.
    `config/samples/…yaml` auf den §3.4-Stand bringen.
-   `scripts/cluster-smoke.sh` um ingress-nginx + cert-manager-Prep
-   ergänzen; Smoke-CR auf den Multi-Check-Stand heben.
+   `hack/cluster-smoke/cluster-state-stubs.yaml` anlegen (Stub-CRD für
+   `cert-manager.io` + IngressClass `nginx`); `scripts/cluster-smoke.sh`
+   appliziert die Stubs in der Prep-Phase, Smoke-CR auf den
+   Multi-Check-Stand heben, Assertion-Logik prüft die fünf erwarteten
+   Conditions.
 6. **Slice-Closure.** Nach `done/` ziehen, Roadmap-Status M4 = Done,
    Closure-Notiz mit Verifikations-Ergebnis und etwaigen Folge-Attesten.
 
@@ -450,14 +466,15 @@ Vorbereitet, aktiv ab späterer Slice:
   (Quantity normalisiert Einheiten, `"1000m" == "1"` und `"1Gi"`
   ≠ `"1G"`). Test deckt `Gi` vs. `G` ab, damit Edge-Cases nicht
   bei Anwendern auflaufen.
-- **Cluster-Smoke-Manifest-URLs sind externe Abhängigkeiten:**
-  ingress-nginx- und cert-manager-Releases können vorübergehend
-  nicht erreichbar sein. Mitigation (verbindlich, deckungsgleich mit
-  §2.6): Manifeste werden im Repo unter `hack/cluster-smoke/`-Mirror
-  eingecheckt und ausschließlich von dort applizierten — kein
-  Network-Fetch zur Laufzeit. Damit ist die Smoke idempotent und
-  offline lauffähig; ein Upstream-Release-Sprung ist ein bewusster
-  Repo-Commit, kein implizites Pipeline-Verhalten.
+- **Smoke-Prep ohne externe Abhängigkeiten:** Die Stub-Manifeste in
+  `hack/cluster-smoke/cluster-state-stubs.yaml` sind hand-geschrieben
+  (~50 Zeilen YAML — siehe §2.6), enthalten keinen Upstream-Code und
+  ziehen nichts zur Laufzeit nach. Damit ist die Smoke idempotent und
+  offline lauffähig; ein Versionssprung von cert-manager oder
+  ingress-nginx ist für M4 irrelevant, weil unsere Checks nur die
+  API-Gruppe und die IngressClass-Resource benötigen. Wenn v0.2 die
+  ClusterIssuer-Detailprüfung (`LH-F-014`) nachzieht, kommt die
+  Diskussion „realer Controller in der Smoke" zurück.
 - **Profile-Default für ClusterResources beeinflusst alle
   Production-CRs** — wenn die `4 CPU / 8Gi`-Floor in der Praxis zu
   streng ist, blockiert das Anwender, die mit `spec.checks.clusterResources: {}`

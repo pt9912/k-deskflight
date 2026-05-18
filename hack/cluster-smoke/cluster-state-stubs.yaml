@@ -1,0 +1,51 @@
+---
+# Cluster-State-Stubs für den cluster-smoke (slice-M4 §2.6).
+#
+# Erfüllt die zwei externen Voraussetzungen der M4-Existence-Checks
+# (cert-manager und IngressClass) **ohne** reale Controller zu
+# installieren:
+#
+#   - Eine winzige CustomResourceDefinition mit Group `cert-manager.io`
+#     registriert die API-Gruppe im Discovery-Endpoint. Der
+#     `CertManager`-Check ruft `HasAPIGroup("cert-manager.io")` auf und
+#     bekommt damit `true`. Volle cert-manager-Installation (Webhooks,
+#     Pods, ClusterIssuer-Validierung) bleibt v0.2 zusammen mit
+#     `LH-F-014`.
+#
+#   - Eine `networking.k8s.io/v1`-IngressClass-Resource `nginx`
+#     erfüllt `ListIngressClasses` für den `IngressClass`-Check ohne
+#     Controller-Pod. Der `controller`-String markiert die Resource
+#     unmissverständlich als Smoke-Stub.
+#
+# Diese Datei ist **kein Upstream-Mirror** — sie ist hand-geschrieben
+# und braucht keine Pin-Pflege. Verwendung ausschließlich durch
+# `scripts/cluster-smoke.sh` in der Prep-Phase.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: smokestubs.cert-manager.io
+spec:
+  group: cert-manager.io
+  scope: Namespaced
+  names:
+    plural: smokestubs
+    singular: smokestub
+    kind: SmokeStub
+    listKind: SmokeStubList
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+  annotations:
+    k-deskflight.geo-terrain.net/smoke-stub: "true"
+spec:
+  controller: example.com/ingress-controller-smoke-stub

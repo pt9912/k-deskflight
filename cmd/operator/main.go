@@ -86,14 +86,26 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("register readyz check: %w", err)
 	}
 
-	// Adapter-Wiring (architecture.md AR-013, AR-009 Phase 1).
-	discoveryAdapter, err := k8s.NewDiscoveryAdapter(cfg)
+	// Adapter-Wiring (architecture.md AR-013, AR-009 Phase 1, slice-M4 §2.1).
+	// NewClusterClients bündelt Clientset + Discovery-Client, damit alle
+	// Discovery-Adapter denselben rest.Config-Pfad teilen.
+	clients, err := k8s.NewClusterClients(cfg)
 	if err != nil {
-		return fmt.Errorf("create discovery adapter: %w", err)
+		return fmt.Errorf("create cluster clients: %w", err)
 	}
+
+	discoveryAdapter := k8s.NewDiscoveryAdapterWithClient(clients.Discovery)
+	storageAdapter := k8s.NewStorageClassAdapter(clients.Clientset)
+	ingressAdapter := k8s.NewIngressClassAdapter(clients.Clientset)
+	apiGroupAdapter := k8s.NewAPIGroupAdapter(clients.Discovery)
+	nodeAdapter := k8s.NewNodeAdapter(clients.Clientset)
 
 	registry := check.NewRegistry()
 	registry.Register(check.NewKubernetesVersion(discoveryAdapter, nil))
+	registry.Register(check.NewStorageClass(storageAdapter, nil))
+	registry.Register(check.NewIngressClass(ingressAdapter, nil))
+	registry.Register(check.NewCertManager(apiGroupAdapter, nil))
+	registry.Register(check.NewClusterResources(nodeAdapter, nil))
 
 	reconciler := &application.Reconciler{
 		Client:   mgr.GetClient(),

@@ -1,9 +1,13 @@
 ---
-# Minimal-CR mit dem ersten echten Check (KubernetesVersion).
-# Schema-Defaults greifen für Profile (production) und für die Min-
-# Version (1.34 per ADR 0009 §2.2); das `kubernetesVersion`-Sub-
-# Objekt muss aber explizit gesetzt sein, damit der Reconciler den
-# Check aktiviert.
+# MVP-Smoke-CR: alle fünf MVP-Pflicht-Checks (LH-PRI-001) explizit
+# konfiguriert. Werte sind gegen bare-kind + die Cluster-State-Stubs
+# aus hack/cluster-smoke/cluster-state-stubs.yaml passed (slice-M4 §2.6):
+#
+#   - KubernetesVersion.min 1.34 — kind 0.31 läuft mit kindest/node v1.34
+#   - StorageClass `standard` mit Default-Annotation — kind-Default
+#   - IngressClass `nginx` — Stub-Resource
+#   - cert-manager — Stub-CRD registriert die cert-manager.io-API-Gruppe
+#   - ClusterResources 1 CPU / 1Gi — kind-Worker erfüllen das locker
 apiVersion: k-deskflight.geo-terrain.net/v1alpha1
 kind: OpenDeskPreflightCheck
 metadata:
@@ -14,3 +18,14 @@ spec:
   checks:
     kubernetesVersion:
       min: "1.34"
+    storageClass:
+      names:
+        - standard
+      requireDefault: true
+    ingressClass:
+      names:
+        - nginx
+    certManager: {}
+    clusterResources:
+      minCPU: "1"
+      minMemory: "1Gi"

@@ -8,8 +8,17 @@
 # Verifiziert in Sequenz:
 #   - LH-AK-001 — CRD installierbar (`kubectl apply -f config/crd/…`).
 #   - LH-AK-002 — Operator startbar (`kubectl wait Available`).
-#   - LH-AK-005 — KubernetesVersion-Check gegen reale Server-Version
-#     (Status.Phase=Passed, Condition KubernetesVersionReady=True).
+#   - LH-AK-005 — KubernetesVersion-Check gegen reale Server-Version.
+#   - LH-AK-006 — StorageClass-Check gegen kind-`standard` (default).
+#   - LH-AK-007 — IngressClass-Check gegen den nginx-Stub aus
+#     hack/cluster-smoke/cluster-state-stubs.yaml.
+#   - LH-AK-008 — cert-manager-Check gegen die Stub-CRD-Registrierung.
+#   - LH-AK-009 — ClusterResources-Check gegen kind-Worker-Allocatable
+#     mit MinCPU=1/MinMemory=1Gi.
+#
+# Cluster-State-Stubs (cert-manager-API-Gruppe und nginx-IngressClass)
+# werden vor dem Operator-Deploy appliziert, sind aber kein Upstream-
+# Mirror — handgeschrieben unter hack/cluster-smoke/ (slice-M4 §2.6).
 #
 # Env-Overrides:
 #   CLUSTER_NAME=name           — kind-Cluster-Name (Default: k-deskflight-smoke)
@@ -62,6 +71,12 @@ fi
 # Step 2 — operator-Image in kind laden (lokal gebautes Image, kein Registry-Pull).
 log "Step 2: load ${IMAGE_TAG} into ${CLUSTER_NAME}"
 kind load docker-image --name "${CLUSTER_NAME}" "${IMAGE_TAG}"
+
+# Step 2b — Cluster-State-Stubs (slice-M4 §2.6): Minimal-Resources, die
+# die Existence-Checks für cert-manager (API-Gruppe via Stub-CRD) und
+# IngressClass `nginx` erfüllen. Keine Controller-Pods, kein `wait`.
+log "Step 2b: apply cluster-state stubs (cert-manager.io CRD + IngressClass nginx)"
+kubectl --context "${KIND_CONTEXT}" apply -f hack/cluster-smoke/cluster-state-stubs.yaml
 
 # Step 3 — CRD installieren (LH-AK-001).
 log "Step 3: apply CRD"
@@ -132,25 +147,33 @@ if [[ "${phase}" != "Passed" ]]; then
     exit 1
 fi
 
-condition_type="$(kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
-    get opendeskpreflightcheck "${SAMPLE_NAME}" \
-    -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || true)"
-condition_status="$(kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
-    get opendeskpreflightcheck "${SAMPLE_NAME}" \
-    -o jsonpath='{.status.conditions[0].status}' 2>/dev/null || true)"
+# Iteriert die fünf erwarteten MVP-Conditions (LH-AK-005..009) und
+# verifiziert jede einzeln auf status=True. Die Aggregator-Sortierung
+# (AR-014) liefert sie alphabetisch — wir nutzen den Type-Filter im
+# jsonpath, damit die Assertion ordnungs-unabhängig ist.
+expected_conditions=(
+    CertManagerInstalled
+    ClusterResourcesReady
+    IngressClassReady
+    KubernetesVersionReady
+    StorageClassReady
+)
+for ct in "${expected_conditions[@]}"; do
+    cs="$(kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+        get opendeskpreflightcheck "${SAMPLE_NAME}" \
+        -o jsonpath="{.status.conditions[?(@.type=='${ct}')].status}" 2>/dev/null || true)"
+    if [[ "${cs}" != "True" ]]; then
+        log "FAIL: expected condition ${ct}=True, got '${cs:-<missing>}'"
+        kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+            get opendeskpreflightcheck "${SAMPLE_NAME}" -o yaml >&2 || true
+        exit 1
+    fi
+    log "  ${ct}=True"
+done
 
-if [[ "${condition_type}" != "KubernetesVersionReady" ]]; then
-    log "FAIL: expected KubernetesVersionReady condition, got '${condition_type}'"
-    kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
-        get opendeskpreflightcheck "${SAMPLE_NAME}" -o yaml >&2 || true
-    exit 1
-fi
-if [[ "${condition_status}" != "True" ]]; then
-    log "FAIL: expected condition status True, got '${condition_status}'"
-    kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
-        get opendeskpreflightcheck "${SAMPLE_NAME}" -o yaml >&2 || true
-    exit 1
-fi
+# Backward-Compat-Variablen für die abschließende Status-Zeile.
+condition_type="all 5 MVP conditions"
+condition_status="True"
 
 # Step 9 — HTTP-Smoke gegen Operator-Endpoints (healthz/readyz/metrics).
 # Identische Toolchain (smoke-Stage); aufgerufen als embedded Sub-Step,
