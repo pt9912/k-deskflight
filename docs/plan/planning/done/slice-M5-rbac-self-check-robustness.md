@@ -873,3 +873,51 @@ cluster-smoke wurde durch Schritt 6 wieder grün.
 | §7 #7 + #8 — CI-Bundle grün auf GitHub-Actions | 2026-05-18 | `gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check)` mit Threshold 90 % grün; `security-gates (govulncheck v1.1.4)` grün. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/26036254116>. |
 | §7 #9..#12 — Cluster-Smoke gegen kind, alle fünf MVP-Conditions=True | 2026-05-18 | `cluster-smoke`-Workflow gegen kindest/node v1.34.0 mit den Cluster-State-Stubs aus M4. Step-8-Assertion verifizierte alle fünf erwarteten Conditions auf `status=True`; mit der vollständigen ClusterRole + dem neu wiringten AccessReviewAdapter laufen alle SAR-Pre-Execution-Pfade durch. Status-Dump im Run-Artefakt `cluster-smoke-attest`. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/26036254191>. |
 | CI-Hotfix-Vorfall Schritt 4 ↔ 6 | 2026-05-18 | Push `43d6bec` (Schritt 5) ließ den cluster-smoke wegen fehlendem AccessReviewer-Wiring rot: drei Checks panickten auf `nil.CanI`, der Per-Check-Recover fing das ab und lieferte `InternalError`. Schritt 6 (`4340874`) hat das gefixt; lokaler `make cluster-smoke` + CI grün. Lektion siehe §10.4. |
+
+### 10.6 Nach-Closure-Review-Fixups (2026-05-18, Commit `ea9db83`)
+
+Ein code-reviewer-Agent (volle M5-Diff-Review) hat zehn Befunde
+gemeldet — drei `[hoch]`, vier `[mittel]`, drei `[niedrig]`. Alle
+adressiert in einem Folge-Commit:
+
+- **[hoch]** `runner.go`: Late-Recover-Send in der Worker-Goroutine
+  ist jetzt **non-blocking** via `select default`. Verhindert
+  Goroutine-Leak bei ungewöhnlicher Sequenz (regulärer Result-Send
+  schon erfolgt, danach Panic im inneren defer mit zweitem Send auf
+  Buffer=1).
+- **[hoch]** `reconciler.go`: inner-recover im Outer-Panic-Pfad
+  loggt sekundäre Panics jetzt via `slog.LevelError` statt sie
+  stumm zu verschlucken — Field-Debugging bleibt möglich.
+- **[hoch]** `reconciler.go`: `reconcilePanicOutput` wraps die
+  Panic-Message in `SanitizeMessage`. War im Kommentar bereits
+  dokumentiert, im Code aber vergessen — v0.2-Pattern-Maskierung
+  hätte sonst am Status-Pfad vorbei laufen können (LH-SEC-002).
+- **[mittel]** `runner.go`: Doc-Comment am `<-runCtx.Done()`-Zweig
+  dokumentiert die bewusste Asymmetrie zur `<-resultCh`-Branch.
+- **[mittel]** Neuer `Reconciler.Validate()`-Pfad in `SetupWithManager`:
+  prüft, dass `AccessReviewer` gesetzt ist, sobald mindestens ein
+  registrierter Check `RequiredPermissions` deklariert. Verhindert
+  Rückkehr des CI-Hotfix-Vorfalls aus §10.5. `CheckRegistry`-Interface
+  um `All() []domain.Check` erweitert (Registry + fakeRegistry +
+  panickingRegistry implementiert); zwei neue Reconciler-Tests
+  (`TestValidateConfigRejectsMissingAccessReviewer` +
+  `TestValidateConfigAllowsNoPermissionedChecks`).
+- **[mittel]** `runner.go`: Doc-Comment am `runWithTimeout` über
+  Worker-Lifecycle (Lebensdauer hängt von ctx-Honorability der
+  Adapter ab; M6-Adapter-Audit empfohlen).
+- **[mittel]** `destructive_audit_test.go`: `allowedDestructive`-
+  Whitelist auf real existierende Marker reduziert (eigene CR ohne
+  destruktive Marker raus). Neue destruktive Marker brechen den
+  Test bewusst (Schutz gegen versehentliche Erweiterung).
+- **[niedrig]** Drei Doc-Comments: `RunCheckSafely`-Signatur als
+  Refactor-Trigger für M6 markiert; `ConditionType` Pflicht-Kontrakt
+  „nicht-leer" verankert; `PermissionCache`-Concurrency-Annahme +
+  M6-TODO für `sync.Map`/Mutex.
+
+**Side-Refactor:** `Reconcile`-Outer-Recover-Body in
+`handleReconcilePanic`-Methode extrahiert, damit funlen-Linter
+unter 100 Zeilen bleibt. Zwei kleine Lint-Folge-Fixes (lowercase
+error-string ST1005, unused return value unparam).
+
+Gates grün, Coverage 93.2 % (≥ 90 %). Kein erneuter Pre-Closure-
+Review-Befund nötig.

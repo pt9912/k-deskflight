@@ -243,16 +243,16 @@ Mindestversion (`ADR 0009`).
 **Lieferziel:** Vier weitere Prüfungen — StorageClass, IngressClass,
 cert-manager, Cluster-Ressourcen.
 
-- [ ] StorageClass (`LH-F-010`, `LH-F-011`): konfigurierte Klassen
+- [x] StorageClass (`LH-F-010`, `LH-F-011`): konfigurierte Klassen
   vorhanden? Default-StorageClass erkennbar?
-- [ ] IngressClass (`LH-F-012`): konfigurierte Klasse vorhanden?
-- [ ] cert-manager (`LH-F-013`): API-Gruppe `cert-manager.io` vorhanden,
-  mindestens ein `ClusterIssuer` erreichbar? (Vorhandensein, nicht
-  Detail-Validierung — die kommt v0.2 mit `LH-F-014`.)
-- [ ] Cluster-Ressourcen (`LH-F-015`): allocatable CPU/Memory aller
+- [x] IngressClass (`LH-F-012`): konfigurierte Klasse vorhanden?
+- [x] cert-manager (`LH-F-013`): API-Gruppe `cert-manager.io` vorhanden
+  (Vorhandensein, nicht Detail-Validierung — die kommt v0.2 mit
+  `LH-F-014`).
+- [x] Cluster-Ressourcen (`LH-F-015`): allocatable CPU/Memory aller
   Ready-Nodes summieren, gegen konfigurierte Mindestwerte prüfen
   (`LH-AK-009`).
-- [ ] Jede Prüfung mit eigener Condition und Severity.
+- [x] Jede Prüfung mit eigener Condition und Severity.
 
 **Lastenheft-Kennungen:** `LH-F-010`, `LH-F-011`, `LH-F-012`,
 `LH-F-013`, `LH-F-015`, `LH-NF-005` (Fehlertoleranz —
@@ -261,10 +261,20 @@ Einzelausfall darf andere nicht stoppen), `LH-PROF-002`/`-003`
 
 **Verifikation:**
 
-- [ ] `LH-AK-006` — StorageClass.
-- [ ] `LH-AK-007` — IngressClass.
-- [ ] `LH-AK-008` — cert-manager.
-- [ ] `LH-AK-009` — Ressourcen.
+- [x] `LH-AK-006` — StorageClass. Erfüllt durch
+  `adapter/check/storageclass_test.go` (7 Fälle) plus Cluster-Smoke
+  gegen kind `standard`-StorageClass (Closure-Run-URL in
+  `done/slice-M4-cluster-state-checks.md`).
+- [x] `LH-AK-007` — IngressClass. Erfüllt durch
+  `adapter/check/ingressclass_test.go` plus Cluster-Smoke gegen
+  Stub-IngressClass `nginx` aus `hack/cluster-smoke/cluster-state-stubs.yaml`.
+- [x] `LH-AK-008` — cert-manager. Erfüllt durch
+  `adapter/check/certmanager_test.go` (Severity bewusst `warning`,
+  M6-Doku-Brücke fixiert) plus Cluster-Smoke gegen Stub-CRD
+  `smokestubs.cert-manager.io`.
+- [x] `LH-AK-009` — Ressourcen. Erfüllt durch
+  `adapter/check/clusterresources_test.go` plus Cluster-Smoke gegen
+  kind-Worker mit `MinCPU="1"/MinMemory="1Gi"`.
 
 ---
 
@@ -273,17 +283,23 @@ Einzelausfall darf andere nicht stoppen), `LH-PROF-002`/`-003`
 **Lieferziel:** Operator prüft eigene Berechtigungen und bleibt bei
 Einzelfehlern stabil.
 
-- [ ] `SelfSubjectAccessReview`/`SelfSubjectRulesReview` pro aktivierter
-  Prüfung (`LH-F-024`).
-- [ ] Condition `RBACInsufficient` falls Recht fehlt; betroffene
-  Einzelprüfung wird `Unknown` (`LH-AK-016`).
-- [ ] Fehlertoleranz: panic-Rückfänger im Reconcile-Loop, einzelne
-  Check-Fehler erzeugen `Unknown`, nicht Abbruch (`LH-NF-005`).
-- [ ] Secret-Output-Filter aktiv (`LH-SEC-002`, `LH-NF-007`) — Tests
-  prüfen, dass kein Secret-Inhalt in Logs/Events/Status landet.
-  Im MVP gibt es noch keine externen Secrets (`ADR 0010`),
-  aber der Filter ist als Pflicht-Konvention verankert.
-- [ ] Keine destruktiven Aktionen (`LH-SEC-005`).
+- [x] `SelfSubjectAccessReview` pro aktivierter Prüfung (`LH-F-024`).
+  Drei-Outcome-Kontrakt: RBACInsufficient (denied) vs.
+  RBACCheckFailed (Subsystem-Error). `SelfSubjectRulesReview`-Pfad
+  bleibt v0.2 (RBAC pre-granted).
+- [x] Condition mit Reason `RBACInsufficient` falls Recht fehlt;
+  betroffene Einzelprüfung wird `Unknown` (`LH-AK-016`).
+- [x] Fehlertoleranz: per-Check-`defer/recover` umschließt SAR-Loop
+  und Run; Reconciler-Outer-Recover mit best-effort Status-Write.
+  Einzelne Check-Fehler erzeugen `Unknown`, nicht Abbruch
+  (`LH-NF-005`, `LH-AK-010`).
+- [x] Secret-Output-Filter aktiv (`LH-SEC-002`, `LH-NF-007`) —
+  `SanitizeMessage` + `SanitizeAttrs` + `LogResult`-Wrapper als
+  Pflicht-Hooks. M5-Identitäten, v0.2 ersetzt durch Pattern-
+  Maskierung. Tests fixieren das Aufruf-Pattern.
+- [x] Keine destruktiven Aktionen (`LH-SEC-005`). Automatisch via
+  `application/destructive_audit_test.go` (go/parser-Audit gegen
+  `+kubebuilder:rbac:`-Marker).
 
 **Lastenheft-Kennungen:** `LH-F-024`, `LH-F-031`, `LH-NF-004`,
 `LH-NF-005`, `LH-NF-006` (minimal notwendige Berechtigungen —
@@ -293,11 +309,25 @@ operative Verankerung), `LH-SEC-001`, `LH-SEC-002`, `LH-SEC-005`,
 
 **Verifikation:**
 
-- [ ] `LH-AK-010` — Fehlerfall robust.
-- [ ] `LH-AK-012` — Keine Secret-Leaks (im MVP trivial, weil keine
-  externen Secrets; Tests prüfen den Filter trotzdem).
-- [ ] `LH-AK-015` — Minimalrechte dokumentiert.
-- [ ] `LH-AK-016` — RBAC-Selbstprüfung wirksam.
+- [x] `LH-AK-010` — Fehlerfall robust. Erfüllt durch
+  `application/runner_test.go` (Panic-in-CanI, Panic-in-Run,
+  Per-Check-Timeout, Parent-Cancel) plus
+  `application/reconciler_test.go` (TestReconcilePerCheckPanic,
+  TestReconcilePerCheckTimeout, TestReconcileOuterPanic).
+- [x] `LH-AK-012` — Keine Secret-Leaks. Erfüllt durch
+  `application/secret_filter_test.go` (Identitäts-Verhalten +
+  `LogResult`-Standard-Attrs); Pflicht-Aufrufstellen in
+  `writeStatus`/`runner.go`/SAR-Error-Logger verankert.
+- [x] `LH-AK-015` — Minimalrechte dokumentiert. **Automatisiert**
+  über `adapter/check/rbac_consistency_test.go`
+  (TestRBACConsistencyChecksMappedToMarkers +
+  TestRBACConsistencyMarkersBackedByChecks). Drift in beide
+  Richtungen bricht den Build.
+- [x] `LH-AK-016` — RBAC-Selbstprüfung wirksam. Erfüllt durch
+  `runner_test.go` (alle drei SAR-Outcomes inkl.
+  RBACCheckFailed-Precedence vor RBACInsufficient) plus
+  `reconciler_test.go` (TestReconcileRBACInsufficient mit
+  Phase=Unknown). Real attestiert via cluster-smoke.
 
 ---
 

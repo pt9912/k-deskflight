@@ -8,22 +8,29 @@ checks on a cluster before an [OpenDesk](https://docs.opendesk.eu/) installation
 
 ## Status
 
-Implementation is **in progress** (`LH-VM-004`). The first three of seven
-MVP slices are closed:
+Implementation is **in progress** (`LH-VM-004`). Five of seven MVP
+slices are closed; M6 (metrics endpoint, integration tests,
+user-facing docs) and M7 (release v0.1.0) remain:
 
 | Phase | Status | Source |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Draft 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
 | Architecture decisions | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architecture spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementation (`LH-VM-004`) | M1, M2, M3 done — M4–M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Implementation (`LH-VM-004`) | M1–M5 done — M6 and M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
 | Pflichtenheft (`LH-VM-002`) | grows alongside slices | per-slice plans in [`docs/plan/planning/done/`](docs/plan/planning/done/) |
 
-The Kubernetes-version check (`LH-AK-005`) is the first real preflight
-running today; the four cluster-state checks (`LH-AK-006..-009`) follow
-in M4. CRD installation, operator deployment, status reconcile and HTTP
-health/readiness/metrics endpoints are attested against a real kind
-cluster on every push (see [`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
+All five MVP-mandatory checks are live (`LH-AK-005..-009`):
+Kubernetes version, StorageClass, IngressClass, cert-manager
+presence, and cluster resources (CPU/memory). The operator
+self-checks its own RBAC permissions before each run via
+`SelfSubjectAccessReview` (`LH-AK-016`), is hardened against
+per-check panics and timeouts (`LH-AK-010`), and never writes
+unsanitised messages into status or logs (`LH-AK-012`). CRD
+installation, operator deployment, status reconcile and HTTP
+health/readiness/metrics endpoints are attested against a real
+kind cluster on every push (see
+[`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
 
 ## What the operator does
 

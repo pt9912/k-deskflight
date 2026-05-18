@@ -8,22 +8,29 @@ Cluster-Voraussetzungen für [OpenDesk](https://docs.opendesk.eu/)-Installatione
 
 ## Status
 
-Die Implementierung ist **im Gang** (`LH-VM-004`). Die ersten drei von
-sieben MVP-Slices sind geschlossen:
+Die Implementierung ist **im Gang** (`LH-VM-004`). Fünf von sieben
+MVP-Slices sind geschlossen; M6 (Metrics-Endpoint, Integrationstests,
+Anwender-Doku) und M7 (Release v0.1.0) stehen aus:
 
 | Phase | Status | Quelle |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Entwurf 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
 | Architekturentscheidungen | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architektur-Spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementierung (`LH-VM-004`) | M1, M2, M3 done — M4–M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Implementierung (`LH-VM-004`) | M1–M5 done — M6 und M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
 | Pflichtenheft (`LH-VM-002`) | wächst mit den Slices | Slice-Pläne unter [`docs/plan/planning/done/`](docs/plan/planning/done/) |
 
-Die Kubernetes-Versions-Prüfung (`LH-AK-005`) ist die erste produktive
-Preflight-Prüfung; die vier Cluster-State-Prüfungen (`LH-AK-006..-009`)
-folgen mit M4. CRD-Installation, Operator-Rollout, Status-Reconcile und
-HTTP-Healthz/Readyz/Metrics-Endpoints werden bei jedem Push gegen einen
-realen kind-Cluster attestiert (siehe [`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
+Alle fünf MVP-Pflicht-Prüfungen (`LH-AK-005..-009`) sind produktiv:
+Kubernetes-Version, StorageClass, IngressClass, cert-manager-
+Existenz und Cluster-Ressourcen (CPU/Memory). Der Operator prüft
+vor jedem Lauf seine eigenen RBAC-Rechte per
+`SelfSubjectAccessReview` (`LH-AK-016`), ist gegen Per-Check-
+Panics und -Timeouts gehärtet (`LH-AK-010`) und schreibt nie
+unsanitierte Messages in Status oder Logs (`LH-AK-012`). CRD-
+Installation, Operator-Rollout, Status-Reconcile und HTTP-Healthz/
+Readyz/Metrics-Endpoints werden bei jedem Push gegen einen
+realen kind-Cluster attestiert (siehe
+[`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
 
 ## Was der Operator tun soll
 
