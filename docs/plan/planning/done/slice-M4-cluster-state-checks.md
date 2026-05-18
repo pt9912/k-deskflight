@@ -1,11 +1,12 @@
 # Slice M4 — Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen)
 
-**Status:** In Progress
+**Status:** Done
 **Eröffnet:** 2026-05-18
-**Vorgänger:** [M3 — Erste Prüfung: Kubernetes-Version (Done)](../done/slice-M3-kubernetes-version-check.md)
-**Nachfolger:** [M5 — RBAC-Selbstprüfung & Robustheit](roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit)
+**Geschlossen:** 2026-05-18
+**Vorgänger:** [M3 — Erste Prüfung: Kubernetes-Version (Done)](slice-M3-kubernetes-version-check.md)
+**Nachfolger:** [M5 — RBAC-Selbstprüfung & Robustheit](../in-progress/roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit)
 **Bezug:**
-[Roadmap §3 M4](roadmap.md#m4--cluster-state-pr%C3%BCfungen),
+[Roadmap §3 M4](../in-progress/roadmap.md#m4--cluster-state-pr%C3%BCfungen),
 [`spec/architecture.md` §5 (AR-009), §6 (AR-012, AR-013, AR-014), §7 (AR-015)](../../../../spec/architecture.md),
 [ADR 0009 §2.2](../../adr/0009-k8s-versions-support-und-profile-mindestversionen.md),
 [ADR 0010](../../adr/0010-externe-dienstpruefungen-und-secret-mechanik.md),
@@ -488,6 +489,124 @@ Vorbereitet, aktiv ab späterer Slice:
 
 ---
 
-## 10. Closure
+## 10. Closure (2026-05-18)
 
-— bleibt leer bis zum Schließen der Slice.
+### 10.1 Geliefertes Datei-Set
+
+Slice in einem Tag von Eröffnung bis Closure durchgezogen.
+Sechs Code-Commits + zwei Plan-Review-Fixup-Commits + ein Phase-A-
+Aktivierungs-Commit. Schritt 4 hat auf `main` einen kurzlebigen
+CI-Bruch erzeugt (M4-Checks default-aktiv, aber Wiring noch nicht
+gezogen — `cluster-smoke` failed mit `UnknownCheck`); der Coverage-
+Boost lief bewusst dazwischen, weil der User die Reihenfolge so
+festgelegt hat. Step 5 hat den Bruch wieder zugemacht.
+
+| Commit | Inhalt |
+| ------ | ------ |
+| `fed4b50 docs(plan): activate slice M4 …` | Phase A — Slice-Plan, Roadmap-Status, in-progress-README. |
+| `cbb04a3 docs(plan): slice M4 review-fixups — smoke manifest source, cert-manager severity` | Review-Befunde Runde 1: §2.6 Manifest-Quelle eindeutig, §7 #11 Severity-Erwartung. |
+| `99cc9ff docs(plan): slice M4 review-fixups — manifest-source language + cert-manager message bridge` | Review-Befunde Runde 2: §2.7/§3.2 URL-Sprache entfernt, §3.1 cert-manager-Message-Pflicht für M6-Doku-Brücke. |
+| `f88d43e feat(domain,port): cluster-state check types (M4 §4 Step 1)` | Vier neue `domain.*Spec`-Typen (Storage/Ingress/CertManager/ClusterResources) plus vier `port.*Discovery`-Interfaces (Interface-Segregation pro Discovery-Domain). 14 Domain-Tests inkl. Profile-Default-Konstanten. |
+| `98e0581 feat(adapter,k8s,check): cluster-state adapters + checks (M4 §4 Step 2)` | Fünf Files unter `internal/adapter/k8s/` (gemeinsamer `NewClusterClients`-Konstruktor + vier Adapter) und vier Check-Implementierungen unter `internal/adapter/check/`. Dual-Annotation-Tolerance für StorageClass-Default (GA + Legacy). cert-manager-Check mit `Severity: warning` und Pflicht-Message-Substring `"external TLS termination"`. 33 Check-Unit-Tests. |
+| `bb85806 docs(plan): slice M4 — clarify cluster-resources test scope` | Pre-implementation-Korrektur §3.3: Node-Quantity-Parse-Fehler ist vom Check-Layer aus nicht testbar (Port liefert int64). |
+| `2a9f2aa feat(api): extend CRD with M4 sub-specs (M4 §4 Step 3)` | `api/v1alpha1/opendeskpreflightcheck_types.go` um vier Sub-Spec-Typen erweitert, `+kubebuilder:validation:MinItems=1` / `Pattern` für Quantity-Strings. `controller-gen`-Output (DeepCopy + CRD-YAML) mitcommittet; `config/rbac/role.yaml` bleibt unverändert (M2-Pre-Grant deckt M4-Bedarf 1:1). |
+| `c83bcc4 feat(application): reconciler runs all M4 checks (M4 §4 Step 4)` | `buildSpecMap` erweitert um vier neue Branches, `defaultsForProfile` + `profileDefaults`-Typ für ClusterResources-Profile-Defaults (production 4 CPU/8Gi, evaluation 2 CPU/4Gi). `stubCheck` mit konfigurierbarem `kind`-Feld; neuer `recordingCheck` für Profile-Default-Tests. Sechs neue Reconciler-Tests (Multi-passed, Mixed-failed, Profile-Defaults × 2, SelectionIssue, Now-Fallback, SpecInvalid-IngressClass). |
+| `cb13f5a test(coverage): adapter k8s tests + cover small branches, hoist threshold to 90 %` | Coverage von 76.9 % auf 95.8 % gehoben durch fünf neue `adapter/k8s/*_test.go` via `k8s.io/client-go/kubernetes/fake` + `discovery/fake`. Refactor: `NewDiscoveryAdapterWithClient` als zweiter Konstruktor (M3-Wiring bleibt). `Makefile.THRESHOLD` von 0 auf 90 — slice-M4 zieht den `ADR 0012 §2.5`-Strict-Wert vor (M6 erbt ihn). |
+| `6d74de9 feat(operator,smoke): wire M4 checks + smoke prep stubs (M4 §4 Step 5)` | `cmd/operator/main.go` registriert alle fünf MVP-Checks über `NewClusterClients`. Sample-CR auf Multi-Check-Stand. `hack/cluster-smoke/cluster-state-stubs.yaml` mit Stub-CRD `smokestubs.cert-manager.io` und IngressClass `nginx` (handgeschrieben, ~40 Zeilen, Plan-Amendment §2.6 von Upstream-Mirror zu Minimal-Stubs). Smoke-Script-Step-8-Assertion iteriert die fünf erwarteten MVP-Conditions. |
+
+### 10.2 Verifikations-Ergebnis (§7)
+
+| # | Item | Ergebnis |
+| - | ---- | -------- |
+| 1 | `make build` | ✓ Image enthält neuen Operator mit allen fünf Adaptern + Checks. |
+| 2 | `make lint` | ✓ `0 issues` mit allen `AR-005`-depguard-Regeln scharf. `adapter/k8s/*` darf k8s.io importieren, `domain/clusterresources.go` bleibt k8s-frei (Quantity-Parse adapter-seitig). |
+| 3 | `make test` | ✓ ~75 Tests grün (Domain: 14, Application: 16, Adapter/check: 39, Adapter/k8s: 12). |
+| 4 | `make coverage-gate` | ✓ 95.8 % über alle `internal/`-Pakete, Threshold strikt 90 % (slice-M4 zieht `ADR 0012 §2.5`-Wert vor; M6 erbt). |
+| 5 | `make doc-refs` | ✓ All documentation links OK. |
+| 6 | `make generated-drift-check` | ✓ controller-gen-Output (CRD + DeepCopy) deterministisch; RBAC unverändert. |
+| 7 | `make gates` | ✓ Bundle. **Real auf GitHub-Actions attestiert**: Run-URL `https://github.com/pt9912/k-deskflight/actions/runs/26018560547` (ci-Workflow, beide Jobs `gates` + `security-gates` grün). |
+| 8 | `make security-gates` | ✓ `govulncheck` ohne Findings nach `k8s.io/client-go/kubernetes` Direct-Require-Promotion (Run im selben `ci`-Workflow). |
+| 9 | `LH-AK-006` StorageClass prüfbar | ✓ via `adapter/check/storageclass_test.go` (sieben Fälle: passed-Names-only, passed-RequireDefault, failed-Name-missing, failed-Default-missing, failed-beides, lookup-error, invalid spec); real attestiert über Cluster-Smoke (kind hat `standard`-StorageClass mit Default-Annotation, Condition `StorageClassReady=True`). |
+| 10 | `LH-AK-007` IngressClass prüfbar | ✓ via `adapter/check/ingressclass_test.go` (passed/failed/lookup-error/invalid spec); real attestiert über Stub-IngressClass `nginx` aus `hack/cluster-smoke/cluster-state-stubs.yaml`, Condition `IngressClassReady=True`. |
+| 11 | `LH-AK-008` cert-manager prüfbar | ✓ via `adapter/check/certmanager_test.go` (installed/missing/lookup-error/invalid spec). Severity-Erwartung `warning` ist im Unit-Test fixiert; Pflicht-Message-Substring `"external TLS termination"` ebenfalls (M6-Doku-Brücke). Real attestiert über Stub-CRD `smokestubs.cert-manager.io` — der Discovery-Endpoint meldet die `cert-manager.io`-API-Gruppe, Condition `CertManagerInstalled=True`. |
+| 12 | `LH-AK-009` Ressourcen prüfbar | ✓ via `adapter/check/clusterresources_test.go` (passed-single + multi-node, failed-cpu/-mem/-both, lookup-error, invalid spec × 3); real attestiert über kind-Worker-Allocatable gegen `MinCPU="1" / MinMemory="1Gi"`, Condition `ClusterResourcesReady=True`. |
+
+### 10.3 Out-of-Scope-Übergaben an M5
+
+- **`SelfSubjectAccessReview`-RBAC-Selbstprüfung** (`LH-AK-016`,
+  `LH-F-024`) — M5.
+- **Robustheit-Pfade**: Panic-Recovery in `Check.Run`, Cross-
+  Constraint-Timeout-Härtung (`CHECK_TIMEOUT_SECONDS` vs.
+  `RECONCILE_TIMEOUT_SECONDS`), Worker-Pool-Modell, Leader-Election
+  — M5.
+- **Wiederholintervall** (`AR-010`) — M5.
+- **envtest-basierte Integrationstests** für Adapter-API-Pfade
+  (`AR-024`) — M6. Coverage-strict ist bereits in M4 erreicht; envtest
+  bleibt eine Reality-Check-Erweiterung, nicht mehr Coverage-blockierend.
+- **Reale cert-manager / ingress-nginx-Controller in der Smoke**
+  (statt Minimal-Stubs) — v0.2 zusammen mit `LH-F-014` (ClusterIssuer-
+  Detailprüfung), wo Reachability- und Reconcile-Pfade reale
+  Controller voraussetzen.
+- **Profile-spezifische Activation-Listen** in `Registry.ListByProfile`
+  (`CheckNotAllowedInProfile`-Reason) — bleibt im Code vorbereitet,
+  wird erst aktiviert, wenn ein Profil einen Check verbietet (v0.2
+  mit externen Diensten, `ADR 0010`).
+
+### 10.4 Lessons learned
+
+- **Default-Aktivierung im Reconciler bricht den Smoke ohne paralleles
+  Wiring**: Schritt 4 hat `buildSpecMap` so erweitert, dass cert-manager
+  und ClusterResources immer aktiv sind — aber Schritt 5 (Wiring in
+  `cmd/operator/main.go`) folgte erst nach dem Coverage-Boost. In
+  der Zwischenzeit war `main` rot, weil die produktive Registry die
+  default-aktiven Checks nicht kannte und `UnknownCheck`-Issues
+  erzeugte. **Lektion**: Bei `buildSpecMap`-Default-Aktivierungen
+  muss das Wiring **im selben Commit** ziehen, oder die Default-
+  Aktivierung wird hinter ein Feature-Flag gestellt, bis das
+  Wiring nachgezogen ist. Für M5/v0.2 als verbindliche Regel
+  notiert. Im konkreten Slice hat der User die Reihenfolge bewusst
+  so gewählt, weil Coverage Vorrang hatte.
+- **Coverage-Boost auf 90 % war ohne envtest erreichbar**: Plan §3.1
+  hatte ursprünglich „adapter/k8s/* bleiben M4-untestet (envtest M6)"
+  verankert. Die `k8s.io/client-go/kubernetes/fake`- und
+  `…/discovery/fake`-Pakete reichen aus, um StorageClass-/IngressClass-/
+  Node-Listing inkl. Default-Annotation-Toleranz und NodeReady-Filter
+  vollständig zu testen — `PrependReactor` für Fehlerpfade, `FakedServerVersion`
+  + `Fake.Resources` für Discovery. **Konsequenz**: M6 kann sich auf
+  envtest-basierte Integration für Watch-/Update-Pfade konzentrieren,
+  Coverage-strict ist bereits erfüllt.
+- **Minimal-Stubs gegen Upstream-Mirror**: Der Plan-Erstwurf hat
+  cert-manager- und ingress-nginx-Installation als „volle statische
+  Manifeste, Repo-gespiegelt" festgelegt (~230 KB). Die M4-Existence-
+  Checks brauchen aber nur die `cert-manager.io`-API-Gruppen-Registrierung
+  und eine `IngressClass`-Resource. Eine 40-Zeilen-YAML mit Stub-CRD
+  und Stub-IngressClass erfüllt das ohne Upstream-Pin-Pflege. **Lektion**:
+  Test-Voraussetzungen am Test-Surface bemessen, nicht am realen
+  Deployment-Pfad. Die volle Controller-Installation kommt erst mit
+  v0.2-`LH-F-014` zurück, wo Reachability- und Reconcile-Pfade reale
+  Controller brauchen.
+- **`FakeDiscovery.Resources` lebt auf der embedded `*testing.Fake`,
+  nicht auf der Struct selbst** (client-go v0.36.0). Der Erstwurf
+  hatte `&fakediscovery.FakeDiscovery{Resources: …}` — bricht
+  Compile mit „unknown field Resources in struct literal". Korrekt
+  ist `&fakediscovery.FakeDiscovery{Fake: &ktesting.Fake{Resources:
+  …}}`. Für künftige Discovery-Tests notiert.
+- **`make cluster-smoke` lokal vor Push** rechtfertigt sich beim
+  default-aktivierten-Check-Bruch: ein lokaler `make cluster-smoke`
+  hätte den `UnknownCheck`-Pfad sofort gezeigt. Empfehlung für M5:
+  Smoke ist Teil des Inner-Loop für alle Reconciler-Änderungen, die
+  default-aktivierte Checks oder Registry-Verträge berühren.
+- **`stubCheck` mit hartcodiertem SpecKind blockiert Multi-Check-
+  Tests**: M3 hatte `stubCheck.SpecKind() = "kubernetesVersion"`
+  fest verdrahtet. Für Multi-Check-Reconciler-Tests musste das auf
+  konfigurierbar umgestellt werden (mit Default-Fallback auf
+  KubernetesVersion für M3-Kompat). Pattern: Test-Doubles bei der
+  ersten Mehrfach-Nutzung gleich generisch anlegen, statt single-shot.
+
+### 10.5 Folge-Attest
+
+| Item | Datum | Notiz |
+| ---- | ----- | ----- |
+| §7 #7 + #8 — CI-Bundle grün auf GitHub-Actions | 2026-05-18 | Closure-vorbereitender Push `cb13f5a..6d74de9` bestätigt: `gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check)` mit Threshold 90 % grün, `security-gates (govulncheck v1.1.4)` grün. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/26018560547>. |
+| §7 #9..#12 — Cluster-Smoke gegen kind, alle vier M4-`LH-AK-*` real attestiert | 2026-05-18 | `cluster-smoke`-Workflow lief `kubectl apply -f hack/cluster-smoke/cluster-state-stubs.yaml` (Stub-CRD + IngressClass-Stub), dann den Operator-Deploy und den Multi-Check-Sample-CR. Step-8-Assertion verifizierte alle fünf erwarteten Conditions (`CertManagerInstalled`, `ClusterResourcesReady`, `IngressClassReady`, `KubernetesVersionReady`, `StorageClassReady`) auf `status=True`. Status-Dump im Run-Artefakt `cluster-smoke-attest`. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/26018560557>. |
+| §9-Risiko „cert-manager-Deployments + 180s timeout" entfallen | 2026-05-18 | Mit dem Minimal-Stub-Ansatz aus §2.6-Amendment gibt es keine cert-manager-Deployments mehr in der Smoke-Prep — `kubectl wait` braucht nichts. Risiko-Bullet bleibt historisch im §9-Text, ist aber nicht mehr aktiv. |

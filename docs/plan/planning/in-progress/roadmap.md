@@ -61,7 +61,7 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
 | M1 | Repo & Build-Skeleton | — | Done (Closure: [`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md)) |
 | M2 | CRD + Controller-Skeleton | M1 | Done (Closure: [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md)) |
 | M3 | Erste Prüfung — Kubernetes-Version | M2 | Done (Closure: [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md)) |
-| M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | In Progress (Slice-Plan: [`in-progress/slice-M4-cluster-state-checks.md`](slice-M4-cluster-state-checks.md)) |
+| M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Done (Closure: [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md)) |
 | M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Pending |
 | M6 | Metrics-Endpoint, Tests, Doku | M5 | Pending |
 | M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | Pending |
@@ -435,10 +435,11 @@ Sammel-Closure-Notiz nach `done/`.
 
 ## 7. Status
 
-In Progress. M1, M2 und M3 geschlossen am 2026-05-17
+In Progress. M1, M2 und M3 geschlossen am 2026-05-17, M4 geschlossen
+am 2026-05-18
 ([`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md),
 [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md),
-[`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md));
-M4 seit 2026-05-18 aktiv über
-[`in-progress/slice-M4-cluster-state-checks.md`](slice-M4-cluster-state-checks.md);
-M5–M7 weiterhin Pending.
+[`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md),
+[`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md));
+M5–M7 weiterhin Pending. Aktivierung von M5 erfolgt durch einen
+eigenen `slice-M5-…md` in `in-progress/`.
