@@ -62,7 +62,7 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
 | M2 | CRD + Controller-Skeleton | M1 | Done (Closure: [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md)) |
 | M3 | Erste Prüfung — Kubernetes-Version | M2 | Done (Closure: [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md)) |
 | M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Done (Closure: [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md)) |
-| M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | In Progress (Slice-Plan: [`in-progress/slice-M5-rbac-self-check-robustness.md`](slice-M5-rbac-self-check-robustness.md)) |
+| M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Done (Closure: [`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md)) |
 | M6 | Metrics-Endpoint, Tests, Doku | M5 | Pending |
 | M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | Pending |
 
@@ -435,12 +435,12 @@ Sammel-Closure-Notiz nach `done/`.
 
 ## 7. Status
 
-In Progress. M1, M2 und M3 geschlossen am 2026-05-17, M4 geschlossen
-am 2026-05-18
+In Progress. M1, M2 und M3 geschlossen am 2026-05-17; M4 und M5
+geschlossen am 2026-05-18
 ([`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md),
 [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md),
 [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md),
-[`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md));
-M5 seit 2026-05-18 aktiv über
-[`in-progress/slice-M5-rbac-self-check-robustness.md`](slice-M5-rbac-self-check-robustness.md);
-M6 und M7 weiterhin Pending.
+[`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md),
+[`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md));
+M6 und M7 weiterhin Pending. Aktivierung von M6 erfolgt durch einen
+eigenen `slice-M6-…md` in `in-progress/`.

@@ -1,11 +1,12 @@
 # Slice M5 — RBAC-Selbstprüfung & Robustheit
 
-**Status:** In Progress
+**Status:** Done
 **Eröffnet:** 2026-05-18
-**Vorgänger:** [M4 — Cluster-State-Prüfungen (Done)](../done/slice-M4-cluster-state-checks.md)
-**Nachfolger:** [M6 — Metrics-Endpoint, Tests, Doku](roadmap.md#m6--metrics-endpoint-tests-doku)
+**Geschlossen:** 2026-05-18
+**Vorgänger:** [M4 — Cluster-State-Prüfungen (Done)](slice-M4-cluster-state-checks.md)
+**Nachfolger:** [M6 — Metrics-Endpoint, Tests, Doku](../in-progress/roadmap.md#m6--metrics-endpoint-tests-doku)
 **Bezug:**
-[Roadmap §3 M5](roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit),
+[Roadmap §3 M5](../in-progress/roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit),
 [`spec/architecture.md` §5 (AR-009 Phase 4), §5 (AR-011), §7 (AR-015 / AR-018)](../../../../spec/architecture.md),
 [ADR 0010 §2.3](../../adr/0010-externe-dienstpruefungen-und-secret-mechanik.md)
 
@@ -742,6 +743,133 @@ Vorbereitet, aktiv ab späterer Slice:
 
 ---
 
-## 10. Closure
+## 10. Closure (2026-05-18)
 
-— bleibt leer bis zum Schließen der Slice.
+### 10.1 Geliefertes Datei-Set
+
+Slice in einem Tag von Eröffnung bis Closure durchgezogen. Neun
+Code-/Plan-Commits (ohne diesen Closure-Commit): zwei Plan-Iterationen
+(Aktivierung + Folge-Review-Fixup), sechs Code-Schritte, ein
+CI-Hotfix-Wiring. Wie schon in M4 hat Schritt 4 (Reconciler-Pfad
+mit SAR-Aufruf) das `main.go`-Wiring temporär überholt — der
+cluster-smoke wurde durch Schritt 6 wieder grün.
+
+| Commit | Inhalt |
+| ------ | ------ |
+| `2bc2238 docs(plan): activate slice M5 …` | Phase A — Slice-Plan mit allen vier Review-Befunden bereits adressiert (RBACInsufficient vs. RBACCheckFailed, Cancel-vs-Timeout-Diskriminierung, Per-Check-Recover umschließt SAR, RBAC-Konsistenz-Test). |
+| `868314c docs(plan): slice M5 review-fixups — select race, parent-deadline, slog-attrs` | Folge-Review-Fixups Runde 2: Go-`select`-Race im `runWithTimeout` (validate `runCtx.Err()` nach `<-resultCh`), `context.WithTimeoutCause` für Parent-Deadline-Differenzierung (neuer `ReconcileTimeout`-Reason), `SanitizeAttrs` + `LogResult` für strukturierte slog-Attrs. |
+| `6cde019 feat(domain,port,check): RequiredPermissions interface + 5 check decls (M5 §4 Step 1)` | `domain.PermissionRequest` (k8s-frei) + `CanonicalString`-Helper; `port.AccessReviewer` mit Drei-Outcome-Kontrakt im Doc-Comment. `Check`-Interface bekommt `RequiredPermissions()`; alle fünf MVP-Checks deklarieren ihre Rechte gemäß §2.2-Tabelle. 5 Permission-Tests + 1 CanonicalString-Test. |
+| `d2ea880 feat(adapter,k8s): AccessReviewAdapter for SelfSubjectAccessReview (M5 §4 Step 2)` | `AccessReviewAdapter` mappt `PermissionRequest` 1:1 auf `authzv1.ResourceAttributes` und schickt SAR via `AuthorizationV1().SelfSubjectAccessReviews().Create`. Error-Pfad wrapped mit `CanonicalString` für Oncall-Visibilität. 5 Tests gegen `kubernetes/fake` + `PrependReactor` (allowed/denied/error/Field-Mapping/Core-Group). |
+| `282208f feat(domain,check): add ConditionType() to Check interface (M5 §4 Step 3a)` | Plan-Lücke entdeckt: `application` darf `adapter/check` nicht importieren, also kann der Runner die `ConditionType*`-Konstanten nicht direkt lesen. Lösung: `Check.ConditionType() string` als zusätzliche Interface-Methode. Plan §2.2 amended; alle fünf Checks plus zwei Test-Stubs angepasst. |
+| `ddcc9a4 feat(application): runner with SAR-pre-execution + secret-filter hooks (M5 §4 Step 3b)` | `runner.go` mit `RunCheckSafely` (Outer-Recover umschließt SAR-Loop + `runWithTimeout`), `runWithTimeout` (`WithTimeoutCause` + Race-Härtung), `classifyContextEnd` (3-Wege via `context.Cause`), `PermissionCache` für O(unique permissions) SAR-Calls, sechs Synthetic-Result-Helper. `secret_filter.go` mit `SanitizeMessage`/`SanitizeAttrs`/`LogResult` als Identitäts-Hooks für v0.2. 14 runner-Tests + 4 filter-Tests. |
+| `c9f2e3b feat(application): reconciler wires M5 runner with SAR + recover + sanitize (M5 §4 Step 4)` | Reconciler-struct um `AccessReviewer`/`Logger`/`CheckTimeout` erweitert. Outer-defer-recover am Anfang von Reconcile mit best-effort Status-Write (Phase=Unknown + Reason=ReconcilePanic) und innerem Recover gegen Panic-Schleife. `runChecks` ruft `RunCheckSafely`. `writeStatus` sanitisiert alle Condition.Message zentral. `log.FromContext` durch slog ersetzt; Per-Result-`LogResult` plus Aggregat-`reconciled`-Log. Vier neue Reconciler-Tests für die §7-Items (RBACInsufficient, Per-Check-Panic, Per-Check-Timeout, Outer-Panic). |
+| `43d6bec test(audit): destructive-audit + RBAC-consistency via go/parser (M5 §4 Step 5)` | Neues Mini-Package `internal/audit/markers/` mit `ParseRBACFile`/`Marker`/`Triple` (go/parser-Comment-Extraktion). `destructive_audit_test.go` verifiziert `LH-SEC-005` (Whitelist destruktiver Verben gegen eigene CR + SAR-Subsystem + Leases). `rbac_consistency_test.go` mit zwei Drift-Tests (RequiredPermissions ↔ Marker in beide Richtungen, operativ-Whitelist mit Lastenheft-/ADR-Verweis pro Eintrag). Audit-Package umgeht die depguard-Layer-Trennung neutral. |
+| `4340874 feat(operator): wire AccessReviewer + Logger into reconciler (M5 §4 Step 6)` | CI-Hotfix: Schritt 4 hatte den Reconciler-Pfad für SAR-Pre-Execution gebaut, aber `cmd/operator/main.go` lag noch auf M4-Stand. Folge: cluster-smoke meldete `InternalError` für die drei Checks mit `RequiredPermissions` (Per-Check-Recover fing den nil-Pointer-Panic auf `reviewer.CanI`). Wiring nachgezogen mit `k8s.NewAccessReviewAdapter(clients.Clientset)` und `Logger: logger`. |
+
+### 10.2 Verifikations-Ergebnis (§7)
+
+| # | Item | Ergebnis |
+| - | ---- | -------- |
+| 1 | `make build` | ✓ Image enthält den vollständigen M5-Reconciler + AccessReviewAdapter. |
+| 2 | `make lint` | ✓ `0 issues`. `Check`-Interface-Erweiterung (RequiredPermissions, ConditionType) bricht keine `AR-005`-depguard-Regel; `domain/permission.go` bleibt k8s-frei; Tests nutzen kein adapter-application-Cross-Import (Audit-Package neutralisiert). Drei Lint-Findings aus Schritt 3 (revive context-as-argument, staticcheck SA1012, contextcheck) wurden im selben Commit gefixt — siehe Lessons learned. |
+| 3 | `make test` | ✓ ~115 Tests grün: 4 Audit-Parser, 1 CanonicalString, 5 Permissions-Tabelle, 5 AccessReviewAdapter, 14 Runner, 4 Filter, 2 RBAC-Konsistenz, 1 Destructive-Audit, plus Erweiterung Reconciler-Tests um die 4 neuen M5-Pfade. |
+| 4 | `make coverage-gate` | ✓ **94.7 %** über alle `internal/`-Pakete, Threshold strikt 90 % (slice-M4-Hebung). |
+| 5 | `make doc-refs` | ✓ All documentation links OK. |
+| 6 | `make generated-drift-check` | ✓ Keine RBAC-Marker-Änderungen — M2-Pre-Grant deckt M5-Bedarf 1:1 (`config/rbac/role.yaml` unverändert). |
+| 7 | `make gates` | ✓ Bundle. **Real auf GitHub-Actions attestiert**: Run-URL <https://github.com/pt9912/k-deskflight/actions/runs/26036254116> (ci-Workflow, beide Jobs `gates` + `security-gates` grün). |
+| 8 | `make security-gates` | ✓ `govulncheck` ohne Findings (im selben `ci`-Workflow attestiert). |
+| 9 | `LH-AK-010` Fehlerfall robust | ✓ via `application/runner_test.go` (Panic-in-CanI, Panic-in-Run, Per-Check-Timeout, Parent-Cancel) plus `reconciler_test.go` (TestReconcilePerCheckPanic, TestReconcilePerCheckTimeout, TestReconcileOuterPanic — letzterer fixiert den outer-recover-Pfad mit Status-Update auf Phase=Unknown/ReconcileError/ReconcilePanic). |
+| 10 | `LH-AK-012` Keine Secret-Leaks | ✓ via `application/secret_filter_test.go` (Identitäts-Verhalten + `LogResult`-Standard-Attrs + nil-Logger-Toleranz). Pflicht-Aufrufstellen sind im Reconciler (writeStatus → sanitizeConditions), im Runner (Panic-Recovery → SanitizeAttrs auf `slog.Any("recover", r)` + `slog.Any("stack", debug.Stack())`) und im SAR-Error-Logger verankert. Die strukturierte slog-Lücke (Folge-Review-Befund 3) ist durch den zweiten Hook `SanitizeAttrs` geschlossen. |
+| 11 | `LH-AK-015` Minimalrechte dokumentiert | ✓ automatisch via `adapter/check/rbac_consistency_test.go` (TestRBACConsistencyChecksMappedToMarkers + TestRBACConsistencyMarkersBackedByChecks). Beide Drift-Richtungen brechen den Build; Pflicht-Wartungs-Tabellen (allMVPChecks, operativeMarkersWhitelist) sind im Test mit Lastenheft-/ADR-Verweis pro Eintrag. |
+| 12 | `LH-AK-016` RBAC-Selbstprüfung wirksam | ✓ via `runner_test.go` (alle drei SAR-Outcomes inkl. RBACCheckFailed-Precedence vor RBACInsufficient, Panic-in-CanI greift Per-Check-Recover NICHT Outer, Cause-aware Timeout/Cancel) plus `reconciler_test.go` (TestReconcileRBACInsufficient mit Phase=Unknown/Reason=RBACInsufficient). Real attestiert via cluster-smoke (Run [26036254191](https://github.com/pt9912/k-deskflight/actions/runs/26036254191)): mit der vollständigen ClusterRole liefern alle fünf Checks `Status=True` — gesondertes failed-Smoke-Szenario mit künstlich eingeschränkter RBAC bleibt M6-Manual-Test (Plan §7 #12). |
+
+### 10.3 Out-of-Scope-Übergaben an M6 / M7 / v0.2
+
+- **Wiederholintervall** (`AR-010`, `LH-F-025`) — M6 zusammen mit
+  Anwender-Doku.
+- **Leader-Election** (`AR-026`) — M7-Release-Hardening; RBAC-Pre-Grant
+  + operativ-Whitelist im RBAC-Konsistenz-Test sind bereits da.
+- **Worker-Pool voll** (`AR-009 §4`) — v0.2.
+- **`OPERATOR_STRICT_CONFIG` + `CHECK_TIMEOUT_SECONDS`-Env-Override**
+  (`AR-010.1`) — v0.2 zusammen mit der Configuration-Klassifizierungs-
+  ADR.
+- **Echte Secret-Pattern-Maskierung** in `SanitizeMessage` /
+  `SanitizeAttrs` / `LogResult` — v0.2 zusammen mit externen
+  Service-Checks (`LH-F-018..021`, `ADR 0010`).
+- **K8s-Events schreiben** (`LH-F-027`) — v0.2; Sanitize-Hook-Pattern
+  ist bereits in `LogResult`-Tabelle verankert.
+- **Cluster-Smoke-Szenario mit eingeschränkter RBAC** (Operator-
+  ServiceAccount ohne `storage.k8s.io/storageclasses,verbs=list`) —
+  M6-Manual-Test.
+
+### 10.4 Lessons learned
+
+- **Plan-Lücke bei Check-Interface-Identitäts-Feldern entdeckt während
+  Code-Schreibe (Schritt 3a):** das Plan §2.3 sagte „Synthetic-Results
+  nutzen `ConditionType` des Checks", aber der Mechanismus dafür war
+  nicht verankert. depguard `application-no-adapter` verbot dem Runner,
+  die `ConditionTypeXxx*`-Konstanten direkt zu importieren. Lösung:
+  Check-Interface bekommt eine zusätzliche Methode. **Lektion**: bei
+  Plan-Reviews explizit prüfen, dass jedes „X nutzt Y aus Z"-Statement
+  einen klaren Pfad hat — wer ruft was, mit welchen Importen.
+- **Reihenfolge-Bruch wiederholt sich (M4 vs. M5):** in beiden Slices
+  hat ein Schritt den Reconciler-Pfad gebaut, der eine neue
+  Wiring-Erwartung erzeugt; das Wiring kommt aber erst im
+  Folge-Schritt. Auf `main` bleibt der cluster-smoke zwischendurch
+  rot. **Lektion**: für M6+ entweder
+  (a) den Plan §4-Reihenfolge so umstellen, dass Reconciler-Code und
+      Wiring im selben Commit landen,
+  (b) Reconciler-Pfade hinter ein Feature-Flag stellen, bis das
+      Wiring nachgezogen ist, oder
+  (c) `make cluster-smoke` als verpflichtenden Pre-Push-Check
+      anlegen (lokal vor jedem Reconciler-betreffenden Commit).
+- **depguard-Layer-Trennung erzwingt Audit-Architektur:** die zwei
+  RBAC-Konsistenz-Tests können sich nicht direkt importieren —
+  `application-no-adapter` und `adapter-no-application` verbieten den
+  Cross-Import. Ein neutrales `internal/audit/markers/`-Mini-Package
+  löst das eleganter als duplizierten Parser-Code. **Lektion**: für
+  künftige statische Audit-Tests (z. B. Coverage-Whitelist,
+  Lastenheft-Traceability) gleich einen Audit-Layer einplanen.
+- **`gochecknoglobals` bricht `var foo = …` in Test-Files:** die
+  Lint-Regel matched auch `_test.go`-Files. Lösung: Maps innerhalb der
+  Test-Funktion definieren. Pattern für künftige Audit-Tests
+  notiert.
+- **`go/parser` plus AST-Comment-Iteration funktioniert sehr gut für
+  Marker-Audits:** der Parser-Helper ist ~80 LOC und deckt beide
+  semantisch verschiedenen Drift-Pfade (destructive-verb +
+  permissions-mapping). Bestätigt die §2.7-Architektur-Entscheidung
+  gegen Regex-Pattern.
+- **Race-Härtung im `select`-Block ist nicht offensichtlich:** der
+  Folge-Reviewer hat den Go-`select`-Non-Determinismus entdeckt
+  (wenn `<-resultCh` und `<-runCtx.Done()` zeitgleich ready sind,
+  wählt Go zufällig). Lösung: nach `<-resultCh` zusätzlich
+  `runCtx.Err()` validieren. **Lektion**: bei jedem `select` mit
+  Context-Done explizit nach der Auswahl den Context-Err prüfen,
+  damit die Klassifikation stabil ist.
+- **`context.WithTimeoutCause` mit Sentinel-Error ist die saubere
+  Lösung für Per-Check vs. Parent-Deadline-Diskriminierung:** ohne
+  den Cause-Mechanismus hätten wir nicht unterscheiden können, ob
+  `DeadlineExceeded` von unserem 30s-Timeout oder vom Parent
+  (`RECONCILE_TIMEOUT_SECONDS`) kommt. Pattern für künftige
+  Cancellation-Diskriminierung.
+- **`SanitizeAttrs` als zweiter Hook neben `SanitizeMessage` war
+  Folge-Review-Mehrwert:** strukturierte slog-Attrs (`slog.Any(...)`)
+  würden sonst am String-Filter vorbei vertrauliche Werte loggen.
+  Der Pflicht-Wrapper `LogResult` kapselt beide Hooks, damit
+  Aufrufstellen keine Wahl haben. **Lektion**: bei Secret-Filter-
+  Verankerung immer beide Pfade (String + strukturierte Attrs)
+  betrachten.
+- **Lint-Kombi `context-as-argument` + `staticcheck SA1012`
+  erzwingt sauberes Context-Pattern:** `LogResult(ctx, ...)` musste
+  ctx required + nicht-nil sein, ctx als zweites Argument war
+  verboten. Beide Linter-Regeln zusammen ergeben besseres API:
+  Caller weiß, dass `context.Background()` explizit übergeben werden
+  muss.
+
+### 10.5 Folge-Attest
+
+| Item | Datum | Notiz |
+| ---- | ----- | ----- |
+| §7 #7 + #8 — CI-Bundle grün auf GitHub-Actions | 2026-05-18 | `gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check)` mit Threshold 90 % grün; `security-gates (govulncheck v1.1.4)` grün. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/26036254116>. |
+| §7 #9..#12 — Cluster-Smoke gegen kind, alle fünf MVP-Conditions=True | 2026-05-18 | `cluster-smoke`-Workflow gegen kindest/node v1.34.0 mit den Cluster-State-Stubs aus M4. Step-8-Assertion verifizierte alle fünf erwarteten Conditions auf `status=True`; mit der vollständigen ClusterRole + dem neu wiringten AccessReviewAdapter laufen alle SAR-Pre-Execution-Pfade durch. Status-Dump im Run-Artefakt `cluster-smoke-attest`. Run-URL: <https://github.com/pt9912/k-deskflight/actions/runs/26036254191>. |
+| CI-Hotfix-Vorfall Schritt 4 ↔ 6 | 2026-05-18 | Push `43d6bec` (Schritt 5) ließ den cluster-smoke wegen fehlendem AccessReviewer-Wiring rot: drei Checks panickten auf `nil.CanI`, der Per-Check-Recover fing das ab und lieferte `InternalError`. Schritt 6 (`4340874`) hat das gefixt; lokaler `make cluster-smoke` + CI grün. Lektion siehe §10.4. |
