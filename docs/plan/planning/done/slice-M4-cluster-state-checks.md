@@ -135,9 +135,16 @@ verboten. Konsequenz:
 - `domain.ClusterResourcesSpec.Validate(ctx)` prüft nur Syntax-Plausibilität
   (nicht-leer, keine kompletten Regex-Tests — k8s-API selbst lehnt
   fehlerhafte Werte beim `kubectl apply` ab via OpenAPI-Validierung).
-- `adapter/check/clusterresources.go` ruft `resource.ParseQuantity` auf
-  Spec-Werten **und** auf Node-`Allocatable`-Werten. Bei Parse-Fehler
-  → `Status: Unknown` + `Reason: InvalidSpec` / `Reason: InvalidNodeQuantity`.
+- `adapter/check/clusterresources.go` ruft `resource.ParseQuantity`
+  nur auf den Spec-Werten (`MinCPU`/`MinMemory`). Bei Parse-Fehler
+  → `Status: Unknown` + `Reason: InvalidSpec`.
+- Node-`Allocatable`-Werte werden **adapter-seitig** in
+  `internal/adapter/k8s/nodes.go` per `Quantity.MilliValue()` /
+  `Quantity.Value()` in skalare `int64`-Einheiten umgesetzt und vom
+  Port als `port.NodeInfo` geliefert — der Check braucht keine
+  Node-Quantity-Parse-Logik und kennt damit auch keinen
+  `InvalidNodeQuantity`-Reason. Adapter-interne Parse-Pfade gegen
+  reale `corev1.Node`-Werte werden in M6 via envtest abgedeckt.
 
 ### 2.6 Cluster-Smoke-Erweiterung (ADR 0013)
 
@@ -218,7 +225,7 @@ deterministischer ab.
 | `internal/adapter/check/storageclass.go` | `StorageClass`-Check + Konstanten `CheckNameStorageClass`, `ConditionTypeStorageClassReady`, Reason-Codes (`StorageClassReady`, `StorageClassMissing`, `DefaultStorageClassMissing`, `LookupFailed`). |
 | `internal/adapter/check/ingressclass.go` | analog StorageClass. |
 | `internal/adapter/check/certmanager.go` | `CertManager`-Check; Reason `CertManagerInstalled` / `CertManagerMissing`. **Pflicht-Message-Inhalt bei `Missing`** (M4-Brücke zur M6-Doku): Text nennt explizit die zwei legitimen Alternativen — entweder cert-manager nachinstallieren **oder** TLS extern terminieren. Beispiel: `"cert-manager.io API group not registered — install cert-manager or configure external TLS termination (severity warning, not failing)"`. Damit landet die Erwartungsdissonanz-Erklärung bereits im CR-Status, bevor `docs/user/conditions-katalog.md` (M6) existiert. |
-| `internal/adapter/check/clusterresources.go` | `ClusterResources`-Check; parst Spec-Quantities + Node-Quantities, summiert über Ready-Nodes, vergleicht. Reason: `ResourcesSufficient`, `InsufficientCPU`, `InsufficientMemory`, `InvalidSpec`, `InvalidNodeQuantity`, `LookupFailed`. |
+| `internal/adapter/check/clusterresources.go` | `ClusterResources`-Check; parst nur die Spec-Quantities (`MinCPU`/`MinMemory`) per `resource.ParseQuantity`; Node-Allocatable kommt bereits als `int64`-Milli-CPU/Bytes aus `port.NodeInfo` (adapter-seitig skalarisiert in `nodes.go`). Summiert über Ready-Nodes und vergleicht. Reason-Codes: `ResourcesSufficient` (passed), `InsufficientCPU` / `InsufficientMemory` / `InsufficientResources` (beide kurz, failed-Varianten), `InvalidSpec` (Quantity-Parse-Fehler im Spec oder fremder CheckSpec-Typ), `ClusterResourcesLookupFailed` (Port-Fehler). |
 
 ### 3.2 Erweiterte Code-Dateien
 
