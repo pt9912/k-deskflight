@@ -178,8 +178,8 @@ deterministischer ab.
 | `k8s.io/api/storage/v1`, `…/networking/v1`, `…/core/v1` | identisch zur transitiven Auflösung aus controller-runtime v0.24.1 | unverändert |
 | `k8s.io/client-go/kubernetes` (Typed Clientset) | identisch zur transitiven Auflösung aus controller-runtime v0.24.1 | als Direct-Require promotet |
 | `k8s.io/apimachinery/pkg/api/resource` | identisch zur transitiven Auflösung | bereits Direct-Require über M2-Status-Typen |
-| ingress-nginx Manifest (Smoke) | v1.13.x (kind-kompatibel, Floor v1.32+) | gepinnt in `scripts/cluster-smoke.sh` |
-| cert-manager Manifest (Smoke) | v1.20.x (kind-kompatibel) | gepinnt in `scripts/cluster-smoke.sh` |
+| ingress-nginx Manifest (Smoke) | v1.13.x (kind-kompatibel, Floor v1.32+) | Repo-Spiegel `hack/cluster-smoke/ingress-nginx.yaml` (siehe §2.6) |
+| cert-manager Manifest (Smoke) | v1.20.x (kind-kompatibel) | Repo-Spiegel `hack/cluster-smoke/cert-manager.yaml` (siehe §2.6) |
 
 ---
 
@@ -203,7 +203,7 @@ deterministischer ab.
 | `internal/adapter/k8s/nodes.go` | `NodeAdapter` implementiert `port.NodeDiscovery` via `CoreV1().Nodes().List`. Filter: nur `NodeReady=True`; Allocatable in millicpu/bytes umgerechnet (`resource.Quantity.MilliValue()` / `.Value()`). |
 | `internal/adapter/check/storageclass.go` | `StorageClass`-Check + Konstanten `CheckNameStorageClass`, `ConditionTypeStorageClassReady`, Reason-Codes (`StorageClassReady`, `StorageClassMissing`, `DefaultStorageClassMissing`, `LookupFailed`). |
 | `internal/adapter/check/ingressclass.go` | analog StorageClass. |
-| `internal/adapter/check/certmanager.go` | `CertManager`-Check; Reason `CertManagerInstalled` / `CertManagerMissing`. |
+| `internal/adapter/check/certmanager.go` | `CertManager`-Check; Reason `CertManagerInstalled` / `CertManagerMissing`. **Pflicht-Message-Inhalt bei `Missing`** (M4-Brücke zur M6-Doku): Text nennt explizit die zwei legitimen Alternativen — entweder cert-manager nachinstallieren **oder** TLS extern terminieren. Beispiel: `"cert-manager.io API group not registered — install cert-manager or configure external TLS termination (severity warning, not failing)"`. Damit landet die Erwartungsdissonanz-Erklärung bereits im CR-Status, bevor `docs/user/conditions-katalog.md` (M6) existiert. |
 | `internal/adapter/check/clusterresources.go` | `ClusterResources`-Check; parst Spec-Quantities + Node-Quantities, summiert über Ready-Nodes, vergleicht. Reason: `ResourcesSufficient`, `InsufficientCPU`, `InsufficientMemory`, `InvalidSpec`, `InvalidNodeQuantity`, `LookupFailed`. |
 
 ### 3.2 Erweiterte Code-Dateien
@@ -215,7 +215,7 @@ deterministischer ab.
 | `internal/adapter/k8s/discovery.go` | Wenn nicht aufgespalten: bleibt für `ServerVersion` zuständig. Wenn aufgespalten (siehe Reihenfolge-Schritt 1): wird zu `ServerVersionAdapter` und teilt einen gemeinsamen `*kubernetes.Clientset` mit den vier neuen Adaptern. **Empfehlung:** gemeinsamer `clientset` + `discoveryClient` zentral in einer neuen Konstruktor-Bündel-Funktion `NewClusterClients(cfg)`. |
 | `cmd/operator/main.go` | Wiring: `kubernetes.NewForConfig(cfg)` als gemeinsame Quelle; jeweils ein Adapter pro Discovery-Port konstruieren; `registry.Register(...)` für die vier neuen Checks. `Now`-Override bleibt single-shot `time.Now`. |
 | `config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.yaml` | Erweitert um vollständiges Sub-Spec-Beispiel pro Check (oder zweites Sample-File `…_full.yaml`); Werte gegen bare-kind-Smoke passed. |
-| `scripts/cluster-smoke.sh` | Prep-Phase erweitert: `ingress-nginx`-Static-Manifest applizieren, `cert-manager`-Static-Manifest applizieren, `kubectl wait` auf die jeweiligen Deployments. Pinned Manifest-URLs als Konstanten am Skript-Anfang. |
+| `scripts/cluster-smoke.sh` | Prep-Phase erweitert: `kubectl apply -f hack/cluster-smoke/ingress-nginx.yaml`, `kubectl apply -f hack/cluster-smoke/cert-manager.yaml`, `kubectl wait` auf die jeweiligen Deployments. **Keine URL-Konstanten im Skript** — die Manifeste werden ausschließlich aus dem Repo-Spiegel appliziert (siehe §2.6/§9). Upstream-Version steht als Kommentar in den gespiegelten Files, nicht als Skript-Variable. |
 
 ### 3.3 Neue Test-Dateien
 
@@ -383,8 +383,13 @@ Vorbereitet, aktiv ab späterer Slice:
     erkennen), nicht als Outcome-Blocker (fehlender cert-manager
     blockiert keine OpenDesk-Installation). Begründung,
     Erwartungsdissonanz-Risiko und Rollback-Pfad: §9.
-    Unit-Test `internal/adapter/check/certmanager_test.go` fixiert
-    diese Severity gegen versehentliche Änderungen.
+    **M4-Brücke zur M6-Doku:** der `CertManagerMissing`-Message-Text
+    nennt bereits beide legitimen Alternativen (Install oder externe
+    TLS-Terminierung), damit Anwender die Severity-Wahl direkt aus
+    dem CR-Status verstehen — auch bevor `docs/user/conditions-katalog.md`
+    in M6 existiert. Unit-Test `internal/adapter/check/certmanager_test.go`
+    fixiert sowohl die Severity als auch den Message-Inhalt (Pflicht-
+    Substring „external TLS termination") gegen versehentliche Änderungen.
 12. **`LH-AK-009` Ressourcen prüfbar** — `adapter/check/clusterresources_test.go`
     deckt synthetische Node-Mengen ab; Cluster-Smoke attestiert passed
     real gegen kind-Worker-Allocatable mit Smoke-Min-Werten
