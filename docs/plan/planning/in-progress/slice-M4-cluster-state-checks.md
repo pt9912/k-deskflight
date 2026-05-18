@@ -156,8 +156,12 @@ unterschiedlich enden:
 **Entscheidung:** Smoke-Pipeline installiert in der Prep-Phase
 `ingress-nginx` und `cert-manager` per `kubectl apply` (statische
 Manifeste, gepinnte Versionen; keine Helm-Pflicht für die Smoke).
-Smoke-CR konfiguriert alle vier Checks mit Werten, die gegen bare-kind
-**passed** sind (`MinCPU: "1"`, `MinMemory: "1Gi"`,
+**Manifest-Quelle ist verbindlich der Repo-Spiegel unter
+`hack/cluster-smoke/` — Smoke zieht die Manifeste nicht zur Laufzeit
+aus dem Netz**, damit die Pipeline reproducible und offline lauffähig
+bleibt (siehe §9 für die Begründung). Smoke-CR konfiguriert alle vier
+Checks mit Werten, die gegen bare-kind + die vorinstallierten
+Manifeste **passed** sind (`MinCPU: "1"`, `MinMemory: "1Gi"`,
 `IngressClass.Names: ["nginx"]`). Damit attestiert ein einziger
 Smoke-Run alle vier `LH-AK-*`-Items in der passed-Variante real;
 failed-Pfade bleiben Unit-Test-Pflicht.
@@ -189,7 +193,7 @@ deterministischer ab.
 | `internal/hexagon/domain/ingressclass.go` | `IngressClassSpec{Names []string}` + Kind/Validate. Konstante `IngressClassSpecKind = "ingressClass"`. |
 | `internal/hexagon/domain/certmanager.go` | `CertManagerSpec{}` (parameterlos) + Kind/Validate. Konstanten `CertManagerSpecKind = "certManager"` und `CertManagerAPIGroup = "cert-manager.io"`. |
 | `internal/hexagon/domain/clusterresources.go` | `ClusterResourcesSpec{MinCPU, MinMemory string}` + Kind/Validate (Syntax-only, kein Quantity-Parse). Konstanten für Production-/Evaluation-Profile-Defaults. |
-| `internal/hexagon/port/storage.go` | `StorageClassDiscovery` + `StorageClassInfo{Name, IsDefault bool, Provisioner string}`. |
+| `internal/hexagon/port/storage.go` | `StorageClassDiscovery` + `StorageClassInfo{Name, IsDefault bool, Provisioner string}`. **Port-Vertrag für `IsDefault`:** Adapter setzt den Wert auf `true`, wenn **eine der beiden** Default-Annotationen aus §9 gesetzt ist (Legacy- + GA-Schlüssel). |
 | `internal/hexagon/port/ingress.go` | `IngressClassDiscovery` + `IngressClassInfo{Name, Controller string}`. |
 | `internal/hexagon/port/apigroups.go` | `APIGroupDiscovery` (`HasAPIGroup(ctx, name) (bool, error)`). |
 | `internal/hexagon/port/nodes.go` | `NodeDiscovery` + `NodeInfo{Name string, AllocatableCPUMilli, AllocatableMemoryBytes int64}`. (Ports liefern bereits in skalaren Einheiten — `resource.Quantity` bleibt adapterseitig.) |
@@ -372,6 +376,15 @@ Vorbereitet, aktiv ab späterer Slice:
 11. **`LH-AK-008` cert-manager prüfbar** — analog; Cluster-Smoke
     attestiert passed real gegen vorinstallierten cert-manager im
     kind-Cluster.
+    **Severity-Erwartung (bewusste Entscheidung):** ein fehlender
+    cert-manager liefert `Status: False` mit `Severity: warning`
+    und setzt den Gesamtstatus auf `Warning` — **nicht** auf
+    `Failed`. `LH-F-013` ist als Capability erfüllt (Operator kann
+    erkennen), nicht als Outcome-Blocker (fehlender cert-manager
+    blockiert keine OpenDesk-Installation). Begründung,
+    Erwartungsdissonanz-Risiko und Rollback-Pfad: §9.
+    Unit-Test `internal/adapter/check/certmanager_test.go` fixiert
+    diese Severity gegen versehentliche Änderungen.
 12. **`LH-AK-009` Ressourcen prüfbar** — `adapter/check/clusterresources_test.go`
     deckt synthetische Node-Mengen ab; Cluster-Smoke attestiert passed
     real gegen kind-Worker-Allocatable mit Smoke-Min-Werten
@@ -426,11 +439,12 @@ Vorbereitet, aktiv ab späterer Slice:
   bei Anwendern auflaufen.
 - **Cluster-Smoke-Manifest-URLs sind externe Abhängigkeiten:**
   ingress-nginx- und cert-manager-Releases können vorübergehend
-  nicht erreichbar sein. Mitigation: Manifeste werden im Repo
-  unter `hack/cluster-smoke/`-Mirror eingecheckt (idempotent
-  reproducible build), nicht aus dem Netz gezogen. Decision-Trigger:
-  beim ersten transienten Pipeline-Fail aus dem Netz holen wir die
-  Files lokal nach.
+  nicht erreichbar sein. Mitigation (verbindlich, deckungsgleich mit
+  §2.6): Manifeste werden im Repo unter `hack/cluster-smoke/`-Mirror
+  eingecheckt und ausschließlich von dort applizierten — kein
+  Network-Fetch zur Laufzeit. Damit ist die Smoke idempotent und
+  offline lauffähig; ein Upstream-Release-Sprung ist ein bewusster
+  Repo-Commit, kein implizites Pipeline-Verhalten.
 - **Profile-Default für ClusterResources beeinflusst alle
   Production-CRs** — wenn die `4 CPU / 8Gi`-Floor in der Praxis zu
   streng ist, blockiert das Anwender, die mit `spec.checks.clusterResources: {}`
