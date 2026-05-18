@@ -114,6 +114,12 @@ type Check interface {
 	// das für synthetische Results (RBAC/Panic/Timeout/Cancel), damit
 	// die Condition-Type-Identität über alle Reconcile-Pfade konsistent
 	// bleibt und Anwender keine doppelten Conditions sehen.
+	//
+	// **Pflicht-Kontrakt:** MUSS einen nicht-leeren, stabilen
+	// CamelCase-Identifier liefern. Ein leerer String würde im
+	// Aggregator-Dedupe (`application/aggregator.go`) alle empty-Name-
+	// Results in einen Bucket kollidieren lassen und im
+	// Cluster-Smoke-jsonpath-Selector keinen Treffer ergeben.
 	ConditionType() string
 
 	// RequiredPermissions deklariert die Cluster-Rechte, die der Check

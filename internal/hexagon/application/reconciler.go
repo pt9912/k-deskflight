@@ -101,33 +101,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	var crLoaded bool
 
 	defer func() {
-		rec := recover()
-		if rec == nil {
-			return
+		if rec := recover(); rec != nil {
+			result = ctrl.Result{}
+			retErr = r.handleReconcilePanic(ctx, runCtx, req, &cr, crLoaded, rec)
 		}
-		r.logger().LogAttrs(ctx, slog.LevelError, "panic recovered in Reconcile",
-			SanitizeAttrs(
-				slog.String("name", req.Name),
-				slog.String("namespace", req.Namespace),
-				slog.Any("recover", rec),
-				slog.String("stack", string(debug.Stack())),
-			)...,
-		)
-		retErr = fmt.Errorf("reconcile panic: %v", rec)
-		result = ctrl.Result{}
-
-		// Best-effort: Status auf Unknown + ReconcileError schreiben,
-		// falls der CR bereits geladen ist. Ein erneuter Panic im
-		// writeStatus-Pfad wird mit einem zweiten inneren Recover
-		// stumm gefangen, damit der Reconciler nicht in einer
-		// Panic-Schleife landet.
-		if !crLoaded {
-			return
-		}
-		func() {
-			defer func() { _ = recover() }()
-			_ = r.writeStatus(runCtx, &cr, r.reconcilePanicOutput(rec))
-		}()
 	}()
 
 	if err := r.Get(runCtx, req.NamespacedName, &cr); err != nil {
@@ -201,11 +178,38 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 }
 
 // SetupWithManager registers the reconciler with the controller-runtime manager.
+// Vor dem Manager-Setup läuft `Validate`, damit Wiring-Lücken
+// (z. B. fehlender AccessReviewer für SAR-pflichtige Checks) als
+// klarer Startup-Fehler erscheinen — nicht als Per-Check-InternalError
+// zur Smoke-Laufzeit (slice-M5 Review-Befund 5; CI-Hotfix-Vorfall
+// Schritt 4 ↔ 6).
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("reconciler config invalid: %w", err)
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&preflightv1alpha1.OpenDeskPreflightCheck{}).
 		Named("opendeskpreflightcheck").
 		Complete(r)
+}
+
+// Validate prüft Wiring-Konsistenz vor dem Manager-Setup (slice-M5
+// Review-Befund 5). Aktuell deckt sie die SAR-Wiring-Lücke ab
+// (Check.RequiredPermissions ohne AccessReviewer); v0.2 ergänzt
+// Worker-Pool-Config, Metrics-Hook etc. Test-Pflicht-Stelle.
+func (r *Reconciler) Validate() error {
+	if r.Registry == nil {
+		return errors.New("registry is nil")
+	}
+	if r.AccessReviewer != nil {
+		return nil
+	}
+	for _, c := range r.Registry.All() {
+		if len(c.RequiredPermissions()) > 0 {
+			return fmt.Errorf("check %q declares RequiredPermissions but AccessReviewer is nil — wiring incomplete", c.Name())
+		}
+	}
+	return nil
 }
 
 func (r *Reconciler) now() time.Time {
@@ -222,6 +226,47 @@ func (r *Reconciler) logger() *slog.Logger {
 		return r.Logger
 	}
 	return slog.Default()
+}
+
+// handleReconcilePanic ist der Outer-Recover-Pfad aus `Reconcile`
+// (slice-M5 §2.4). Loggt den Panic, baut den Return-Wert, und
+// schreibt best-effort einen `Phase=Unknown / Reason=ReconcilePanic`-
+// Status — mit innerem Recover, der bei Sekundär-Panic im
+// writeStatus-Pfad **nicht stumm** ist, sondern loggt (slice-M5
+// Review-Befund 2).
+func (r *Reconciler) handleReconcilePanic(
+	ctx, runCtx context.Context,
+	req ctrl.Request,
+	cr *preflightv1alpha1.OpenDeskPreflightCheck,
+	crLoaded bool,
+	rec interface{},
+) error {
+	r.logger().LogAttrs(ctx, slog.LevelError, "panic recovered in Reconcile",
+		SanitizeAttrs(
+			slog.String("name", req.Name),
+			slog.String("namespace", req.Namespace),
+			slog.Any("recover", rec),
+			slog.String("stack", string(debug.Stack())),
+		)...,
+	)
+	if crLoaded {
+		func() {
+			defer func() {
+				if innerRec := recover(); innerRec != nil {
+					r.logger().LogAttrs(ctx, slog.LevelError, "panic in panic-recovery status write",
+						SanitizeAttrs(
+							slog.String("name", req.Name),
+							slog.String("namespace", req.Namespace),
+							slog.Any("inner_recover", innerRec),
+							slog.String("inner_stack", string(debug.Stack())),
+						)...,
+					)
+				}
+			}()
+			_ = r.writeStatus(runCtx, cr, r.reconcilePanicOutput(rec))
+		}()
+	}
+	return fmt.Errorf("reconcile panic: %v", rec)
 }
 
 // isAlreadyReconciled überspringt den Reconcile, wenn die aktuelle
@@ -335,9 +380,12 @@ func sanitizeConditions(in []preflightv1alpha1.Condition) []preflightv1alpha1.Co
 
 // reconcilePanicOutput baut das AggregationOutput für den Outer-Recover-
 // Pfad (slice-M5 §2.4): Phase=Unknown, Condition=ReconcileError mit
-// Reason=ReconcilePanic. Die Panic-Detail-Message wird sanitisiert,
-// damit eventuelle Variablenwerte aus dem panicking-Frame nicht
-// ungefiltert im Status landen (LH-SEC-002).
+// Reason=ReconcilePanic. Die Panic-Detail-Message wird über
+// `SanitizeMessage` geführt (slice-M5 Review-Befund 3), damit
+// eventuelle Variablenwerte aus dem panickenden Frame nicht
+// ungefiltert im Status landen (LH-SEC-002). In M5 ist
+// `SanitizeMessage` Identität; v0.2 ersetzt das durch echte
+// Pattern-Maskierung, deshalb muss der Hook hier verankert sein.
 func (r *Reconciler) reconcilePanicOutput(panicVal interface{}) AggregationOutput {
 	now := r.now().UTC()
 	return AggregationOutput{
@@ -350,7 +398,7 @@ func (r *Reconciler) reconcilePanicOutput(panicVal interface{}) AggregationOutpu
 			Type:               conditionTypeReconcileError,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonReconcilePanic,
-			Message:            fmt.Sprintf("reconcile panic recovered: %v", panicVal),
+			Message:            SanitizeMessage(fmt.Sprintf("reconcile panic recovered: %v", panicVal)),
 			LastTransitionTime: metav1.NewTime(now),
 			Severity:           preflightv1alpha1.SeverityCritical,
 		}},

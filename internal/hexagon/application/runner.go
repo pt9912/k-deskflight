@@ -57,6 +57,12 @@ type permOutcome struct {
 // `PermissionRequest` teilen sich das Ergebnis; damit landen wir bei
 // `O(unique permissions)` SAR-Calls pro Reconcile statt
 // `O(checks × permissions)`.
+//
+// **Concurrency-Hinweis** (slice-M5 Review-Befund 10): der Cache ist
+// nicht thread-safe. M5 läuft sequenziell pro Reconcile (AR-009 §4
+// Step 4 sequenziell). Wenn v0.2 den vollen Worker-Pool einzieht
+// (`AR-009 §4` Worker-Pool-Variante), muss diese Map entweder zu
+// `sync.Map` gehoben werden oder hinter ein Mutex.
 type PermissionCache map[domain.PermissionRequest]permOutcome
 
 // NewPermissionCache liefert einen leeren, einsatzbereiten Cache.
@@ -82,6 +88,13 @@ func NewPermissionCache() PermissionCache {
 //  2. `RBACInsufficient` greift, wenn keine SAR-Calls fehlschlugen,
 //     aber mindestens eine Permission denied wurde.
 //  3. Sonst läuft der Check über `runWithTimeout`.
+//
+// **Refactor-Trigger** (slice-M5 Review-Befund 8): die Argumentliste
+// hat acht Parameter und nähert sich der Grenze der Wartbarkeit. Wenn
+// M6 oder v0.2 weitere Felder (Worker-Pool-Config, Metrics-Hook)
+// hinzubringt, wird `RunCheckSafely` in eine `Runner`-Struct mit
+// `Reviewer`/`Cache`/`Logger`/`Now`/`CheckTimeout` als Felder und
+// einer `(r *Runner) Run(ctx, check, spec)`-Methode überführt.
 func RunCheckSafely(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -163,6 +176,16 @@ func classifyPermissions(
 // (slice-M5 §2.5). `context.WithTimeoutCause` setzt unseren Sentinel,
 // damit `classifyContextEnd` unseren Per-Check-Timeout von einer
 // ererbten Parent-Deadline unterscheidet.
+//
+// **Worker-Lifecycle** (slice-M5 Review-Befund 6): die Worker-
+// Goroutine kann nach `runWithTimeout`-Return weiterlaufen, wenn
+// `check.Run` den `runCtx` nicht kooperativ honoriert (z. B. wenn
+// ein client-go-Call das Timeout erst auf HTTP-Layer-Ebene abbaut).
+// Der gebufferte `resultCh` (Size 1) plus die `select default`-
+// Klausel im Late-Recover (siehe unten) verhindern Send-Blocks und
+// damit Goroutine-Leaks. Bei AR-010-Periodizität (M5/v0.2) ist das
+// Akkumulations-Risiko klein, weil alle M4-Checks kooperative
+// Adapter haben; M6-Adapter-Audit verifiziert das nochmal.
 func runWithTimeout(
 	parentCtx context.Context,
 	check domain.Check,
@@ -177,12 +200,19 @@ func runWithTimeout(
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				// Late-Recover-Pfad: die äußere RunCheckSafely-Klausel
-				// fängt den Hauptpfad; dieser hier hält die Goroutine
-				// vor dem Abrauchen, falls die zeitliche Anordnung den
-				// outer recover umgeht (z. B. Goroutine läuft nach
-				// Timeout weiter und panickt dann).
-				resultCh <- internalErrorResult(check, now())
+				// Late-Recover-Pfad (slice-M5 Review-Befund 1):
+				// non-blocking Send, weil bei einer ungewöhnlichen
+				// Sequenz (regulärer `check.Run`-Send schon erfolgt,
+				// danach Panic im inneren defer) der Buffer voll wäre
+				// und die Goroutine blockt. `select default` lässt die
+				// Goroutine sauber terminieren, ohne dem Reconciler
+				// ein zweites (verworfen) Result aufzudrängen — der
+				// outer-Recover in `RunCheckSafely` fängt den
+				// Hauptpfad ohnehin.
+				select {
+				case resultCh <- internalErrorResult(check, now()):
+				default:
+				}
 			}
 		}()
 		resultCh <- check.Run(runCtx, spec)
@@ -198,6 +228,16 @@ func runWithTimeout(
 		}
 		return res
 	case <-runCtx.Done():
+		// Asymmetrie zur `<-resultCh`-Branch (slice-M5 Review-Befund 4):
+		// hier prüfen wir NICHT auf ein zwischenzeitlich angekommenes
+		// Result. Definitionsgemäß gewinnt der Context-End hier — ein
+		// eventuell vom Worker später gesendetes Result landet im
+		// gebufferten Channel und wird beim GC weggeräumt (kein
+		// Goroutine-Leak dank Buffer 1). Das ist die bewusste Wahl:
+		// Klassifikations-Stabilität schlägt „letztes Check-Result
+		// wins"; ein critical-Failed-Result aus dem Worker kann so
+		// zugunsten von `ReconcileCanceled/info` verloren gehen — der
+		// nächste Reconcile holt das Result wieder ein.
 		return classifyContextEnd(runCtx, check, checkTimeout, now)
 	}
 }

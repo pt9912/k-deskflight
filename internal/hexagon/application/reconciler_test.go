@@ -51,6 +51,14 @@ func (f *fakeRegistry) Resolve(name string) (domain.Check, bool) {
 	return c, ok
 }
 
+func (f *fakeRegistry) All() []domain.Check {
+	out := make([]domain.Check, 0, len(f.checks))
+	for _, c := range f.checks {
+		out = append(out, c)
+	}
+	return out
+}
+
 func (f *fakeRegistry) ListByProfile(
 	_ string,
 	spec map[string]domain.CheckSpec,
@@ -777,6 +785,53 @@ func assertClusterResourcesDefaults(t *testing.T, profile preflightv1alpha1.Prof
 	}
 }
 
+// permissionedCheck deklariert eine Permission und dient dem
+// SetupWithManager-Validation-Test (slice-M5 Review-Befund 5).
+type permissionedCheck struct{}
+
+func (permissionedCheck) Name() string          { return "permissioned" }
+func (permissionedCheck) SpecKind() string      { return "permissioned" }
+func (permissionedCheck) ConditionType() string { return "PermissionedReady" }
+func (permissionedCheck) RequiredPermissions() []domain.PermissionRequest {
+	return []domain.PermissionRequest{{Group: "g", Resource: "r", Verb: "list"}}
+}
+func (permissionedCheck) Run(_ context.Context, _ domain.CheckSpec) domain.Result {
+	return domain.Result{}
+}
+
+// TestValidateConfigRejectsMissingAccessReviewer (slice-M5 Review-
+// Befund 5): wenn mindestens ein registrierter Check
+// RequiredPermissions deklariert, MUSS der Reconciler einen
+// AccessReviewer haben. Lücke wird zur Startup-Zeit erkannt, nicht
+// zur Smoke-Laufzeit als InternalError.
+func TestValidateConfigRejectsMissingAccessReviewer(t *testing.T) {
+	t.Parallel()
+	registry := newFakeRegistry()
+	registry.Register(permissionedCheck{})
+
+	reconciler := &application.Reconciler{
+		Registry: registry,
+		// AccessReviewer bewusst nil
+	}
+	if err := reconciler.Validate(); err == nil {
+		t.Errorf("Validate: expected error, got nil (RequiredPermissions ohne AccessReviewer)")
+	}
+}
+
+// TestValidateConfigAllowsNoPermissionedChecks: wenn alle Checks
+// RequiredPermissions=nil haben (Discovery-only-Checks), darf
+// AccessReviewer nil bleiben.
+func TestValidateConfigAllowsNoPermissionedChecks(t *testing.T) {
+	t.Parallel()
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{name: "no-perms", conditionType: "NoPermsReady"})
+
+	reconciler := &application.Reconciler{Registry: registry}
+	if err := reconciler.Validate(); err != nil {
+		t.Errorf("Validate: unexpected error %v", err)
+	}
+}
+
 // fakeAccessReviewer ist ein konfigurierbarer port.AccessReviewer für
 // die slice-M5-Reconciler-Tests. `outcomes` mapped CanonicalString →
 // (allowed, err); Default ist (true, nil).
@@ -825,6 +880,7 @@ type panickingRegistry struct{}
 
 func (panickingRegistry) Register(_ domain.Check)               {}
 func (panickingRegistry) Resolve(_ string) (domain.Check, bool) { return nil, false }
+func (panickingRegistry) All() []domain.Check                   { return nil }
 func (panickingRegistry) ListByProfile(_ string, _ map[string]domain.CheckSpec) ([]domain.Check, []port.CheckSelectionIssue) {
 	panic("synthetic registry panic")
 }

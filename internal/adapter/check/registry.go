@@ -50,6 +50,20 @@ func (r *Registry) Resolve(name string) (domain.Check, bool) {
 	return c, ok
 }
 
+// All liefert einen Snapshot aller registrierten Checks (slice-M5
+// Review-Befund 5). Reihenfolge folgt der Go-Map-Iteration und ist
+// damit non-deterministisch — Aufrufer sortieren bei Bedarf nach
+// `Check.Name()`.
+func (r *Registry) All() []domain.Check {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]domain.Check, 0, len(r.checks))
+	for _, c := range r.checks {
+		out = append(out, c)
+	}
+	return out
+}
+
 // ListByProfile löst die Spec-Map zu aktivierbaren Checks auf. In M3
 // gelten alle registrierten Checks für alle Profile — Issues entstehen
 // nur bei unbekannten Spec-Namen. M4 ergänzt

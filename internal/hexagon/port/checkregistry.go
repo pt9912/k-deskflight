@@ -33,6 +33,14 @@ type CheckRegistry interface {
 	// Direktanfragen.
 	Resolve(name string) (domain.Check, bool)
 
+	// All liefert eine Snapshot-Slice aller registrierten Checks
+	// (slice-M5 Review-Befund 5). Nutzer: Setup-Validation in
+	// `Reconciler.SetupWithManager` (prüft, dass `AccessReviewer`
+	// gesetzt ist, sobald mindestens ein Check `RequiredPermissions`
+	// deklariert). Reihenfolge ist implementation-defined; Aufrufer
+	// dürfen sich nicht darauf verlassen.
+	All() []domain.Check
+
 	// ListByProfile liefert die aktivierbaren Checks für ein Profil
 	// inkl. Issues. Erste Rückgabe sind die aufgelösten Checks; zweite
 	// Rückgabe enthält Tupel `(Name, Reason)` für nicht auflösbare

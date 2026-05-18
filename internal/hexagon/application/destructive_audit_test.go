@@ -35,19 +35,16 @@ func TestNoDestructiveActionsOnForeignResources(t *testing.T) {
 		"create":           true,
 	}
 
-	// allowedDestructive whitelisted Resource × Verb-Kombinationen.
+	// allowedDestructive whitelisted Resource × Verb-Kombinationen, die
+	// **tatsächlich am Reconciler als Marker existieren**. Pre-Grants
+	// für noch nicht aktivierte Verben werden NICHT pauschal
+	// gewhitelisted — sie sollen mit dem Marker zusammen hinzukommen
+	// (slice-M5 Review-Befund 7).
+	//
 	// **Erweiterungs-Pflicht:** kommt ein neuer Marker mit destruktivem
 	// Verb hinzu, MUSS er hier mit Lastenheft-/ADR-Verweis aufgenommen
 	// werden — sonst bricht der Test.
 	allowedDestructive := map[string]map[string]bool{
-		// Eigene CR — Anwender-Verwaltung (LH-F-001..LH-F-004).
-		"opendeskpreflightchecks": {
-			"create":           true,
-			"update":           true,
-			"patch":            true,
-			"delete":           true,
-			"deletecollection": true,
-		},
 		// Eigener Status — Reconciler-Pfad (LH-F-004, AR-009 §6).
 		"opendeskpreflightchecks/status": {
 			"update": true,
