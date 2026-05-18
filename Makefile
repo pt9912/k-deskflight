@@ -16,10 +16,12 @@
 
 IMAGE := k-deskflight
 
-# Coverage-Schwelle für `make coverage-gate`. M1 startet mit 0 (Smoke-
-# test, bootstrap-aware in coverage-gate.sh); M6 hebt auf 90 % gemäß
-# ADR 0012 §2.5. Override via `make coverage-gate THRESHOLD=…`.
-THRESHOLD ?= 0
+# Coverage-Schwelle für `make coverage-gate`. M1 startete mit 0
+# (Smoke-Pfad, bootstrap-aware in coverage-gate.sh); M4 zieht 90 %
+# vor (slice-M4 §3.3 / §7 — Adapter sind ab M4 via fake clientset
+# getestet, M6 erbt den strikten Wert). Override via
+# `make coverage-gate THRESHOLD=…`.
+THRESHOLD ?= 90
 
 # `--no-cache-filter <stage>` zwingt BuildKit, die genannte Stage neu
 # zu evaluieren, ohne die `deps`-Layer (Go-Module-Cache) zu verwerfen.

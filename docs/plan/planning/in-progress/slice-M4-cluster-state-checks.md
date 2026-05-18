@@ -229,7 +229,9 @@ deterministischer ab.
 | `internal/adapter/check/ingressclass_test.go` | Fake-Port; passed / failed / unknown. |
 | `internal/adapter/check/certmanager_test.go` | Fake `APIGroupDiscovery`: present → passed (Severity `info`), missing → failed (Severity `warning` — cert-manager-Fehlen ist nicht critical, weil OpenDesk auch ohne deployt werden kann; finale Severity ist Slice-Plan-Entscheidung, Begründung siehe §9). |
 | `internal/adapter/check/clusterresources_test.go` | Fake `NodeDiscovery`: passed (Summen ≥ Min), failed-cpu, failed-memory, failed-beide, unknown (Lookup-Error aus dem Port), unknown (Quantity-Parse-Fehler in `spec.MinCPU`), unknown (Quantity-Parse-Fehler in `spec.MinMemory`), unknown (InvalidSpec via fremden CheckSpec). **Adapter-interner Node-Quantity-Parse-Fehler** ist vom Check-Layer aus nicht erreichbar (Port liefert bereits `int64`) — wird in M6 via envtest gegen den realen Adapter abgedeckt. |
-| `internal/hexagon/application/reconciler_test.go` (Erweiterung) | Neue Fälle: Multi-Check-Run (alle vier passed → Phase `Passed`, vier Conditions), Multi-Check-Run mit einem Failed-critical und einem Passed → Phase `Failed`, Profile-Default-Activation für ClusterResources (production vs. evaluation Defaults). Bestehende Fake-Registry-Helper wird um die vier neuen Stub-Checks erweitert. |
+| `internal/hexagon/application/reconciler_test.go` (Erweiterung) | Neue Fälle: Multi-Check-Run (alle fünf MVP-Checks passed → Phase `Passed`, fünf Conditions), Multi-Check-Run mit einem Failed-critical und vier Passed → Phase `Failed`, Profile-Default-Activation für ClusterResources (production vs. evaluation Defaults), Selection-Issue-Pfad, Now-Fallback, IngressClass-Spec-Invalid. Bestehende Fake-Registry-Helper wird um die vier neuen Stub-Checks erweitert (jetzt mit konfigurierbarem `kind`). |
+| `internal/adapter/k8s/{storage,ingress,nodes,apigroups,discovery,clients}_test.go` | Adapter-Coverage via `k8s.io/client-go/kubernetes/fake` (Storage/Ingress/Nodes) und `…/discovery/fake` (ServerVersion, ServerGroups). Tabellen pro Adapter: Happy-Path mit gesetzten Objekten/Annotationen, `PrependReactor` für Fehlerpfade, NodeReady-Filter, beide StorageClass-Default-Annotationen (GA + Legacy beta). `clients_test.go` deckt `NewClusterClients` Happy-Path + invalid-`rest.Config`-Fehlerpfad. |
+| `internal/adapter/check/names_test.go` | Smoke-Test pro Check für `Name()` + `nil`-Clock-Fallback in `New*`-Konstruktoren. |
 
 ### 3.4 Erweiterte Beispiel-Manifeste
 
@@ -283,9 +285,12 @@ bleibt.
 2. **Adapter-Schicht.** Fünf neue Files unter `internal/adapter/k8s/`
    (gemeinsamer `NewClusterClients`-Konstruktor + vier Adapter).
    Vier Check-Implementierungen unter `internal/adapter/check/`. Tests
-   pro Check mit lokalen Fake-Ports. `adapter/k8s/*`-Adapter
-   bleiben M4-untest (envtest-Pflicht für reale API-Calls ist M6,
-   parallel zur K8sVersion-discovery-Lücke).
+   pro Check mit lokalen Fake-Ports. `adapter/k8s/*`-Adapter werden
+   ab M4 via `k8s.io/client-go/kubernetes/fake` getestet
+   (Storage/Ingress/Nodes-List, Default-Annotations) plus
+   `…/discovery/fake` für ServerVersion und HasAPIGroup; envtest-
+   basierte Integration bleibt als M6-Erweiterung offen, ist aber
+   nicht mehr Coverage-blockierend.
 3. **CRD-Schema-Erweiterung.** `api/v1alpha1/…_types.go` um vier
    Sub-Spec-Typen erweitern, `make manifests` laufen lassen,
    `controller-gen`-Output commiten (zz_generated.deepcopy.go +
@@ -355,11 +360,14 @@ Vorbereitet, aktiv ab späterer Slice:
    `k8s.io/apimachinery/pkg/api/resource` (Parsing bleibt im Adapter).
 3. **`make test`** grün; alle neuen Unit-Tests bestehen; Multi-Check-
    Reconciler-Tests erfolgreich.
-4. **`make coverage-gate`** grün — Erwartung: Coverage über
-   `internal/hexagon/{domain,application,adapter/check}` bleibt deutlich
-   ≥ 80 %. Die vier neuen `adapter/k8s/*`-Adapter bleiben M4-untestet
-   (envtest-Pflicht M6) und drücken den Schnitt erwartbar — akzeptiert,
-   solange der Schnitt ≥ Schwelle 0 bleibt. M6 hebt strikt auf 90 %.
+4. **`make coverage-gate`** grün bei **Threshold 90 %** (slice-M4
+   zieht den `ADR 0012 §2.5`-Strict-Wert vor; M6 erbt den Threshold,
+   muss ihn nicht mehr setzen). Coverage über alle `internal/`-Pakete
+   ≥ 90 %. Die vier neuen `adapter/k8s/*`-Adapter werden ab M4 via
+   `k8s.io/client-go/kubernetes/fake` und `…/discovery/fake` getestet —
+   die ursprüngliche „envtest-Pflicht M6"-Klausel ist damit nicht mehr
+   blockierend; M6 ergänzt nur noch envtest-basierte Integrationstests
+   für realistische Watch-/Update-Pfade (`AR-024`).
 5. **`make doc-refs`** grün — neue Cross-Refs (`LH-F-010..015`,
    `LH-AK-006..009`, ADR 0010, ADR 0013) sind valide.
 6. **`make generated-drift-check`** grün — CRD-YAML und

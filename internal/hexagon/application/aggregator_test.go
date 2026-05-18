@@ -161,3 +161,45 @@ func TestAggregateConditionsSortedAlphabetically(t *testing.T) {
 		}
 	}
 }
+
+// TestAggregateEmptySeverityCountsAsWarning deckt zwei Pfade in einer
+// Pflicht-Sicherheits-Klausel:
+//   - aggregator.go switch-default für ungültige/leere Severity bei
+//     Status=False (zählt als Warning).
+//   - aggregator.go severityRank default für Empty-String (rank 0),
+//     damit der Dedupe einen leeren Severity-Eintrag gegen einen
+//     non-empty stabil rangiert.
+func TestAggregateEmptySeverityCountsAsWarning(t *testing.T) {
+	t.Parallel()
+	results := []domain.Result{
+		{Name: "WeirdReady", Status: domain.StatusFalse, Severity: "", LastTransition: fixedNow()},
+	}
+	out := application.Aggregate(results, fixedNow())
+
+	if out.Phase != preflightv1alpha1.PhaseWarning {
+		t.Errorf("Phase: got %q, want Warning (empty severity defensive fallback)", out.Phase)
+	}
+	if got, want := out.Summary.Warning, int32(1); got != want {
+		t.Errorf("Summary.Warning: got %d, want %d", got, want)
+	}
+}
+
+// TestAggregateDedupeEmptySeverityLoses fixiert die severityRank-
+// Default-Klausel: zwei Results mit gleichem Name, einer mit empty
+// Severity (rank 0), einer mit Info (rank 1) — der Info-Eintrag
+// gewinnt im Dedupe.
+func TestAggregateDedupeEmptySeverityLoses(t *testing.T) {
+	t.Parallel()
+	results := []domain.Result{
+		{Name: "DupeReady", Status: domain.StatusTrue, Severity: "", LastTransition: fixedNow()},
+		{Name: "DupeReady", Status: domain.StatusTrue, Severity: domain.SeverityInfo, Reason: "Info", LastTransition: fixedNow()},
+	}
+	out := application.Aggregate(results, fixedNow())
+
+	if len(out.Conditions) != 1 {
+		t.Fatalf("Conditions count: got %d, want 1 (dedupe by name)", len(out.Conditions))
+	}
+	if out.Conditions[0].Severity != preflightv1alpha1.SeverityInfo {
+		t.Errorf("Severity: got %q, want info (higher rank wins)", out.Conditions[0].Severity)
+	}
+}

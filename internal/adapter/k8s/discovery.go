@@ -33,7 +33,14 @@ func NewDiscoveryAdapter(cfg *rest.Config) (*DiscoveryAdapter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create discovery client: %w", err)
 	}
-	return &DiscoveryAdapter{client: client}, nil
+	return NewDiscoveryAdapterWithClient(client), nil
+}
+
+// NewDiscoveryAdapterWithClient baut den Adapter direkt aus einem
+// existierenden Discovery-Client. Genutzt von Tests (fake clientset)
+// und vom Wiring in Step 5 (`ClusterClients.Discovery`).
+func NewDiscoveryAdapterWithClient(client discovery.DiscoveryInterface) *DiscoveryAdapter {
+	return &DiscoveryAdapter{client: client}
 }
 
 // ServerVersion liefert die rohe `GitVersion`-Zeichenkette des

@@ -35,6 +35,9 @@ func fixedClock() func() time.Time {
 // gilt auch für _test.go in diesem Pfad).
 type fakeRegistry struct {
 	checks map[string]domain.Check
+	// issues schaltet den Selection-Issue-Pfad an: nicht-leer →
+	// ListByProfile gibt diese Issues zurück und kein active-Set.
+	issues []port.CheckSelectionIssue
 }
 
 func newFakeRegistry() *fakeRegistry {
@@ -52,6 +55,9 @@ func (f *fakeRegistry) ListByProfile(
 	_ string,
 	spec map[string]domain.CheckSpec,
 ) ([]domain.Check, []port.CheckSelectionIssue) {
+	if len(f.issues) > 0 {
+		return nil, f.issues
+	}
 	out := make([]domain.Check, 0, len(spec))
 	for name := range spec {
 		if c, ok := f.checks[name]; ok {
@@ -759,5 +765,168 @@ func passedResult(condType, reason string, now time.Time) domain.Result {
 		Reason:         reason,
 		Severity:       domain.SeverityInfo,
 		LastTransition: now,
+	}
+}
+
+// TestReconcileSelectionIssue verifiziert den AR-009-Phase-3-
+// Selection-Issue-Pfad: Registry meldet einen `UnknownCheck`-Issue →
+// Reconciler endet mit Phase=Failed und SpecInvalid-Condition.
+func TestReconcileSelectionIssue(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "selection-issue",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	registry := newFakeRegistry()
+	registry.issues = []port.CheckSelectionIssue{
+		{Name: "phantomCheck", Reason: "UnknownCheck"},
+	}
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "selection-issue", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "selection-issue", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed", after.Status.Phase)
+	}
+	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "SpecInvalid" {
+		t.Fatalf("Conditions: got %+v, want one SpecInvalid entry", after.Status.Conditions)
+	}
+	if after.Status.Conditions[0].Reason != "UnknownCheck" {
+		t.Errorf("Reason: got %q, want UnknownCheck", after.Status.Conditions[0].Reason)
+	}
+}
+
+// TestReconcileNowFallback deckt den Now-nil-Branch in `(r *Reconciler).now()`:
+// wenn r.Now nicht gesetzt ist, fällt der Reconciler auf time.Now zurück.
+// Der Test verifiziert nur, dass Reconcile mit r.Now=nil nicht panickt
+// und einen plausiblen Zeitstempel schreibt (nicht den fixedClock-Wert).
+func TestReconcileNowFallback(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "now-fallback",
+			Namespace:  "default",
+			Generation: 1,
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		// Now bewusst nicht gesetzt — Default-Fallback zieht.
+	}
+
+	before := time.Now()
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "now-fallback", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	after := time.Now()
+
+	var got preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "now-fallback", Namespace: "default"}, &got); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status.Summary.LastChecked == nil {
+		t.Fatalf("LastChecked nil — Reconciler ist offenbar nicht durchgelaufen")
+	}
+	stamp := got.Status.Summary.LastChecked.Time
+	if stamp.Before(before.Add(-time.Second)) || stamp.After(after.Add(time.Second)) {
+		t.Errorf("LastChecked %v outside expected window [%v..%v]", stamp, before, after)
+	}
+}
+
+// TestReconcileSpecInvalidIngressClass deckt den buildSpecMap-
+// Validation-Pfad für einen M4-Check (Plan §3.3) — bewusst leere
+// Names-Liste löst die Validate-Klausel der IngressClassSpec aus.
+func TestReconcileSpecInvalidIngressClass(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "bad-ingress",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile: preflightv1alpha1.ProfileProduction,
+			Checks: preflightv1alpha1.ChecksSpec{
+				IngressClass: &preflightv1alpha1.IngressClassCheckSpec{Names: nil},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: newFakeRegistry(),
+		Now:      fixedClock(),
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "bad-ingress", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := client.Get(context.Background(),
+		types.NamespacedName{Name: "bad-ingress", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed", after.Status.Phase)
+	}
+	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "SpecInvalid" {
+		t.Fatalf("Conditions: got %+v, want one SpecInvalid entry", after.Status.Conditions)
 	}
 }
