@@ -77,12 +77,80 @@ type KubernetesVersionCheckSpec struct {
 	Min string `json:"min,omitempty"`
 }
 
-// ChecksSpec selects and configures the individual preflight checks. MVP scope
-// (LH-PRI-001) only declares kubernetesVersion; further sibling fields (ingress,
-// certManager, storage, resources, rbac) are introduced with M3+ slices.
+// StorageClassCheckSpec parameterises the storageClass check (LH-F-010 / LH-F-011).
+type StorageClassCheckSpec struct {
+	// Names lists the StorageClass names that must be present in the cluster.
+	// At least one entry is required when this sub-spec is set; the reconciler
+	// activates the check only when the sub-spec is non-nil (no profile default,
+	// slice-M4 §2.2).
+	//
+	// +kubebuilder:validation:MinItems=1
+	// +optional
+	Names []string `json:"names,omitempty"`
+
+	// RequireDefault demands that a Default-marked StorageClass exists. The
+	// adapter tolerates both the GA annotation (storageclass.kubernetes.io/
+	// is-default-class) and the legacy beta key (slice-M4 §9).
+	//
+	// +optional
+	RequireDefault bool `json:"requireDefault,omitempty"`
+}
+
+// IngressClassCheckSpec parameterises the ingressClass check (LH-F-012).
+type IngressClassCheckSpec struct {
+	// Names lists the IngressClass names that must be present in the cluster.
+	// At least one entry is required when this sub-spec is set.
+	//
+	// +kubebuilder:validation:MinItems=1
+	Names []string `json:"names,omitempty"`
+}
+
+// CertManagerCheckSpec parameterises the cert-manager existence check (LH-F-013).
+// Currently parameter-less — the check verifies registration of the
+// cert-manager.io API group only. ClusterIssuer detail validation (LH-F-014)
+// is deferred to v0.2 (ADR 0010). Note that a missing cert-manager produces
+// Severity=warning, not critical (slice-M4 §9, bridged in the check Message).
+type CertManagerCheckSpec struct{}
+
+// ClusterResourcesCheckSpec parameterises the clusterResources check (LH-F-015 /
+// LH-AK-009). When this sub-spec is omitted the reconciler applies profile-
+// based defaults (slice-M4 §2.3): production 4 CPU / 8Gi, evaluation 2 CPU / 4Gi.
+// Explicit values override the profile defaults field-by-field.
+type ClusterResourcesCheckSpec struct {
+	// MinCPU is the minimum allocatable CPU as a Kubernetes resource.Quantity
+	// string (e.g. "4", "500m", "2.5").
+	//
+	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?(m|Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)?$`
+	// +optional
+	MinCPU string `json:"minCPU,omitempty"`
+
+	// MinMemory is the minimum allocatable memory as a Kubernetes resource.Quantity
+	// string (e.g. "8Gi", "2048Mi", "1G").
+	//
+	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?(m|Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)?$`
+	// +optional
+	MinMemory string `json:"minMemory,omitempty"`
+}
+
+// ChecksSpec selects and configures the individual preflight checks. The M4
+// slice closes the MVP-Pflichtset (LH-PRI-001): KubernetesVersion (M3) plus
+// StorageClass, IngressClass, CertManager, and ClusterResources. Profile-based
+// defaults are applied code-side in the reconciler, not via CRD defaults.
 type ChecksSpec struct {
 	// KubernetesVersion configures the Kubernetes version check (LH-F-008).
 	KubernetesVersion *KubernetesVersionCheckSpec `json:"kubernetesVersion,omitempty"`
+
+	// StorageClass configures the StorageClass-presence check (LH-F-010 / LH-F-011).
+	StorageClass *StorageClassCheckSpec `json:"storageClass,omitempty"`
+
+	// IngressClass configures the IngressClass-presence check (LH-F-012).
+	IngressClass *IngressClassCheckSpec `json:"ingressClass,omitempty"`
+
+	// CertManager configures the cert-manager existence check (LH-F-013).
+	CertManager *CertManagerCheckSpec `json:"certManager,omitempty"`
+
+	// ClusterResources configures the cluster-resources check (LH-F-015 / LH-AK-009).
+	ClusterResources *ClusterResourcesCheckSpec `json:"clusterResources,omitempty"`
 }
 
 // OpenDeskPreflightCheckSpec defines the desired state of an OpenDeskPreflightCheck.
