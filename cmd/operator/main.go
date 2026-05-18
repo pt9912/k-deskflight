@@ -99,6 +99,7 @@ func run(logger *slog.Logger) error {
 	ingressAdapter := k8s.NewIngressClassAdapter(clients.Clientset)
 	apiGroupAdapter := k8s.NewAPIGroupAdapter(clients.Discovery)
 	nodeAdapter := k8s.NewNodeAdapter(clients.Clientset)
+	accessReviewer := k8s.NewAccessReviewAdapter(clients.Clientset)
 
 	registry := check.NewRegistry()
 	registry.Register(check.NewKubernetesVersion(discoveryAdapter, nil))
@@ -108,9 +109,11 @@ func run(logger *slog.Logger) error {
 	registry.Register(check.NewClusterResources(nodeAdapter, nil))
 
 	reconciler := &application.Reconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Registry: registry,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Registry:       registry,
+		AccessReviewer: accessReviewer,
+		Logger:         logger,
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("setup reconciler: %w", err)
