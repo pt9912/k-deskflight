@@ -18,6 +18,14 @@
 # In M6 ist der Endpoint unauthentisiert (slice-M6 §2.2.1) — die
 # ClusterRoleBinding hier ist Pattern-Asset, kein Gating. Step 9c
 # verifiziert die ClusterRole stattdessen strukturell per `jq`.
+#
+# **Namespace-Konvention** (Befund 9 Step-2-Review): SA + Pod + CRB-
+# subject sind hier alle auf `default` fixiert. `scripts/cluster-
+# smoke.sh` führt die Variable `PROBE_NAMESPACE` als Symbol-Konstante
+# für die kubectl-Aufrufe, ein echter Override müsste deshalb alle
+# drei `namespace`-Felder unten mit-anpassen (sed-Templating oder
+# kustomize-Overlay). Solange v0.2 keinen anderen Namespace verlangt,
+# bleibt es bei `default`.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -61,10 +69,14 @@ spec:
   containers:
     - name: curl
       image: curlimages/curl:8.10.1
+      # `sleep infinity` (Plan §2.2.2-konform, Befund 4 Step-2-Review):
+      # vermeidet die implizite 1h-Lebenszeit-Grenze, damit
+      # CLUSTER_KEEP=1 auch nach längerer Inspektion noch ein
+      # `kubectl exec` erlaubt.
       command:
         - sh
         - -c
-        - sleep 3600
+        - sleep infinity
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true

@@ -97,12 +97,18 @@ probe() {
                 echo "${body}" | head -10 >&2
                 return 1
             fi
-            # (b) Inhalts-Beweis: mindestens eine der drei controller-
-            #     runtime-Standard-Metriken muss da sein. OR-verknüpft —
-            #     wenn eine Library-Version eine Metrik umbenennt, gewinnt
-            #     der Test trotzdem solange ≥ 1 da ist.
-            if ! grep -qE '^(workqueue_depth|rest_client_requests_total|controller_runtime_reconcile_total)( |\{)' <<<"${body}"; then
-                log "FAIL ${label}: response missing any expected controller-runtime metric"
+            # (b) Inhalts-Beweis: mindestens eine library-unabhängige
+            #     Standard-Metrik muss da sein. OR-verknüpft —
+            #     `go_goroutines` und `process_cpu_seconds_total` kommen
+            #     aus dem Prometheus-Client-Go-Default-Set und sind
+            #     library-unabhängig garantiert (Befund 5 Step-2-Review,
+            #     schafft einen stabilen Floor gegen controller-runtime-
+            #     Metrik-Umbenennungen). Die drei controller-runtime-
+            #     Kandidaten sind zusätzlich library-spezifisch — fehlt
+            #     auch das go_*-Pattern, ist der Endpoint nicht in
+            #     Prometheus-Format antwortend.
+            if ! grep -qE '^(go_goroutines|process_cpu_seconds_total|workqueue_depth|rest_client_requests_total|controller_runtime_reconcile_total)( |\{)' <<<"${body}"; then
+                log "FAIL ${label}: response missing any expected baseline metric"
                 echo "${body}" | head -20 >&2
                 return 1
             fi

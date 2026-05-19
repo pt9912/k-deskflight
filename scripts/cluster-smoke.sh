@@ -43,6 +43,12 @@ SAMPLE_NAMESPACE="default"
 SAMPLE_NAME="smoke"
 WAIT_TIMEOUT_PHASE=60
 DEPLOYMENT_WAIT_TIMEOUT=120s
+# Befund 9+10 (Step-2-Review): Probe-Pod-Namespace und Service-DNS-FQDN
+# als Env-Overrides, Plan-konform mit `.svc.cluster.local` (statt der
+# .svc-Kurzform), und PROBE_NAMESPACE entkoppelt den hardcodierten
+# `default`-Constraint.
+PROBE_NAMESPACE="${PROBE_NAMESPACE:-default}"
+METRICS_SERVICE_FQDN="${METRICS_SERVICE_FQDN:-k-deskflight-operator-metrics.k-deskflight-system.svc.cluster.local}"
 
 log() { echo "[cluster-smoke] $*"; }
 
@@ -189,22 +195,51 @@ bash scripts/operator-http-smoke.sh
 # FQDN, und drei Asserts attestieren Format + Inhalt + Sanity.
 log "Step 9b: /metrics via Service-DNS aus Probe-Pod (FQDN-Routing)"
 kubectl --context "${KIND_CONTEXT}" apply -f hack/cluster-smoke/metrics-scrape-probe.yaml
-kubectl --context "${KIND_CONTEXT}" -n default wait pod/metrics-scrape-probe \
-    --for=condition=Ready --timeout=60s
-METRICS_BODY="$(kubectl --context "${KIND_CONTEXT}" -n default exec metrics-scrape-probe -- \
-    curl -sf --max-time 5 \
-    http://k-deskflight-operator-metrics.k-deskflight-system.svc:8080/metrics)"
+# Befund 3 (Step-2-Review): Timeout 120s (analog DEPLOYMENT_WAIT_TIMEOUT)
+# + describe-Fallback bei Wait-Timeout, damit der nächste Maintainer
+# nicht raten muss, ob Pod-Pull oder Scheduling klemmt.
+if ! kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" \
+    wait pod/metrics-scrape-probe --for=condition=Ready --timeout=120s; then
+    log "FAIL Step 9b: probe pod did not become Ready within 120s"
+    kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" describe pod metrics-scrape-probe >&2 || true
+    kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" get events --sort-by=.lastTimestamp >&2 || true
+    exit 1
+fi
+# Befund 1+2 (Step-2-Review): Retry-Loop analog operator-http-smoke.sh
+# (Manager-Init-Race) + explizites if-let-Capture, damit curl-Fehler
+# eine sinnvolle Diagnose liefern statt `set -e` stumm zu triggern.
+METRICS_BODY=""
+for _ in $(seq 1 10); do
+    if METRICS_BODY="$(kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" \
+        exec metrics-scrape-probe -- \
+        curl -sf --max-time 5 \
+        "http://${METRICS_SERVICE_FQDN}:8080/metrics" 2>/dev/null)"; then
+        break
+    fi
+    METRICS_BODY=""
+    sleep 1
+done
+if [[ -z "${METRICS_BODY}" ]]; then
+    log "FAIL Step 9b: curl via Service-DNS failed after 10 retries"
+    log "  verbose retry for diagnostics:"
+    kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" exec metrics-scrape-probe -- \
+        curl -v --max-time 5 "http://${METRICS_SERVICE_FQDN}:8080/metrics" >&2 || true
+    exit 1
+fi
 # Assert (a): Prometheus-Format-Marker.
 if ! grep -qE '^# (HELP|TYPE) ' <<<"${METRICS_BODY}"; then
     log "FAIL Step 9b: response missing '# HELP' / '# TYPE' marker"
     echo "${METRICS_BODY}" | head -10 >&2
     exit 1
 fi
-# Assert (b): Inhalts-Beweis — mindestens eine controller-runtime-
-# Standard-Metrik (OR-verknüpft, robust gegen library-Drift in einer
-# einzelnen Metrik).
-if ! grep -qE '^(workqueue_depth|rest_client_requests_total|controller_runtime_reconcile_total)( |\{)' <<<"${METRICS_BODY}"; then
-    log "FAIL Step 9b: response missing any expected controller-runtime metric"
+# Assert (b): Inhalts-Beweis — mindestens eine library-unabhängige
+# Standard-Metrik (OR-verknüpft). `go_goroutines` und
+# `process_cpu_seconds_total` kommen aus dem Prometheus-Client-Go-
+# Default-Set und sind library-unabhängig garantiert (Befund 5
+# Step-2-Review); die drei controller-runtime-Kandidaten sind
+# zusätzlich library-spezifisch.
+if ! grep -qE '^(go_goroutines|process_cpu_seconds_total|workqueue_depth|rest_client_requests_total|controller_runtime_reconcile_total)( |\{)' <<<"${METRICS_BODY}"; then
+    log "FAIL Step 9b: response missing any expected baseline metric"
     echo "${METRICS_BODY}" | head -20 >&2
     exit 1
 fi
@@ -225,6 +260,15 @@ log "  /metrics via Service-DNS OK (${nonempty_lines} non-empty lines, format+co
 # oder Wildcard (`["*"]`) — auch wenn der Endpoint in M6 unauthen-
 # tisiert ist und die Rolle funktional wirkungslos bleibt, soll das
 # Pattern-Asset semantisch sauber bleiben.
+#
+# **v0.2-Hinweis (Befund 6 Step-2-Review):** Bei v0.2-Auth-Filter-
+# Aktivierung (ADR-Folge zu ADR 0007) muss dieser jq-Check
+# mit-evolvieren. Falls der Auth-Filter `head` für Liveness-Probes
+# zusätzlich braucht, lautet die Lockerung z. B.
+# `select((.verbs - ["get", "head"]) == [])` oder
+# `select(.verbs | sort == ["get", "head"])`. Anpassung gehört in
+# **denselben Commit** wie die Auth-Filter-Aktivierung — sonst bricht
+# cluster-smoke nach dem Merge.
 log "Step 9c: jq-Inhaltscheck der metrics-scrape-ClusterRole"
 if ! kubectl --context "${KIND_CONTEXT}" get clusterrole k-deskflight-metrics-scrape -o json \
     | jq -e '.rules[] | select(.nonResourceURLs[]? == "/metrics") | select(.verbs == ["get"])' \
