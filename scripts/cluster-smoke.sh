@@ -26,6 +26,13 @@
 #   IMAGE_TAG=k-deskflight:go   — Operator-Image, das in kind geladen wird
 #   CLUSTER_KEEP=0|1            — bei 1 wird der Cluster nach Erfolg behalten
 #   CLUSTER_SMOKE_ATTEST_FILE   — optional: Pfad für YAML-Status-Dump als Attest-Artefakt
+#   PROBE_NAMESPACE=ns          — **Symbol-Konstante**, kein echter Override (Default: default).
+#                                 Ein Override erfordert paralleles Patchen der drei
+#                                 `namespace:`-Felder im Probe-Yaml — wird sonst zu
+#                                 120s-Wait-Timeout (siehe Inline-Comment + Probe-Yaml-Header).
+#   METRICS_SERVICE_FQDN=…      — Service-DNS-FQDN für Step-9b /metrics-Scrape (Default:
+#                                 k-deskflight-operator-metrics.k-deskflight-system.svc.cluster.local).
+#                                 Override sinnvoll z. B. bei custom-Cluster-Domain.
 #
 # Exit codes:
 #   0 — alle Assertions passed
@@ -43,10 +50,17 @@ SAMPLE_NAMESPACE="default"
 SAMPLE_NAME="smoke"
 WAIT_TIMEOUT_PHASE=60
 DEPLOYMENT_WAIT_TIMEOUT=120s
-# Befund 9+10 (Step-2-Review): Probe-Pod-Namespace und Service-DNS-FQDN
-# als Env-Overrides, Plan-konform mit `.svc.cluster.local` (statt der
-# .svc-Kurzform), und PROBE_NAMESPACE entkoppelt den hardcodierten
-# `default`-Constraint.
+# Befund 9+10 (Step-2-Review) + Round-2-Befund 2:
+#   - METRICS_SERVICE_FQDN: echter Env-Override für custom-Cluster-Domains,
+#     Default Plan-konform mit `.svc.cluster.local` (statt .svc-Kurzform).
+#   - PROBE_NAMESPACE: **Symbol-Konstante**, kein echter Override. Die drei
+#     `namespace:`-Felder im Probe-Yaml (SA, Pod, CRB-subject) sind
+#     hardcoded auf `default`; ein Override auf einen anderen Namespace
+#     führt zu „pods 'metrics-scrape-probe' not found" im Wait-Aufruf
+#     unten und läuft 120s lang ins Leere. Für echte Namespace-Wahl
+#     braucht es sed-Templating oder kustomize-Overlay des Yamls —
+#     v0.2-Scope, wenn überhaupt nötig. Aktuell ist `default` die einzige
+#     getestete Konfiguration.
 PROBE_NAMESPACE="${PROBE_NAMESPACE:-default}"
 METRICS_SERVICE_FQDN="${METRICS_SERVICE_FQDN:-k-deskflight-operator-metrics.k-deskflight-system.svc.cluster.local}"
 
@@ -202,7 +216,14 @@ if ! kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" \
     wait pod/metrics-scrape-probe --for=condition=Ready --timeout=120s; then
     log "FAIL Step 9b: probe pod did not become Ready within 120s"
     kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" describe pod metrics-scrape-probe >&2 || true
-    kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" get events --sort-by=.lastTimestamp >&2 || true
+    # Round-2-Befund 3: Events auf den Probe-Pod gefiltert, damit die
+    # relevanten Pull-/Schedule-Fails nicht in kind-Bootstrap-Events
+    # vergraben sind. Schmaler Field-Selector — wenn Scheduler-Events
+    # ohne involvedObject.name kommen (selten), ist der Pod-Describe-
+    # Aufruf darüber bereits die Backup-Diagnose.
+    kubectl --context "${KIND_CONTEXT}" -n "${PROBE_NAMESPACE}" \
+        get events --sort-by=.lastTimestamp \
+        --field-selector involvedObject.name=metrics-scrape-probe >&2 || true
     exit 1
 fi
 # Befund 1+2 (Step-2-Review): Retry-Loop analog operator-http-smoke.sh
