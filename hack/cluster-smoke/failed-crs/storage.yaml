@@ -1,0 +1,33 @@
+---
+# Failed-CR für die StorageClass-Prüfung (slice-M6 §2.8, §3.4).
+#
+# Erwartung im Cluster-Smoke Step 8 (Phase 2):
+#   - status.phase = Failed
+#   - condition StorageClassReady = False, Reason=StorageClassMissing
+#   - andere vier Conditions = True
+#
+# `storageClass.names: ["nonexistent"]` ist im kind-Cluster nicht
+# vorhanden (kind liefert nur `standard`); der Lookup gibt eine leere
+# Match-Liste zurück → Reason=StorageClassMissing.
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: smoke-failed-storage
+  namespace: default
+spec:
+  profile: production
+  interval: "5m"
+  checks:
+    kubernetesVersion:
+      min: "1.34"
+    storageClass:
+      names:
+        - nonexistent
+      requireDefault: false
+    ingressClass:
+      names:
+        - nginx
+    certManager: {}
+    clusterResources:
+      minCPU: "1"
+      minMemory: "1Gi"

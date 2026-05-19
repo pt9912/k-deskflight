@@ -1,0 +1,33 @@
+---
+# Failed-CR für die KubernetesVersion-Prüfung (slice-M6 §2.8, §3.4).
+#
+# Erwartung im Cluster-Smoke Step 8 (Phase 2):
+#   - status.phase = Failed
+#   - condition KubernetesVersionReady = False, Reason=KubernetesVersionTooOld
+#   - andere vier Conditions = True (StorageClass, IngressClass,
+#     CertManager, ClusterResources passed gegen die Stubs/kind-Defaults)
+#
+# Der Unterschied zum Sample-CR `smoke` ist nur `kubernetesVersion.min:
+# "99.99"`: der Operator floor 1.34 ist viel niedriger → TooOld.
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: smoke-failed-version
+  namespace: default
+spec:
+  profile: production
+  interval: "5m"
+  checks:
+    kubernetesVersion:
+      min: "99.99"
+    storageClass:
+      names:
+        - standard
+      requireDefault: true
+    ingressClass:
+      names:
+        - nginx
+    certManager: {}
+    clusterResources:
+      minCPU: "1"
+      minMemory: "1Gi"

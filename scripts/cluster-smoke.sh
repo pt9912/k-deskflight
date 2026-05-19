@@ -139,11 +139,44 @@ kubectl --context "${KIND_CONTEXT}" -n k-deskflight-system wait \
     --for=condition=Available deployment/k-deskflight-operator \
     --timeout="${DEPLOYMENT_WAIT_TIMEOUT}"
 
-# Step 6 — Sample-CR.
+# Step 6 — Sample-CR (passed-Pfad).
 log "Step 6: apply sample CR"
 kubectl --context "${KIND_CONTEXT}" apply -f config/samples/
 
-# Step 7 — auf finale Phase warten.
+# Step 6b — Failed-CRs (slice-M6 §2.8): vier weitere OPDC-Ressourcen
+# konfigurieren je einen Check auf failed (KubernetesVersion,
+# StorageClass, IngressClass, ClusterResources). Eindeutige
+# `metadata.name`-Werte verhindern Status-Mischung im
+# controller-runtime-Watch; serielles Apply + Wait pro CR garantiert,
+# dass Status-Konvergenz pro Reconcile-Zyklus abgeschlossen ist, bevor
+# die nächste CR appliziert wird.
+#
+# **cert-manager-Ausnahme** (Plan §1 + §2.8): kein failed-CR im
+# automatischen Smoke, weil cluster-state-stubs.yaml den cert-manager-
+# Stub cluster-global setzt; ein per-CR-Ausschalten ist ohne
+# M4-Smoke-Refactor nicht möglich. LH-AK-008 bleibt durch M4 attestiert.
+log "Step 6b: apply failed-CRs (seriell + wait jsonpath=phase=Failed je 60s)"
+failed_crs=(
+    smoke-failed-version
+    smoke-failed-storage
+    smoke-failed-ingress
+    smoke-failed-resources
+)
+for cr in "${failed_crs[@]}"; do
+    log "  apply ${cr}"
+    kubectl --context "${KIND_CONTEXT}" apply \
+        -f "hack/cluster-smoke/failed-crs/${cr#smoke-failed-}.yaml"
+    if ! kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+        wait "opendeskpreflightcheck/${cr}" \
+        --for=jsonpath='{.status.phase}'=Failed --timeout=60s; then
+        log "FAIL Step 6b: ${cr} did not reach phase=Failed within 60s"
+        kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+            get "opendeskpreflightcheck/${cr}" -o yaml >&2 || true
+        exit 1
+    fi
+done
+
+# Step 7 — auf finale Phase warten (passed-CR `smoke`).
 log "Step 7: wait for status.phase != Pending/Running (max ${WAIT_TIMEOUT_PHASE}s)"
 phase=""
 for _ in $(seq 1 "${WAIT_TIMEOUT_PHASE}"); do
@@ -189,6 +222,59 @@ for ct in "${expected_conditions[@]}"; do
         exit 1
     fi
     log "  ${ct}=True"
+done
+
+# Step 8 Phase 2 — Failed-CR-Assertions (slice-M6 §2.8). Pro CR:
+#   - phase=Failed (bereits via Wait in Step 6b verifiziert)
+#   - die EINE erwartete Failed-Condition mit konkretem Reason
+#   - die ANDEREN vier Conditions auf status=True (Co-Aktivierung;
+#     verhindert, dass eine versehentliche Mehrfach-Failed-Konfiguration
+#     unbemerkt durchrutscht).
+log "Step 8 Phase 2: failed-CR conditions + reasons"
+# Mapping CR-Name → (Failed-Condition, erwarteter Reason).
+declare -A failed_cr_expectation=(
+    [smoke-failed-version]="KubernetesVersionReady:KubernetesVersionTooOld"
+    [smoke-failed-storage]="StorageClassReady:StorageClassMissing"
+    [smoke-failed-ingress]="IngressClassReady:IngressClassMissing"
+    [smoke-failed-resources]="ClusterResourcesReady:InsufficientCPU"
+)
+for cr in "${failed_crs[@]}"; do
+    expected="${failed_cr_expectation[${cr}]}"
+    failed_type="${expected%%:*}"
+    failed_reason="${expected##*:}"
+
+    # (a) Die erwartete Failed-Condition: status=False + matching Reason.
+    cs="$(kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+        get "opendeskpreflightcheck/${cr}" \
+        -o jsonpath="{.status.conditions[?(@.type=='${failed_type}')].status}" 2>/dev/null || true)"
+    cr_reason="$(kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+        get "opendeskpreflightcheck/${cr}" \
+        -o jsonpath="{.status.conditions[?(@.type=='${failed_type}')].reason}" 2>/dev/null || true)"
+    if [[ "${cs}" != "False" || "${cr_reason}" != "${failed_reason}" ]]; then
+        log "FAIL: ${cr}: expected ${failed_type}=False/${failed_reason}, got ${cs:-<missing>}/${cr_reason:-<missing>}"
+        kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+            get "opendeskpreflightcheck/${cr}" -o yaml >&2 || true
+        exit 1
+    fi
+    log "  ${cr}: ${failed_type}=False, reason=${failed_reason} ✓"
+
+    # (b) Die anderen vier Conditions müssen True bleiben — sichert,
+    # dass nur der konfigurierte Check fehlschlägt.
+    for ct in "${expected_conditions[@]}"; do
+        if [[ "${ct}" == "${failed_type}" ]]; then
+            continue
+        fi
+        other_cs="$(kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+            get "opendeskpreflightcheck/${cr}" \
+            -o jsonpath="{.status.conditions[?(@.type=='${ct}')].status}" 2>/dev/null || true)"
+        if [[ "${other_cs}" != "True" ]]; then
+            log "FAIL: ${cr}: collateral condition ${ct} expected True, got '${other_cs:-<missing>}'"
+            kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
+                get "opendeskpreflightcheck/${cr}" -o yaml >&2 || true
+            exit 1
+        fi
+    done
+    log "  ${cr}: other 4 conditions=True (no collateral failure)"
 done
 
 # Backward-Compat-Variablen für die abschließende Status-Zeile.
@@ -300,14 +386,19 @@ if ! kubectl --context "${KIND_CONTEXT}" get clusterrole k-deskflight-metrics-sc
 fi
 log "  ClusterRole rule structurally valid (nonResourceURLs=[/metrics], verbs=[get])"
 
-log "PASSED — phase=${phase}, condition=${condition_type}=${condition_status}, HTTP probes OK, Service-DNS OK, ClusterRole structurally valid"
+log "PASSED — passed-CR (smoke): phase=${phase}, ${condition_type}=${condition_status}; failed-CRs: 4×Phase=Failed with expected reason; HTTP probes OK, Service-DNS OK, ClusterRole structurally valid"
 
 # Attest-Artefakt: Status-Dump unter /src/.cluster-smoke-attest.yaml
 # (Workspace-Mount); CI-Workflow `cluster-smoke.yml` lädt das als
 # Run-Artefakt hoch, lokal gitignored. Override via
 # CLUSTER_SMOKE_ATTEST_FILE=<pfad>.
+#
+# Seit slice-M6 §2.8 enthält das Attest **alle fünf** CRs (1 passed +
+# 4 failed) — `-l app=…` würde greifen, aber die Smoke-CRs tragen
+# kein gemeinsames Label, also einfache `--field-selector`-loses
+# `get opendeskpreflightcheck` über den ganzen Namespace.
 ATTEST_FILE="${CLUSTER_SMOKE_ATTEST_FILE:-/src/.cluster-smoke-attest.yaml}"
 kubectl --context "${KIND_CONTEXT}" -n "${SAMPLE_NAMESPACE}" \
-    get opendeskpreflightcheck "${SAMPLE_NAME}" -o yaml \
+    get opendeskpreflightcheck -o yaml \
     > "${ATTEST_FILE}"
-log "attest written to ${ATTEST_FILE}"
+log "attest written to ${ATTEST_FILE} (${#failed_crs[@]} failed + 1 passed CR)"

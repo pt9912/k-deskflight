@@ -1,0 +1,33 @@
+---
+# Failed-CR für die IngressClass-Prüfung (slice-M6 §2.8, §3.4).
+#
+# Erwartung im Cluster-Smoke Step 8 (Phase 2):
+#   - status.phase = Failed
+#   - condition IngressClassReady = False, Reason=IngressClassMissing
+#   - andere vier Conditions = True
+#
+# `ingressClass.names: ["nonexistent"]` matched keine IngressClass im
+# Cluster (`nginx` aus cluster-state-stubs.yaml ist da, aber nicht
+# `nonexistent`) → Reason=IngressClassMissing.
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: smoke-failed-ingress
+  namespace: default
+spec:
+  profile: production
+  interval: "5m"
+  checks:
+    kubernetesVersion:
+      min: "1.34"
+    storageClass:
+      names:
+        - standard
+      requireDefault: true
+    ingressClass:
+      names:
+        - nonexistent
+    certManager: {}
+    clusterResources:
+      minCPU: "1"
+      minMemory: "1Gi"

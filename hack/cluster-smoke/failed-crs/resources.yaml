@@ -1,0 +1,34 @@
+---
+# Failed-CR für die ClusterResources-Prüfung (slice-M6 §2.8, §3.4).
+#
+# Erwartung im Cluster-Smoke Step 8 (Phase 2):
+#   - status.phase = Failed
+#   - condition ClusterResourcesReady = False, Reason=InsufficientCPU
+#     (nur CPU fehlt; memory bleibt mit `1Gi` unter dem typischen
+#     kind-Worker-Limit).
+#   - andere vier Conditions = True
+#
+# `clusterResources.minCPU: "999"` ist absurd hoch — kein kind-Cluster
+# erreicht 999 CPU-Cores summiert über alle Ready-Nodes.
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: smoke-failed-resources
+  namespace: default
+spec:
+  profile: production
+  interval: "5m"
+  checks:
+    kubernetesVersion:
+      min: "1.34"
+    storageClass:
+      names:
+        - standard
+      requireDefault: true
+    ingressClass:
+      names:
+        - nginx
+    certManager: {}
+    clusterResources:
+      minCPU: "999"
+      minMemory: "1Gi"
