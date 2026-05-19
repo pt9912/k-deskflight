@@ -122,6 +122,20 @@ spec:
                         type: boolean
                     type: object
                 type: object
+              interval:
+                default: 5m
+                description: |-
+                  Interval steuert das Wiederholintervall des Reconciles als
+                  `time.ParseDuration`-String (z. B. `5m`, `30s`, `1h30m`).
+                  Default `5m`, Bounds `[30s, 24h]`. **Bewusst ohne
+                  `+kubebuilder:validation:Pattern`** (slice-M6 §2.3.1): AR-010.1
+                  verlangt liveness-sicheres CR-Spec-Scope-Verhalten — ungültige
+                  Werte sollen den CRD-Validator passieren und im Reconciler-
+                  Normalisierer (`application.NormalizeInterval`) auf einen
+                  erlaubten Wert geklemmt werden (mit
+                  `Status.Conditions[ConfigurationInvalid]=True`,
+                  Reason=`IntervalNormalized`, Severity=`warning`).
+                type: string
               profile:
                 default: production
                 description: Profile selects the preset of check defaults to apply.

@@ -160,6 +160,21 @@ type OpenDeskPreflightCheckSpec struct {
 	// +kubebuilder:default=production
 	Profile Profile `json:"profile,omitempty"`
 
+	// Interval steuert das Wiederholintervall des Reconciles als
+	// `time.ParseDuration`-String (z. B. `5m`, `30s`, `1h30m`).
+	// Default `5m`, Bounds `[30s, 24h]`. **Bewusst ohne
+	// `+kubebuilder:validation:Pattern`** (slice-M6 §2.3.1): AR-010.1
+	// verlangt liveness-sicheres CR-Spec-Scope-Verhalten — ungültige
+	// Werte sollen den CRD-Validator passieren und im Reconciler-
+	// Normalisierer (`application.NormalizeInterval`) auf einen
+	// erlaubten Wert geklemmt werden (mit
+	// `Status.Conditions[ConfigurationInvalid]=True`,
+	// Reason=`IntervalNormalized`, Severity=`warning`).
+	//
+	// +kubebuilder:default="5m"
+	// +optional
+	Interval *string `json:"interval,omitempty"`
+
 	// Checks selects and configures the individual preflight checks.
 	Checks ChecksSpec `json:"checks,omitempty"`
 }

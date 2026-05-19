@@ -8,6 +8,7 @@ package application_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -1259,5 +1260,186 @@ func TestReconcileSpecInvalidIngressClass(t *testing.T) {
 	}
 	if len(after.Status.Conditions) != 1 || after.Status.Conditions[0].Type != "SpecInvalid" {
 		t.Fatalf("Conditions: got %+v, want one SpecInvalid entry", after.Status.Conditions)
+	}
+}
+
+// intervalTestRig baut den Standard-CR/Client/Reconciler/stubCheck-
+// Aufbau für die drei Interval-Cases (slice-M6 §4 Step 1c).
+// `intervalRaw == nil` bedeutet „Feld nicht gesetzt".
+func intervalTestRig(
+	t *testing.T,
+	name string,
+	intervalRaw *string,
+) *application.Reconciler {
+	t.Helper()
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       name,
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile:  preflightv1alpha1.ProfileProduction,
+			Interval: intervalRaw,
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+			},
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{
+		name: domain.KubernetesVersionSpecKind,
+		result: domain.Result{
+			Name:           "KubernetesVersionReady",
+			Status:         domain.StatusTrue,
+			Reason:         "KubernetesVersionReady",
+			Severity:       domain.SeverityInfo,
+			Message:        "server version 1.34.2 satisfies minimum 1.34",
+			LastTransition: fixedClock()(),
+		},
+	})
+
+	return &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+}
+
+// TestReconcileIntervalDefaulted (slice-M6 §7 #13, Case „Leer →
+// Default 5m"): kein `Spec.Interval` gesetzt → RequeueAfter == 5m,
+// keine ConfigurationInvalid-Condition, Phase = Passed.
+func TestReconcileIntervalDefaulted(t *testing.T) {
+	reconciler := intervalTestRig(t, "interval-default", nil)
+
+	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "interval-default", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != application.DefaultInterval {
+		t.Errorf("RequeueAfter: got %s, want %s", res.RequeueAfter, application.DefaultInterval)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := reconciler.Get(context.Background(),
+		types.NamespacedName{Name: "interval-default", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhasePassed {
+		t.Errorf("Phase: got %q, want Passed (default interval must not escalate)", after.Status.Phase)
+	}
+	for _, c := range after.Status.Conditions {
+		if c.Type == application.ConditionTypeConfigurationInvalid {
+			t.Errorf("unexpected ConfigurationInvalid condition on default interval: %+v", c)
+		}
+	}
+}
+
+// TestReconcileIntervalNormalized (slice-M6 §7 #13, Case
+// „Parse-fail → Default 5m + Warning"): ungültiger Duration-String →
+// RequeueAfter == 5m, ConfigurationInvalid-Condition mit Reason
+// IntervalNormalized/Severity warning, Phase auf Warning gehoben.
+func TestReconcileIntervalNormalized(t *testing.T) {
+	raw := "abc"
+	reconciler := intervalTestRig(t, "interval-bad", &raw)
+
+	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "interval-bad", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != application.DefaultInterval {
+		t.Errorf("RequeueAfter: got %s, want %s (parse-fail must fall back to default)",
+			res.RequeueAfter, application.DefaultInterval)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := reconciler.Get(context.Background(),
+		types.NamespacedName{Name: "interval-bad", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseWarning {
+		t.Errorf("Phase: got %q, want Warning (ConfigurationInvalid must escalate Passed→Warning)",
+			after.Status.Phase)
+	}
+	var found *preflightv1alpha1.Condition
+	for i := range after.Status.Conditions {
+		if after.Status.Conditions[i].Type == application.ConditionTypeConfigurationInvalid {
+			found = &after.Status.Conditions[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected ConfigurationInvalid condition, got %+v", after.Status.Conditions)
+	}
+	if found.Reason != application.ReasonIntervalNormalized {
+		t.Errorf("Reason: got %q, want %q", found.Reason, application.ReasonIntervalNormalized)
+	}
+	if found.Severity != preflightv1alpha1.SeverityWarning {
+		t.Errorf("Severity: got %q, want warning", found.Severity)
+	}
+	// Summary darf nicht durch die Warning verfälscht werden — Counts
+	// gehören nur den Check-Results (slice-M6 §2.3 mergeIntervalWarning).
+	if after.Status.Summary.Warning != 0 {
+		t.Errorf("Summary.Warning: got %d, want 0 (ConfigurationInvalid darf nicht in Summary zählen)",
+			after.Status.Summary.Warning)
+	}
+	if after.Status.Summary.Passed != 1 {
+		t.Errorf("Summary.Passed: got %d, want 1 (KubernetesVersion bleibt passed)",
+			after.Status.Summary.Passed)
+	}
+}
+
+// TestReconcileIntervalClamped (slice-M6 §7 #13, Case
+// „Out-of-bounds → clamp + Warning"): 25h overshoot → RequeueAfter ==
+// 24h, ConfigurationInvalid-Condition mit Reason IntervalNormalized.
+func TestReconcileIntervalClamped(t *testing.T) {
+	raw := "25h"
+	reconciler := intervalTestRig(t, "interval-clamped", &raw)
+
+	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "interval-clamped", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != application.MaxInterval {
+		t.Errorf("RequeueAfter: got %s, want %s (must clamp to max)",
+			res.RequeueAfter, application.MaxInterval)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := reconciler.Get(context.Background(),
+		types.NamespacedName{Name: "interval-clamped", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseWarning {
+		t.Errorf("Phase: got %q, want Warning", after.Status.Phase)
+	}
+	var found *preflightv1alpha1.Condition
+	for i := range after.Status.Conditions {
+		if after.Status.Conditions[i].Type == application.ConditionTypeConfigurationInvalid {
+			found = &after.Status.Conditions[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected ConfigurationInvalid condition, got %+v", after.Status.Conditions)
+	}
+	if !strings.Contains(found.Message, "exceeds maximum") {
+		t.Errorf("Message %q must mention 'exceeds maximum'", found.Message)
 	}
 }

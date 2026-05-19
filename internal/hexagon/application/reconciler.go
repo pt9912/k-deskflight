@@ -116,8 +116,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	crLoaded = true
 
 	if r.isAlreadyReconciled(&cr) {
-		return ctrl.Result{}, nil
+		// AR-010: auch im Skip-Pfad muss der RequeueAfter den
+		// normalisierten Intervall-Wert tragen, damit ein einmal-fertiger
+		// CR nicht nur auf den controller-runtime-Cache-Resync wartet.
+		interval, _ := NormalizeInterval(cr.Spec.Interval)
+		return ctrl.Result{RequeueAfter: interval}, nil
 	}
+
+	// AR-010 / slice-M6 §2.3: `Spec.Interval` wird vor allen Check-
+	// Pfaden normalisiert, weil das `RequeueAfter` an allen
+	// return-Stellen (Pending-/Spec-/Selection-/Final-Pfad) gesetzt
+	// werden muss. Die `intervalWarning`-Condition wird in jedes
+	// Output-Set hinein-gemerged (`mergeIntervalWarning`), damit der
+	// Anwender die `ConfigurationInvalid`-Diagnose auch sieht, wenn
+	// gleichzeitig ein anderer Spec-/Selection-/Check-Fehler aktiv ist.
+	interval, intervalWarning := NormalizeInterval(cr.Spec.Interval)
 
 	// AR-009 / Roadmap §3 M2: sichtbare Phasen-Transition Pending →
 	// Running → Final. Pending signalisiert „Controller hat den CR für
@@ -134,12 +147,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 
 	specs, validationErrs := buildSpecMap(runCtx, &cr.Spec.Checks, defaults)
 	if len(validationErrs) > 0 {
-		return ctrl.Result{}, r.writeStatus(runCtx, &cr, r.specInvalidOutput(validationErrs))
+		out := mergeIntervalWarning(r.specInvalidOutput(validationErrs), intervalWarning, r.now())
+		return ctrl.Result{RequeueAfter: interval}, r.writeStatus(runCtx, &cr, out)
 	}
 
 	active, issues := r.Registry.ListByProfile(profile, specs)
 	if len(issues) > 0 {
-		return ctrl.Result{}, r.writeStatus(runCtx, &cr, r.selectionIssueOutput(issues, len(specs)))
+		out := mergeIntervalWarning(r.selectionIssueOutput(issues, len(specs)), intervalWarning, r.now())
+		return ctrl.Result{RequeueAfter: interval}, r.writeStatus(runCtx, &cr, out)
 	}
 
 	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhaseRunning); err != nil {
@@ -147,7 +162,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	}
 
 	results := r.runChecks(runCtx, active, specs)
-	out := Aggregate(results, r.now())
+	out := mergeIntervalWarning(Aggregate(results, r.now()), intervalWarning, r.now())
 
 	// Per-Result-Diagnose-Log (slice-M5 §2.6, Folge-Review-Befund 3):
 	// jeder Result-Eintrag wandert über LogResult, damit beide
@@ -174,7 +189,81 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 		)...,
 	)
 
-	return ctrl.Result{}, r.writeStatus(runCtx, &cr, out)
+	return ctrl.Result{RequeueAfter: interval}, r.writeStatus(runCtx, &cr, out)
+}
+
+// mergeIntervalWarning hängt die ConfigurationInvalid-Condition aus
+// `NormalizeInterval` an ein bestehendes `AggregationOutput` an
+// (slice-M6 §2.3). Verhalten:
+//
+//   - `warning == nil` → `out` unverändert.
+//   - sonst → Condition wird angehängt, alphabetisch nach Type
+//     einsortiert, und die Phase auf mindestens `Warning` gehoben
+//     (Failed/Unknown bleiben unverändert; Passed steigt zu Warning).
+//
+// Die Warning-Condition zählt **nicht** in `Summary.Warning` —
+// `ChecksTotal`/`Passed`/`Warning`/`Failed`/`Unknown` bleiben
+// Check-Result-Counts, die ConfigurationInvalid-Condition ist
+// CR-Spec-Scope und steht außerhalb dieser Zählung (AR-010.1).
+func mergeIntervalWarning(
+	out AggregationOutput,
+	warning *ConditionWarning,
+	now time.Time,
+) AggregationOutput {
+	if warning == nil {
+		return out
+	}
+	cond := preflightv1alpha1.Condition{
+		Type:               warning.Type,
+		Status:             metav1.ConditionTrue,
+		Reason:             warning.Reason,
+		Message:            warning.Message,
+		LastTransitionTime: metav1.NewTime(now.UTC()),
+		Severity:           warning.Severity,
+	}
+	out.Conditions = append(out.Conditions, cond)
+	// Stable-Sort hält die Aggregator-Reihenfolge der bestehenden
+	// Conditions; die neu angehängte Condition rutscht an die richtige
+	// alphabetische Position.
+	sortConditionsByType(out.Conditions)
+	out.Phase = escalatePhase(out.Phase, preflightv1alpha1.PhaseWarning)
+	return out
+}
+
+// sortConditionsByType sortiert die Condition-Slice in-place
+// alphabetisch nach Type — gleiche Reihenfolge wie der Aggregator
+// (AR-014), damit die Status-Anzeige deterministisch bleibt.
+func sortConditionsByType(conds []preflightv1alpha1.Condition) {
+	for i := 1; i < len(conds); i++ {
+		for j := i; j > 0 && conds[j-1].Type > conds[j].Type; j-- {
+			conds[j-1], conds[j] = conds[j], conds[j-1]
+		}
+	}
+}
+
+// escalatePhase hebt `current` mindestens auf `floor`, wenn `current`
+// das schwächere von beiden ist. Schweregradregel folgt AR-014:
+// Failed > Warning > Unknown > Passed > (Pending/Running).
+func escalatePhase(current, floor preflightv1alpha1.Phase) preflightv1alpha1.Phase {
+	if phaseRank(current) >= phaseRank(floor) {
+		return current
+	}
+	return floor
+}
+
+func phaseRank(p preflightv1alpha1.Phase) int {
+	switch p {
+	case preflightv1alpha1.PhaseFailed:
+		return 4
+	case preflightv1alpha1.PhaseWarning:
+		return 3
+	case preflightv1alpha1.PhaseUnknown:
+		return 2
+	case preflightv1alpha1.PhasePassed:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // SetupWithManager registers the reconciler with the controller-runtime manager.
