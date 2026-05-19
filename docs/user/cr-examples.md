@@ -31,9 +31,12 @@ nicht den 4-CPU-Default.
 Differenzierung läuft nicht über die K8s-Version, sondern über die
 Ressourcen-Schwellen
 ([LH-PROF-003](../../spec/lastenheft.md)). Die OpenDesk-Doku-
-Untergrenze `≥ v1.24` ist niedriger als der Operator-Floor und wird
-in [ADR 0009 §2.3](../plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md)
-eingeordnet.
+Untergrenze `≥ v1.24` ist niedriger als der Operator-Floor `1.34` —
+eine OpenDesk-Installation auf `1.24` wäre upstream-supported, aber
+dieser Operator startet darauf nicht (und schreibt
+`KubernetesVersionTooOld` in den Status, falls man es trotzdem
+versucht). Hintergrund in
+[ADR 0009 §2.3](../plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md).
 
 ---
 
@@ -109,12 +112,15 @@ spec:
       names:
         - nginx
     certManager: {}
-    clusterResources:
-      # Production-Default ist 4 CPU / 8Gi — hier explizit überschrieben
-      # mit höheren Werten, weil dieser Cluster zusätzlich Postgres-/
-      # Redis-Workloads tragen soll.
-      minCPU: "16"
-      minMemory: "64Gi"
+    # clusterResources weggelassen → Profile-Default greift
+    # (4 CPU / 8Gi, siehe Tabelle in §1). Wer eine konkrete
+    # Cluster-Kapazität fordern will, setzt explizit:
+    #   clusterResources:
+    #     minCPU: "16"        # Beispielwert — an Cluster-Kapazität anpassen
+    #     minMemory: "64Gi"   # Beispielwert — an Cluster-Kapazität anpassen
+    # Hinweis: zu hohe Werte führen sofort zu InsufficientResources/-CPU/
+    # -Memory; Test-Cluster (kind, 1-3 Nodes) erfüllen 16/64Gi typisch
+    # nicht.
 ```
 
 **Was der Operator daraus macht:**
@@ -124,11 +130,14 @@ spec:
     `bulk-rwo`) existieren **und** mindestens eine
     StorageClass cluster-weit als Default markiert ist.
   - ClusterResources passed nur, wenn die summierten Ready-Node-
-    Allocatables ≥ 16 CPU **und** ≥ 64Gi Memory sind.
+    Allocatables ≥ Profile-Default-Werten sind (Production: 4 CPU /
+    8Gi). Wer das überschreibt (Block-Kommentar oben), zieht die
+    Mindestwerte entsprechend.
 - Phase = `Failed` bei mindestens einem False/critical-Result —
   Default-Severity für die fünf MVP-Check-Failures ist `critical`,
   außer cert-manager (`warning`, weil das Vorhandensein in v0.1
-  nicht hart blockiert).
+  nicht hart blockiert; Begründung in
+  [slice-M4 §9](../plan/planning/done/slice-M4-cluster-state-checks.md)).
 - Conditions: identische fünf Types wie im `evaluation`-Beispiel,
   mit ihrem jeweiligen Reason-Code.
 - Nächster Reconcile in 5 Minuten.
@@ -143,8 +152,8 @@ spec:
 | `spec.interval` | `30m` (großzügig) | `5m` (eng) |
 | `storageClass.requireDefault` | `false` | `true` |
 | `storageClass.names` | 1 Eintrag | 2 Einträge |
-| `clusterResources.minCPU` | Default `2` (nicht im YAML) | Anwender `16` |
-| `clusterResources.minMemory` | Default `4Gi` (nicht im YAML) | Anwender `64Gi` |
+| `clusterResources.minCPU` | Default `2` (nicht im YAML) | Default `4` (nicht im YAML; Override-Beispiel im Block-Kommentar) |
+| `clusterResources.minMemory` | Default `4Gi` (nicht im YAML) | Default `8Gi` (nicht im YAML; Override-Beispiel im Block-Kommentar) |
 
 **Lese-Hilfe für YAML-Reviewer:** Felder, die im YAML **fehlen**,
 sind nicht „leer", sondern signalisieren „Default greift".
@@ -163,7 +172,7 @@ Reconcile-Ende). Default `5m`, Bounds `[30s, 24h]`. Auch im
 Operator pollt nicht endlos.
 
 **Klassifikations-Regel** (siehe
-[ADR 0010 §AR-010.1](../../spec/architecture.md) und
+[architecture.md AR-010.1](../../spec/architecture.md) und
 [Slice-M6 §2.3.1](../plan/planning/in-progress/slice-M6-metrics-tests-doku.md)):
 
 | Eingabe | Ergebnis | Status-Effekt |

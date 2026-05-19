@@ -193,15 +193,32 @@ nur aus dem Monitoring-Namespace erlaubt.
 
 ## 6. Wiederherstellung und Update
 
-- **CR-Edit:** Änderungen an einer `OpenDeskPreflightCheck`-CR
-  lösen einen erneuten Reconcile aus
+- **CR-Edit:** Änderungen am `spec`-Block einer
+  `OpenDeskPreflightCheck`-CR bumpen `metadata.generation` und lösen
+  einen erneuten Reconcile aus
   ([`LH-F-026`](../../spec/lastenheft.md)).
-- **Re-Run ohne Spec-Änderung:** eine Annotation-Bump (z. B.
-  `kubectl annotate opdc smoke kdeskflight.geo-terrain.net/rerun=$(date +%s) --overwrite`)
-  oder ein erneutes Apply ohne Änderung triggert einen neuen Reconcile.
+- **Re-Run ohne Spec-Änderung:** Ist der CR in einer terminalen Phase
+  (`Passed`, `Warning`, `Failed`, `Unknown`), überspringt der
+  Reconciler nachfolgende Events ohne Spec-Diff (`isAlreadyReconciled`-
+  Skip in [`internal/hexagon/application/reconciler.go`](../../internal/hexagon/application/reconciler.go)).
+  Ein **Annotation-Bump alleine reicht deshalb nicht**, weil
+  Annotationen `metadata.generation` nicht bumpen.
+
+  Drei zuverlässige Pfade für einen Re-Run vor Ablauf des
+  Intervalls:
+  ```bash
+  # (a) Spec-Patch mit harmlosem Wechsel (z. B. Interval-Bump):
+  kubectl patch opdc smoke --type=merge -p '{"spec":{"interval":"6m"}}'
+  # (b) Delete + Re-Apply der CR:
+  kubectl delete opdc smoke && kubectl apply -f config/samples/
+  # (c) RequeueAfter abwarten (siehe nächster Punkt).
+  ```
 - **Periodischer Re-Run:** `spec.interval` steuert den
-  RequeueAfter-Wert (Default 5m, Bounds 30s–24h). Siehe
-  [cr-examples.md](cr-examples.md) für Beispiele.
+  RequeueAfter-Wert (Default 5m, Bounds 30s–24h). Der Reconciler
+  setzt den Wert auch im Skip-Pfad, sodass ein CR in terminaler
+  Phase spätestens nach dem Intervall erneut reconciled wird. Siehe
+  [cr-examples.md §5](cr-examples.md#5-specinterval-verhalten) für
+  das Klassifikations-Verhalten.
 - **Deinstallation:**
   ```bash
   kubectl delete -k deploy/manifests/

@@ -42,6 +42,25 @@ Doku-Konvention (intern, für den Conditions-Drift-Check):
   für den `make`-losen strukturierten grep-Check, der die
   Konsistenz pro PR-Review verifiziert.
 
+**Reason kommt aus zwei Quellen:**
+
+1. **Vom Check selbst** — die in §2–§6 pro ConditionType
+   aufgeführten Reasons (z. B. `KubernetesVersionTooOld`,
+   `StorageClassMissing`). Das ist der Normalfall.
+2. **Vom Per-Check-Runner** (slice-M5 §2.3-§2.5) — wenn ein
+   Check via SAR-Pre-Execution, Per-Check-Timeout oder
+   Per-Check-Recover unterbrochen wurde, **ersetzt** der Runner
+   das Check-Result durch eines aus der §10-Liste
+   (`RBACInsufficient`, `RBACCheckFailed`, `Timeout`,
+   `ReconcileTimeout`, `ReconcileCanceled`, `InternalError`).
+   Diese Reasons können in **jeder** Check-Condition erscheinen
+   und sind nicht in den §2–§6-Tabellen wiederholt.
+
+Wer also z. B. `KubernetesVersionReady=Unknown` mit
+`reason: RBACInsufficient` sieht, sucht in §10, nicht in §2.
+
+---
+
 **Severity → Phase-Mapping** (aus
 [`spec/architecture.md` AR-014](../../spec/architecture.md)):
 
@@ -106,7 +125,7 @@ Vom Check `CertManager` gesetzt (Adapter:
 | Reason | Severity | Status | Bedeutung | Anwender-Action |
 | ------ | -------- | ------ | --------- | --------------- |
 | **Reason:** CertManagerInstalled | info | True | Die API-Gruppe `cert-manager.io` ist im Cluster registriert. | Keine. |
-| **Reason:** CertManagerMissing | warning | False | API-Gruppe `cert-manager.io` ist nicht registriert. **Nicht** critical: für viele OpenDesk-Deployments ist cert-manager optional (eigene TLS-Termination per Ingress-Controller, externer Cert-Issuer). | cert-manager installieren ([Upstream-Doku](https://cert-manager.io/docs/installation/)) oder die fehlende API-Gruppe als bewusst akzeptieren. |
+| **Reason:** CertManagerMissing | warning | False | API-Gruppe `cert-manager.io` ist nicht registriert. **Nicht** critical: für viele OpenDesk-Deployments ist cert-manager optional (eigene TLS-Termination per Ingress-Controller, externer Cert-Issuer). Severity-Entscheidung in [slice-M4 §9](../plan/planning/done/slice-M4-cluster-state-checks.md). | cert-manager installieren ([Upstream-Doku](https://cert-manager.io/docs/installation/)) oder die fehlende API-Gruppe als bewusst akzeptieren. |
 | **Reason:** CertManagerLookupFailed | warning | Unknown | Discovery-API ist nicht erreichbar. | Cluster-Discovery prüfen (`kubectl api-resources`). |
 | **Reason:** InvalidSpec | critical | Unknown | `certManager`-Sub-Spec hat ungültige Werte (heute parameterlos; v0.2 bringt ClusterIssuer-Detail-Validierung). | Spec prüfen. |
 
@@ -206,37 +225,48 @@ das Check-Result, wenn ein Hänger, Cancel oder Panic auftritt.
 
 ## 11. Diagnostische Sicht: was `kubectl describe opdc` zeigt
 
-Ein voll-passierter CR mit `evaluation`-Profil sieht etwa so aus:
+Schematische Darstellung der `Status`-Sektion eines voll-passierten
+CRs mit `evaluation`-Profil (`kubectl describe` formatiert
+Field-Namen mit Leerzeichen, z. B. `Last Transition Time:`; die
+yaml-nahe Form unten ist als Lese-Hilfe verkürzt):
 
-```
+```yaml
 Status:
-  Conditions:
-    - Type:                CertManagerInstalled
-      Status:              True
-      Reason:              CertManagerInstalled
-      Message:             API group "cert-manager.io" is registered
-      Severity:            info
-      LastTransitionTime:  2026-05-19T12:00:00Z
-    - Type:                ClusterResourcesReady
-      Status:              True
-      Reason:              ResourcesSufficient
-      ...
-    - (drei weitere Conditions, alphabetisch sortiert)
-  Observed Generation:    1
-  Phase:                  Passed
+  Phase: Passed
+  Observed Generation: 1
   Summary:
-    Checks Total:  5
-    Failed:        0
-    Last Checked:  2026-05-19T12:00:00Z
-    Passed:        5
-    Unknown:       0
-    Warning:       0
+    Checks Total: 5
+    Passed: 5
+    Failed: 0
+    Warning: 0
+    Unknown: 0
+    Last Checked: 2026-05-19T12:00:00Z
+  Conditions:                    # alphabetisch sortiert (aggregator.go)
+    - Type: CertManagerInstalled
+      Status: "True"
+      Reason: CertManagerInstalled
+      Message: API group "cert-manager.io" is registered
+      Severity: info
+      Last Transition Time: 2026-05-19T12:00:00Z
+    - Type: ClusterResourcesReady
+      Status: "True"
+      Reason: ResourcesSufficient
+      ...
+    # drei weitere Conditions (IngressClassReady, KubernetesVersionReady,
+    # StorageClassReady), gleiche Sortierung wie alphabetisch
 ```
 
 Bei einem `IntervalUnparseable`-Warning kommt zusätzlich eine
 `ConfigurationInvalid`-Zeile dazu (alphabetisch zwischen
 `CertManagerInstalled` und `KubernetesVersionReady`); Summary-Counts
 bleiben unverändert; Phase wechselt auf `Warning`.
+
+Echten `kubectl get opdc <name> -o yaml`-Output erhält man am
+schnellsten via Cluster-Smoke-Attest:
+
+```bash
+cat .cluster-smoke-attest.yaml   # nach erfolgreichem `make cluster-smoke`
+```
 
 ---
 

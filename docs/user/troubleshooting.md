@@ -85,9 +85,11 @@ Rule.
 
 **Lösungs-Schritt:**
 
-- ClusterRole aus dem mitgelieferten Manifest re-applizieren:
+- Kompletten Manifest-Set re-applizieren (deckt die ClusterRole aus
+  `config/rbac/role.yaml` mit ab, gleicher Pfad wie in
+  [installation.md §2](installation.md#2-default-installation)):
   ```bash
-  kubectl apply -f config/rbac/role.yaml
+  kubectl apply -k deploy/manifests/
   ```
 - Falls eine Org-Policy Cluster-weite ClusterRoles einschränkt,
   reicht eine Namespace-scoped Role nicht — der Operator braucht
@@ -98,15 +100,22 @@ Rule.
 
 **Manueller Reproduktions-Pfad** (slice-M5 §10.3-Übergabe an M6):
 Wer den `Unknown/RBACInsufficient`-Pfad gezielt reproduzieren will,
-kann temporär die ClusterRoleBinding aufheben:
+kann temporär die ClusterRoleBinding aufheben — **und braucht
+gleichzeitig eine Spec-Mutation**, weil der Reconciler bei
+terminaler Phase ohne Spec-Diff skipt (`isAlreadyReconciled` in
+[`internal/hexagon/application/reconciler.go`](../../internal/hexagon/application/reconciler.go)).
 
 ```bash
 kubectl delete clusterrolebinding k-deskflight-operator
-# Annotation-Bump triggert Reconcile
-kubectl annotate opdc smoke kdeskflight.geo-terrain.net/rerun=$(date +%s) --overwrite
+# Spec-Patch bumpt metadata.generation und triggert einen Reconcile.
+# Eine harmlose interval-Änderung reicht; Annotation-Bump allein
+# greift nicht, weil Annotationen die generation nicht ändern.
+kubectl patch opdc smoke --type=merge -p '{"spec":{"interval":"6m"}}'
 kubectl describe opdc smoke
-# Erwartet: Phase=Unknown, Conditions mit Reason=RBACInsufficient
-# Anschließend wieder applizieren:
+# Erwartet: Phase=Unknown, Conditions mit Reason=RBACInsufficient.
+# Anschließend RBAC wieder herstellen — Re-Apply triggert keinen
+# weiteren Reconcile auf der gleichen Generation; entweder eine
+# zweite Spec-Mutation oder RequeueAfter-Intervall (≤ 6m) abwarten.
 kubectl apply -f deploy/manifests/clusterrolebinding.yaml
 ```
 
@@ -232,11 +241,31 @@ liveness-Probe ist grün, aber `/metrics` ist noch nicht voll
 populated. Race-Fenster ist typisch unter 1 Sekunde nach Pod-Start;
 in Test-Setups (kind, ressourcen-knappe Nodes) länger.
 
+> **Hinweis:** Der Operator-Container nutzt
+> `gcr.io/distroless/static-debian12:nonroot` (`Dockerfile`-runtime-
+> Stage) — es ist weder `wget` noch eine Shell verfügbar.
+> `kubectl exec` direkt im Operator-Pod liefert „executable not
+> found". Diagnose-Pfade müssen das Cluster-API oder einen
+> separaten Side-Pod nutzen.
+
+Empfohlene Diagnose über die Cluster-API (kein Side-Pod nötig):
+
 ```bash
-# Wie viele nicht-leere Zeilen sind im Body?
-kubectl -n k-deskflight-system exec deployment/k-deskflight-operator -- \
-  wget -qO- http://localhost:8080/metrics | grep -vc '^$'
+# Body via kubectl-proxy beziehen, nicht-leere Zeilen zählen
+kubectl -n k-deskflight-system get --raw \
+    '/api/v1/namespaces/k-deskflight-system/services/k-deskflight-operator-metrics:8080/proxy/metrics' \
+    | grep -vc '^$'
 # Erwartet: > 80 (controller-runtime + go_* + process_* + workqueue_*)
+```
+
+Alternativ über einen einmaligen curl-Pod (z. B. wenn der eigene
+RBAC-Stand kein `services/proxy` erlaubt):
+
+```bash
+kubectl run scrape-probe --rm -it --restart=Never \
+    --image=curlimages/curl:8.10.1 -- \
+    curl -s http://k-deskflight-operator-metrics.k-deskflight-system.svc:8080/metrics \
+    | grep -vc '^$'
 ```
 
 `scripts/operator-http-smoke.sh` schützt sich mit einer
@@ -306,6 +335,14 @@ der MVP liefert keine NetworkPolicy mit, weil die Stack-spezifischen
 Labels (`monitoring`/`observability`/`prometheus`/…) nicht vorab
 bekannt sind.
 
+> **Hinweis zum `kubernetes.io/metadata.name`-Label:** dieses Label
+> wird seit Kubernetes 1.22 automatisch auf jeden Namespace gesetzt
+> (`NamespaceDefaultLabelName`-Feature). Der Operator-Floor ist 1.34
+> ([ADR 0009 §2.2](../plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md)),
+> die NetworkPolicy oben ist also kompatibel mit jeder vom Operator
+> unterstützten Cluster-Version. Für Cluster mit manueller Label-
+> Konvention statt dessen `name: monitoring` o. ä. verwenden.
+
 ---
 
 ## 8. `ConfigurationInvalid` mit `IntervalUnparseable` / `IntervalClampedMin` / `IntervalClampedMax`
@@ -362,8 +399,10 @@ und [cr-examples.md §5](cr-examples.md#5-specinterval-verhalten).
 **Diagnose:**
 
 ```bash
-kubectl auth can-i get --subresource=metrics \
-  --as=system:serviceaccount:monitoring:prometheus-k8s pods -n k-deskflight-system
+# /metrics ist eine nonResourceURL — `kubectl auth can-i` mit dem
+# Pfad-Argument, nicht mit --subresource:
+kubectl auth can-i get /metrics \
+  --as=system:serviceaccount:monitoring:prometheus-k8s
 # oder ein Token-direkter Aufruf:
 curl -H "Authorization: Bearer $(kubectl create token prometheus-k8s -n monitoring)" \
   https://k-deskflight-operator-metrics.k-deskflight-system.svc:8080/metrics
