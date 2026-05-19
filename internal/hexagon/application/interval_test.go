@@ -18,10 +18,13 @@ import (
 // intervalCaseExpectation bündelt die erwartete Auswertung pro
 // Tabellen-Zeile in `TestNormalizeInterval`. `reasonSub` ist optional
 // — nur gesetzt, wenn die Warning-Message einen bestimmten Sub-String
-// enthalten muss.
+// enthalten muss. `reason` ist der erwartete Reason-Code; leer wenn
+// keine Warning erwartet wird (Round-2-Befund 3: drei unterschiedliche
+// Reasons statt eines Sammel-Reasons).
 type intervalCaseExpectation struct {
 	duration  time.Duration
 	warning   bool
+	reason    string
 	reasonSub string
 }
 
@@ -42,9 +45,11 @@ func normalizeIntervalCases() []intervalCase {
 		{name: "empty string falls back to default", input: "",
 			want: intervalCaseExpectation{duration: application.DefaultInterval}},
 		{name: "zero duration clamps to min", input: "0s",
-			want: intervalCaseExpectation{duration: application.MinInterval, warning: true, reasonSub: "below minimum"}},
+			want: intervalCaseExpectation{duration: application.MinInterval, warning: true,
+				reason: application.ReasonIntervalClampedMin, reasonSub: "below minimum"}},
 		{name: "below-min duration clamps to min", input: "15s",
-			want: intervalCaseExpectation{duration: application.MinInterval, warning: true, reasonSub: "below minimum"}},
+			want: intervalCaseExpectation{duration: application.MinInterval, warning: true,
+				reason: application.ReasonIntervalClampedMin, reasonSub: "below minimum"}},
 		{name: "min boundary passes through", input: "30s",
 			want: intervalCaseExpectation{duration: application.MinInterval}},
 		{name: "default boundary passes through", input: "5m",
@@ -54,11 +59,14 @@ func normalizeIntervalCases() []intervalCase {
 		{name: "max boundary passes through", input: "24h",
 			want: intervalCaseExpectation{duration: application.MaxInterval}},
 		{name: "above-max duration clamps to max", input: "25h",
-			want: intervalCaseExpectation{duration: application.MaxInterval, warning: true, reasonSub: "exceeds maximum"}},
+			want: intervalCaseExpectation{duration: application.MaxInterval, warning: true,
+				reason: application.ReasonIntervalClampedMax, reasonSub: "exceeds maximum"}},
 		{name: "parse-fail falls back to default", input: "abc",
-			want: intervalCaseExpectation{duration: application.DefaultInterval, warning: true, reasonSub: "not a valid Go duration"}},
+			want: intervalCaseExpectation{duration: application.DefaultInterval, warning: true,
+				reason: application.ReasonIntervalUnparseable, reasonSub: "not a valid Go duration"}},
 		{name: "negative duration clamps to min", input: "-5m",
-			want: intervalCaseExpectation{duration: application.MinInterval, warning: true, reasonSub: "below minimum"}},
+			want: intervalCaseExpectation{duration: application.MinInterval, warning: true,
+				reason: application.ReasonIntervalClampedMin, reasonSub: "below minimum"}},
 	}
 }
 
@@ -79,8 +87,8 @@ func assertIntervalWarning(t *testing.T, got *application.ConditionWarning, want
 	if got.Type != application.ConditionTypeConfigurationInvalid {
 		t.Errorf("warning.Type: got %q, want %q", got.Type, application.ConditionTypeConfigurationInvalid)
 	}
-	if got.Reason != application.ReasonIntervalNormalized {
-		t.Errorf("warning.Reason: got %q, want %q", got.Reason, application.ReasonIntervalNormalized)
+	if want.reason != "" && got.Reason != want.reason {
+		t.Errorf("warning.Reason: got %q, want %q", got.Reason, want.reason)
 	}
 	if got.Severity != preflightv1alpha1.SeverityWarning {
 		t.Errorf("warning.Severity: got %q, want %q", got.Severity, preflightv1alpha1.SeverityWarning)

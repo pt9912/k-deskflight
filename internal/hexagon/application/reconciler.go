@@ -99,19 +99,32 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 
 	var cr preflightv1alpha1.OpenDeskPreflightCheck
 	var crLoaded bool
-	// `interval` und `intervalWarning` werden im äußeren Scope deklariert,
-	// damit der defer-Recover-Pfad (Befund 1 aus M6 Step-1-Review) sie
-	// lesen kann — `RequeueAfter: interval` muss auch im Panic-Fall
-	// gesetzt sein, und die `ConfigurationInvalid`-Warning soll auch
-	// dort sichtbar sein. Initial sind beide auf den Default-Werten,
-	// solange das CR noch nicht geladen ist.
-	interval := DefaultInterval
+	// `interval`, `intervalWarning` und `now` werden im äußeren Scope
+	// deklariert, damit der defer-Recover-Pfad (Befund 1 aus M6 Step-1-
+	// Review) `intervalWarning` und `now` lesen kann. Round-2-Befund 1:
+	// `RequeueAfter` wird im Panic-Pfad nicht mehr gesetzt (c-r verwirft
+	// es bei non-nil err), `interval` ist dort also nicht mehr gelesen
+	// — aber bleibt im äußeren Scope für Symmetrie und Future-Proofing
+	// (z. B. v0.2-Pfad, der den Panic ohne err umwandelt).
+	// `now` wird einmal pro Reconcile-Lauf gesetzt (Befund 4 +
+	// Round-2-Befund 2), damit alle Output-Pfade — einschließlich
+	// Panic — denselben Wall-Clock-Stempel tragen.
+	var interval time.Duration
 	var intervalWarning *ConditionWarning
+	var now time.Time
 
 	defer func() {
 		if rec := recover(); rec != nil {
-			result = ctrl.Result{RequeueAfter: interval}
-			retErr = r.handleReconcilePanic(ctx, runCtx, req, &cr, crLoaded, rec, intervalWarning)
+			// **Round-2-Befund 1:** controller-runtime verwirft
+			// `RequeueAfter` bei non-nil `retErr` und loggt zusätzlich
+			// eine Warnung. Wir lassen das `Result`-Feld leer und setzen
+			// nur `retErr` — die `ConfigurationInvalid`-Warning wird über
+			// `writeStatus` in `handleReconcilePanic` persistiert und ist
+			// damit für den Anwender sichtbar; das Requeue-Backoff
+			// übernimmt der Standard-Rate-Limiter (sicheres Verhalten
+			// für einen Reconcile-Panic).
+			result = ctrl.Result{}
+			retErr = r.handleReconcilePanic(ctx, runCtx, req, &cr, crLoaded, rec, intervalWarning, now)
 		}
 	}()
 
@@ -124,11 +137,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	crLoaded = true
 
 	// AR-010 / slice-M6 §2.3: `Spec.Interval` wird **direkt nach dem
-	// Get** normalisiert, weil das `RequeueAfter` an allen return-
-	// Stellen (Skip-/Pending-/Spec-/Selection-/Final-/Panic-Pfad) den
-	// gleichen Wert tragen muss. Die `intervalWarning`-Condition wird in
+	// Get** normalisiert, weil das `RequeueAfter` an allen Happy-Path-
+	// Return-Stellen (Skip-/Spec-/Selection-/Final-Pfad) den gleichen
+	// Wert tragen muss. Die `intervalWarning`-Condition wird in
 	// jedes Output-Set hinein-gemerged (`mergeIntervalWarning`).
+	// `now` wird ebenfalls hier festgenagelt — siehe Round-2-Befund 2.
 	interval, intervalWarning = NormalizeInterval(cr.Spec.Interval)
+	now = r.now()
 
 	if r.isAlreadyReconciled(&cr) {
 		// Skip-Pfad: kein writeStatus, damit ObservedGeneration nicht
@@ -143,21 +158,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	// sind günstig (lokale Generation bleibt, controller-runtime liefert
 	// die neue resourceVersion direkt in das Objekt zurück).
 	//
-	// **Befund 2 aus M6 Step-1-Review:** bei markPhase-Fehler (häufig
-	// `apierrors.IsConflict`) wird `RequeueAfter: interval` gesetzt,
-	// damit der nächste Reconcile dem AR-010-Intervall folgt und nicht
-	// dem controller-runtime-Default-Backoff.
+	// **Round-2-Befund 1:** bei `apierrors.IsConflict` ist der Fehler
+	// erwartet (paralleler Status-Write oder Spec-Update); wir geben
+	// `Requeue: true` mit nil-err zurück, damit der Rate-Limiter den
+	// nächsten Reconcile sofort ansetzt statt exponentiell-zu-bestrafen.
+	// Bei anderen markPhase-Fehlern (Auth-Webhook-Issue etc.) bleibt
+	// der err — controller-runtime macht dann sicheren Default-Backoff.
+	// `RequeueAfter` wird hier bewusst **nicht** gesetzt, weil c-r es
+	// bei non-nil err ohnehin verwirft.
 	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhasePending); err != nil {
-		return ctrl.Result{RequeueAfter: interval}, err
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
 	}
 
 	profile := profileWithDefault(cr.Spec.Profile)
 	defaults := defaultsForProfile(profile)
-
-	// **Befund 4 aus M6 Step-1-Review:** ein lokales `now` an alle
-	// Output-Pfade weiterreichen, damit `Summary.LastChecked` und
-	// `ConfigurationInvalid.LastTransitionTime` denselben Stempel tragen.
-	now := r.now()
 
 	specs, validationErrs := buildSpecMap(runCtx, &cr.Spec.Checks, defaults)
 	if len(validationErrs) > 0 {
@@ -172,7 +189,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	}
 
 	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhaseRunning); err != nil {
-		return ctrl.Result{RequeueAfter: interval}, err
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
 	}
 
 	results := r.runChecks(runCtx, active, specs)
@@ -244,6 +264,12 @@ func mergeIntervalWarning(
 	// Condition mit gleichem Type produziert hat (heute fiktiv,
 	// v0.2-relevant), gewinnt höhere Severity; bei Gleichstand bleibt
 	// die existierende.
+	//
+	// **Round-2-Befund 4:** auch der Dedup-Pfad ruft `sortConditionsByType`,
+	// damit die Output-Invariante „alphabetisch nach Type" garantiert
+	// gilt — unabhängig davon, ob der Caller `out.Conditions` schon
+	// sortiert geliefert hat (der Aggregator tut es; ein hypothetischer
+	// v0.2-Caller außerhalb des Reconcilers könnte es vergessen).
 	for i := range out.Conditions {
 		if out.Conditions[i].Type != cond.Type {
 			continue
@@ -251,6 +277,7 @@ func mergeIntervalWarning(
 		if conditionSeverityRank(cond.Severity) > conditionSeverityRank(out.Conditions[i].Severity) {
 			out.Conditions[i] = cond
 		}
+		sortConditionsByType(out.Conditions)
 		out.Phase = escalatePhase(out.Phase, preflightv1alpha1.PhaseWarning)
 		return out
 	}
@@ -379,6 +406,14 @@ func (r *Reconciler) logger() *slog.Logger {
 // auch im Panic-Fall die ConfigurationInvalid-Diagnose im Status
 // behält — sonst sieht der Anwender nur den ReconcileError und
 // versteht nicht, warum sein Interval seltsam war.
+//
+// **Round-2-Befund 2:** `now` wird vom Aufrufer durchgereicht (aus
+// dem äußeren Reconcile-Scope), damit `Summary.LastChecked` und
+// `ConfigurationInvalid.LastTransitionTime` denselben Zeitstempel
+// tragen wie der reguläre Reconcile-Pfad ihn hätte. Wenn `now`
+// `IsZero()` ist (Panic vor dem `now = r.now()`-Assignment in Z. 137),
+// fällt der Pfad auf einen frischen `r.now()`-Aufruf zurück — der
+// Default-Pfad bleibt also defensiv.
 func (r *Reconciler) handleReconcilePanic(
 	ctx, runCtx context.Context,
 	req ctrl.Request,
@@ -386,6 +421,7 @@ func (r *Reconciler) handleReconcilePanic(
 	crLoaded bool,
 	rec interface{},
 	intervalWarning *ConditionWarning,
+	now time.Time,
 ) error {
 	r.logger().LogAttrs(ctx, slog.LevelError, "panic recovered in Reconcile",
 		SanitizeAttrs(
@@ -409,7 +445,9 @@ func (r *Reconciler) handleReconcilePanic(
 					)
 				}
 			}()
-			now := r.now()
+			if now.IsZero() {
+				now = r.now()
+			}
 			out := mergeIntervalWarning(r.reconcilePanicOutputAt(rec, now), intervalWarning, now)
 			_ = r.writeStatus(runCtx, cr, out)
 		}()

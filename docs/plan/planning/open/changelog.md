@@ -45,7 +45,25 @@ nach einem etablierten Pattern und ist eine direkte Adaptionsvorlage.
 
 ---
 
-## 4. Status
+## 4. Pflicht-Inhalte für den CHANGELOG-Erstaufbau
+
+Folgende Einträge müssen beim Erstaufbau **mit aufgenommen** werden
+(akkumuliert aus M6-Step-1-Review-Befunden und künftigen Slices). Pro
+Eintrag: Kategorie (Added/Changed/Removed/Fixed/Security), kurze
+Beschreibung, Commit-/Slice-Referenz.
+
+- **Changed** — `api/v1alpha1.OpenDeskPreflightCheckSpec.Interval` ist
+  nicht mehr nullable (`*string` → `string`); Default `5m` greift
+  unverändert. Quelle: M6 Step-1-Review-Fixup, Commit `dc4a14d`,
+  Befund 5. Hintergrund: CRD-Schema-Verhalten ändert sich von
+  „nullable string mit default" zu „non-nullable string mit default";
+  Anwender-Effekt nur sichtbar bei programmatischer CR-Konstruktion
+  ohne API-Server-Defaulting. M6-Step-1-Review-Round-2-Befund 6 hat
+  diesen Eintrag als CHANGELOG-Pflicht aufgenommen.
+
+---
+
+## 5. Status
 
 Offen. Wandert nach `next/`, sobald die erste Roadmap unter
 `in-progress/` steht. Bis dahin sind Commit-Log und ADRs ausreichende

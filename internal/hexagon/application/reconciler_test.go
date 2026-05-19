@@ -1331,8 +1331,9 @@ func TestReconcileIntervalNormalized(t *testing.T) {
 	if found == nil {
 		t.Fatalf("expected ConfigurationInvalid condition, got %+v", after.Status.Conditions)
 	}
-	if found.Reason != application.ReasonIntervalNormalized {
-		t.Errorf("Reason: got %q, want %q", found.Reason, application.ReasonIntervalNormalized)
+	// "abc" → parse-fail → ReasonIntervalUnparseable (Round-2-Befund 3).
+	if found.Reason != application.ReasonIntervalUnparseable {
+		t.Errorf("Reason: got %q, want %q", found.Reason, application.ReasonIntervalUnparseable)
 	}
 	if found.Severity != preflightv1alpha1.SeverityWarning {
 		t.Errorf("Severity: got %q, want warning", found.Severity)

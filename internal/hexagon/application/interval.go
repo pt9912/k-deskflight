@@ -32,10 +32,13 @@ const (
 // CR-Spec-Scope-Konfigurations-Diagnose-Konstanten (AR-010.1).
 //
 // **Naming-Konvention für Folge-Slices** (slice-M6 §4 Step-1-Review-
-// Fixup Befund 7): künftige `ConfigurationInvalid`-Reasons (z. B.
-// v0.2 Worker-Pool-Felder, M7 Leader-Election-Konflikte) folgen dem
-// Muster `Reason<FeatureName><State>` (`IntervalNormalized`,
-// `IntervalUnparseable`, `WorkerPoolClamped` etc.) — alle im selben
+// Fixup Befund 7 + Round-2-Befund 3): künftige `ConfigurationInvalid`-
+// Reasons (z. B. v0.2 Worker-Pool-Felder, M7 Leader-Election-
+// Konflikte) folgen dem Muster `Reason<FeatureName><State>`. „State"
+// ist der konkrete Fehlerfall (Unparseable/ClampedMin/ClampedMax/
+// Defaulted) — **nicht** ein Sammel-Reason wie „Normalized", damit
+// Anwender per `kubectl get … -o jsonpath` und Prometheus-Alerts den
+// Fall trennscharf filtern können. Alle Reasons leben unter demselben
 // `ConditionTypeConfigurationInvalid`-Type, mit Severity-Tie-Break in
 // `mergeIntervalWarning` (siehe `reconciler.go`).
 const (
@@ -46,10 +49,17 @@ const (
 	// gleichen Type.
 	ConditionTypeConfigurationInvalid = "ConfigurationInvalid"
 
-	// ReasonIntervalNormalized ist der Reason, wenn `Spec.Interval`
-	// auf einen erlaubten Wert geklemmt oder auf den Default
-	// zurückgefallen wurde.
-	ReasonIntervalNormalized = "IntervalNormalized"
+	// ReasonIntervalUnparseable: `time.ParseDuration` schlägt fehl;
+	// der Reconciler fällt auf `DefaultInterval` zurück.
+	ReasonIntervalUnparseable = "IntervalUnparseable"
+
+	// ReasonIntervalClampedMin: parsed Wert `< MinInterval`; auf
+	// `MinInterval` geklemmt.
+	ReasonIntervalClampedMin = "IntervalClampedMin"
+
+	// ReasonIntervalClampedMax: parsed Wert `> MaxInterval`; auf
+	// `MaxInterval` geklemmt.
+	ReasonIntervalClampedMax = "IntervalClampedMax"
 )
 
 // ConditionWarning trägt eine vom Reconciler erzeugte
@@ -93,7 +103,7 @@ func NormalizeInterval(raw string) (time.Duration, *ConditionWarning) {
 	if err != nil {
 		return DefaultInterval, &ConditionWarning{
 			Type:     ConditionTypeConfigurationInvalid,
-			Reason:   ReasonIntervalNormalized,
+			Reason:   ReasonIntervalUnparseable,
 			Severity: preflightv1alpha1.SeverityWarning,
 			Message: fmt.Sprintf(
 				"spec.interval %q is not a valid Go duration (%s); falling back to default %s",
@@ -105,7 +115,7 @@ func NormalizeInterval(raw string) (time.Duration, *ConditionWarning) {
 	if parsed < MinInterval {
 		return MinInterval, &ConditionWarning{
 			Type:     ConditionTypeConfigurationInvalid,
-			Reason:   ReasonIntervalNormalized,
+			Reason:   ReasonIntervalClampedMin,
 			Severity: preflightv1alpha1.SeverityWarning,
 			Message: fmt.Sprintf(
 				"spec.interval %s is below minimum %s; clamped to %s",
@@ -117,7 +127,7 @@ func NormalizeInterval(raw string) (time.Duration, *ConditionWarning) {
 	if parsed > MaxInterval {
 		return MaxInterval, &ConditionWarning{
 			Type:     ConditionTypeConfigurationInvalid,
-			Reason:   ReasonIntervalNormalized,
+			Reason:   ReasonIntervalClampedMax,
 			Severity: preflightv1alpha1.SeverityWarning,
 			Message: fmt.Sprintf(
 				"spec.interval %s exceeds maximum %s; clamped to %s",
