@@ -38,7 +38,7 @@ Doku-Konvention (intern, für den Conditions-Drift-Check):
   Type-Felder, die als Sektion-Überschriften §2–§9 erscheinen. Pro
   Type ein eigener Doku-Abschnitt.
 - Neue Reasons im Code → Eintrag in diesem Dokument; siehe
-  [Slice-M6 §4 Step 5](../plan/planning/in-progress/slice-M6-metrics-tests-doku.md)
+  [Slice-M6 §4 Step 5](../plan/planning/done/slice-M6-metrics-tests-doku.md)
   für den `make`-losen strukturierten grep-Check, der die
   Konsistenz pro PR-Review verifiziert.
 
@@ -161,7 +161,7 @@ Die `ConfigurationInvalid`-Condition zählt **nicht** in
 Check-Result. Sie hebt die Phase aber **mindestens** auf `Warning`
 (falls die Aggregator-Phase `Passed` war); `Failed`/`Unknown` bleiben
 unverändert (siehe
-[Slice-M6 §2.3 `mergeIntervalWarning`](../plan/planning/in-progress/slice-M6-metrics-tests-doku.md)).
+[Slice-M6 §2.3 `mergeIntervalWarning`](../plan/planning/done/slice-M6-metrics-tests-doku.md)).
 
 | Reason | Severity | Status | Bedeutung | Anwender-Action |
 | ------ | -------- | ------ | --------- | --------------- |

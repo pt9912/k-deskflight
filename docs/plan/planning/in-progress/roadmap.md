@@ -63,7 +63,7 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
 | M3 | Erste Prüfung — Kubernetes-Version | M2 | Done (Closure: [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md)) |
 | M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Done (Closure: [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md)) |
 | M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Done (Closure: [`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md)) |
-| M6 | Metrics-Endpoint, Tests, Doku | M5 | In Progress (Slice-Plan: [`in-progress/slice-M6-metrics-tests-doku.md`](slice-M6-metrics-tests-doku.md)) |
+| M6 | Metrics-Endpoint, Tests, Doku | M5 | Done (Closure: [`done/slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md)) |
 | M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | Pending |
 
 Abhängigkeitsgraph: `M1 → M2 → {M3, M4} → M5 → M6 → M7`.
@@ -338,20 +338,27 @@ controller-runtime-Defaults (`ADR 0007`), Integrationstests gegen
 einen lokalen kind-/envtest-Cluster, vollständige Anwender-Doku,
 alle MVP-Pflicht-Quality-Gates strikt grün.
 
-- [ ] `/metrics`-Endpoint exposed, ServiceAccount-RBAC für Scrape
-  passend, Endpoint im Smoketest erreichbar.
-- [ ] Integrationstests (kind oder envtest): jeder MVP-Check hat einen
-  passed- und einen failed-Case.
-- [ ] Anwender-Doku in `docs/user/` ausarbeiten:
-  - [ ] Installation (raw manifests).
-  - [ ] CR-Beispiele für `evaluation` und `production`.
-  - [ ] Conditions-Katalog mit Reason/Severity.
-  - [ ] Troubleshooting (typische Fehlerbilder).
-- [ ] **Coverage-Gate strikt** auf 90 % Line-Coverage über produktive
-  Pakete (`LH-QG-003`); `make coverage-gate` blockt PRs.
-- [ ] **`govulncheck` strikt** als Pflicht-Gate (`LH-QG-006`); funktions-
+- [x] `/metrics`-Endpoint via `Service`-Objekt exposed und im
+  Cluster-Smoke via Service-DNS reachable (`LH-SST-004`).
+  ServiceAccount-RBAC für Scrape als **Pattern-Asset** ausgeliefert
+  (ClusterRole ohne Binding); funktional ungeschützt in v0.1, Auth-/
+  RBAC-Absicherung Übergabe an v0.2 mit eigener ADR-Folge zu
+  `ADR 0007` (slice-M6 §2.2.1).
+- [x] Integrationstests (kind via cluster-smoke; bewusste Abweichung
+  von `AR-024` envtest, begründet in slice-M6 §2.1): vier MVP-Checks
+  haben passed- + failed-Case (`LH-AK-005/-006/-007/-009`-Re-Attest).
+  cert-manager-Ausnahme dokumentiert.
+- [x] Anwender-Doku in `docs/user/` ausarbeiten:
+  - [x] Installation (raw manifests).
+  - [x] CR-Beispiele für `evaluation` und `production`.
+  - [x] Conditions-Katalog mit Reason/Severity.
+  - [x] Troubleshooting (typische Fehlerbilder).
+- [x] **Coverage-Gate strikt** auf 90 % Line-Coverage über produktive
+  Pakete (`LH-QG-003`); `make coverage-gate` blockt PRs. M6-Realstand:
+  **92.5 %**.
+- [x] **`govulncheck` strikt** als Pflicht-Gate (`LH-QG-006`); funktions-
   basiertes Scanning gegen Go-Vulnerability-Datenbank.
-- [ ] **Architektur-Boundary strikt**: alle `depguard`-Regeln aus M2
+- [x] **Architektur-Boundary strikt**: alle `depguard`-Regeln aus M2
   sind aktiv und brechen den Build bei Layer-Verletzung
   (`LH-QG-004`). (M2 hat das bereits scharf geschaltet — M6 verifiziert
   nur, dass mit der vollen Code-Basis weiterhin keine Verletzung
@@ -367,12 +374,19 @@ folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
 
 **Verifikation:**
 
-- [ ] `LH-AK-013` — Dokumentation vorhanden.
-- [ ] Coverage-Gate grün bei Default-Threshold 90 % (`ADR 0012 §2.5`).
-- [ ] `govulncheck`-Lauf ohne Treffer in aufgerufenen Funktionen.
-- [ ] Architektur-Boundary-Check ohne `depguard`-Verletzung.
-- [ ] Smoketest `/metrics`-Endpoint liefert HTTP 200 mit
-  Prometheus-Format.
+- [x] `LH-AK-013` — Dokumentation vorhanden. Erfüllt durch
+  `docs/user/` mit fünf Dateien (README, installation, cr-examples,
+  conditions, troubleshooting) — siehe Closure-Notiz
+  [`done/slice-M6-metrics-tests-doku.md §10.2 #12`](../done/slice-M6-metrics-tests-doku.md).
+- [x] Coverage-Gate grün bei Default-Threshold 90 % (`ADR 0012 §2.5`).
+  M6-Realstand 92.5 % über alle `internal/`-Pakete.
+- [x] `govulncheck`-Lauf ohne Treffer in aufgerufenen Funktionen.
+- [x] Architektur-Boundary-Check ohne `depguard`-Verletzung.
+- [x] Smoketest `/metrics`-Endpoint liefert HTTP 200 mit
+  Prometheus-Format. Erfüllt sowohl via Port-Forward
+  (`operator-http-smoke.sh`, 663–664 nicht-leere Zeilen) als auch via
+  Service-DNS aus einem Probe-Pod (`scripts/cluster-smoke.sh` Step
+  9b/9c) — slice-M6 §2.2.2 + §7 #10/#11.
 
 ---
 
@@ -466,11 +480,11 @@ Sammel-Closure-Notiz nach `done/`.
 ## 7. Status
 
 In Progress. M1, M2 und M3 geschlossen am 2026-05-17; M4 und M5
-geschlossen am 2026-05-18
+geschlossen am 2026-05-18; **M6 geschlossen am 2026-05-19**
 ([`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md),
 [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md),
 [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md),
 [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md),
-[`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md));
-M6 aktiv seit 2026-05-19 ([`slice-M6-metrics-tests-doku.md`](slice-M6-metrics-tests-doku.md));
-M7 weiterhin Pending.
+[`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md),
+[`done/slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md));
+M7 als letzter Slice vor `v0.1.0`-Tag weiterhin Pending.

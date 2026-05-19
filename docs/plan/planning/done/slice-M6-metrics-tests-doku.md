@@ -1,8 +1,9 @@
 # Slice M6 — Metrics-Endpoint, Tests, Doku
 
-**Status:** In Progress
+**Status:** Done
 **Eröffnet:** 2026-05-19
-**Vorgänger:** [M5 — RBAC-Selbstprüfung & Robustheit (Done)](../done/slice-M5-rbac-self-check-robustness.md)
+**Geschlossen:** 2026-05-19
+**Vorgänger:** [M5 — RBAC-Selbstprüfung & Robustheit (Done)](slice-M5-rbac-self-check-robustness.md)
 **Nachfolger:** [M7 — Beispielmanifest, Release-Tag v0.1.0 (Pending)](../in-progress/roadmap.md#m7--beispielmanifest-release-tag-v010)
 **Bezug:**
 [Roadmap §3 M6](../in-progress/roadmap.md#m6--metrics-endpoint-tests-doku),
@@ -1012,32 +1013,181 @@ Vorbereitet, aktiv ab späterer Slice:
 
 ---
 
-## 10. Closure
+## 10. Closure (2026-05-19)
 
-Wird beim Slice-Abschluss befüllt (analog M5 §10): Geliefertes Datei-
-Set mit Commit-Map, Verifikations-Ergebnis pro §7-Item, CI-Run-URLs,
-Out-of-Scope-Übergaben an M7/v0.2, Lessons learned.
+### 10.1 Geliefertes Datei-Set
 
-**Pflicht-Formulierungen für die Closure-Notiz** (damit
-Abnahme-Sprache nicht zwischen Plan und Closure driftet):
+M6 wurde an einem Tag von Eröffnung bis Closure durchgezogen — sechs
+Implementierungs-Steps (§4 Step 1–6) plus sechs Review-Fixup-Commits
+über drei Code-Review-Runden + eine Doku-Review-Runde. Hohe
+Review-Iterations-Zahl (Lessons learned in §10.4).
 
-- **§7 #11** Closure-Eintrag muss die RBAC-Wirkung als
-  „**Pattern-Asset ausgeliefert; funktional ungeschützt — Auth-/
-  RBAC-Absicherung Übergabe an v0.2 mit eigener ADR-Folge zu
-  `ADR 0007`**" formulieren. **Nicht** zulässig: „RBAC vorhanden",
-  „RBAC eingerichtet", „RBAC passend" — diese Formulierungen
-  suggerieren funktionale Durchsetzung, die in M6 nicht stattfindet
-  (§2.2.1).
-- **§7 #4** Closure-Eintrag muss den realen Coverage-Wert nennen
-  (analog M5: „94.7 %"), nicht nur „grün bei 90 %". Die in §2.5
-  genannte Erwartung ist Prognose, nicht Abnahme.
-- **§7 #13** Closure-Eintrag muss die `Interval`-Entscheidung
-  explizit referenzieren: „§2.3.1-Klassifikations-Regel (Parse-
-  Erfolg + `< min/> max` → clamp; Parse-Fehler → Default) ist im
-  Code 1:1 implementiert; `-5m` clamped auf `30s`, nicht auf
-  Default `5m`."
+| Commit | Inhalt |
+| ------ | ------ |
+| `585bc9b docs(plan): activate slice M6 …` | Plan-Aktivierung nach fünf Plan-Review-Runden (1043 Zeilen Slice-Plan). |
+| `8d9bb00 feat(application): Spec.Interval normalization + RequeueAfter (M6 §4 Step 1)` | Step 1 — Spec.Interval ohne CRD-Schema-Pattern (AR-010.1-konform), `NormalizeInterval`-Helper, `mergeIntervalWarning` + `escalatePhase` im Reconciler. 11 Tabellen-Tests + 3 Reconciler-Cases. |
+| `dc4a14d fix(application): M6 step-1 review fixups (Befunde 1-8)` | Review-Runde 1: `*string→string`-Refactor, Panic-Recover-mergeIntervalWarning, `now`-Drift, Dedup-by-Type, Konstanten-Gruppierung, Sample-CR mit interval. |
+| `f4d21f8 fix(application): M6 step-1 review-fixups Runde 2 (Befunde 1-6)` | Review-Runde 2: controller-runtime verwirft RequeueAfter bei non-nil err → markPhase-IsConflict-Pfad, Panic-Pfad-Result-leer; Reasons gesplittet in `IntervalUnparseable`/`-ClampedMin`/`-ClampedMax`; Dedup-Pfad sortiert defensiv; Whitebox-Test für `mergeIntervalWarning`-Tie-Break; CHANGELOG-Trigger-Pflicht-Eintrag (für v0.1.0). |
+| `26af0e4 feat(deploy): /metrics Service + Pattern-Asset-ClusterRole + Smoke-E2E (M6 §4 Step 2)` | Step 2 — `deploy/manifests/service.yaml` + `metrics-clusterrole.yaml` (Pattern-Asset mit Disclaimer), `hack/cluster-smoke/metrics-scrape-probe.yaml`, Cluster-Smoke Step 9b (Probe-Pod + Service-DNS-Curl + 3-Assert-Block) + Step 9c (jq-Inhaltscheck), `jq` in smoke-Dockerfile-Stage, operator-http-smoke.sh-3-Assert-Erweiterung. |
+| `ffa693b fix(deploy): M6 step-2 review fixups (Befunde 1-6, 9-10)` | Review-Runde 1: Step 9b Retry-Loop + Diagnose-Capture, Wait-Fallback mit describe+events, `sleep infinity`, library-unabhängiger grep-Floor (`go_goroutines`/`process_cpu_seconds_total`), jq-v0.2-Hinweis, `PROBE_NAMESPACE`/`METRICS_SERVICE_FQDN`-Env-Overrides. |
+| `313c93e fix(deploy): M6 step-2 review-fixups Runde 2 (Befunde 1-3)` | Review-Runde 2: Env-Override-Header-Doku, PROBE_NAMESPACE-Symbol-Konstante-Klarstellung, kubectl-get-events-Field-Selector. |
+| `26c32c4 feat(smoke): failed-CR-Cluster-Smoke für KubernetesVersion/Storage/Ingress/Resources (M6 §4 Step 3)` | Step 3 — vier failed-CRs unter `hack/cluster-smoke/failed-crs/`, Step 6b mit seriellem Apply + Wait jsonpath=Failed, Step 8 Phase 2 mit Failed-Condition+Reason + Co-Failure-Gegenprobe. cert-manager-Ausnahme dokumentiert. |
+| `ca074fb docs(user): installation + CR-Beispiele evaluation/production (M6 §4 Step 4)` | Step 4 — `docs/user/installation.md` (7 Sektionen inkl. Namespace-Override → AR-OP-005 geschlossen) + `docs/user/cr-examples.md` (Vergleichstabelle + zwei Profile + Interval-Klassifikation). README ToC. |
+| `485f60f docs(user): conditions-Katalog (8 Types × Reasons + Per-Check-Runner-Pfade) (M6 §4 Step 5)` | Step 5 — `docs/user/conditions.md` (12 Sektionen, 8 ConditionTypes + 6 Per-Check-Runner-Reasons + Pflicht-Schema `**Reason:** <Name>`). Strukturierter grep-Check ausgeführt; Selbst-Befund `ChecksNotResolved` → `UnknownCheck` vor Commit korrigiert. |
+| `fd95506 docs(user): troubleshooting (8 M6-Fehlerbilder + v0.2-Vorgriff) (M6 §4 Step 6)` | Step 6 — `docs/user/troubleshooting.md` (10 Sektionen, 8 Fehlerbilder + v0.2-401-Vorgriff). M6-Doku-Block komplett. |
+| `fe23925 docs(user): M6 step-4/5/6 review-fixups (Befunde 1-12)` | Doku-Review-Runde: drei Hoch-Befunde (wget-im-distroless, Annotation-Bump-Versprechen, ADR-0010-Linktext) + sechs Mittel + drei Niedrig. |
 
-Die Pflicht-Formulierungen sind Konsequenz der Plan-Review-Befunde
-(Round 3, 2026-05-19) und stellen sicher, dass die Closure-Sprache
-mit der bewussten Scope-Begrenzung in §1 + §2.2.1 + §8 + §2.3.1
-konsistent bleibt.
+### 10.2 Verifikations-Ergebnis (§7)
+
+Alle vierzehn Abnahmekriterien aus §7 sind erfüllt. Pflicht-
+Formulierungen aus dem ursprünglichen §10-Skelett sind in den
+jeweiligen Einträgen verankert (§7 #4 Coverage-Wert, §7 #11 RBAC-
+Pattern-Asset, §7 #13 Interval-Klassifikation).
+
+| # | Item | Ergebnis |
+| - | ---- | -------- |
+| 1 | `make build` | ✓ Image enthält Step-1-Reconciler + Step-2-Service. |
+| 2 | `make lint` | ✓ `0 issues`. `interval.go` bleibt `application`-Layer-konform (nur `time`/`fmt`/`api/v1alpha1.Severity`); depguard-Layer-Regeln scharf. |
+| 3 | `make test` | ✓ Alle Tests grün. Neu in M6: 11 NormalizeInterval-Tabellen + 8 Reconciler-Cases (3 ursprüngliche Interval + 3 Co-Auftreten + Empty-String über Refactor abgedeckt) + 4 Whitebox-Tests für `mergeIntervalWarning`-Tie-Break. |
+| 4 | `make coverage-gate` | ✓ **92.5 %** über alle `internal/`-Pakete, Threshold strikt 90 % (slice-M4-Hebung). Realer Wert (Pflicht-Formulierung §10-Skelett) — Prognose aus §2.5 war „bleibt im M5-Bereich 94.7 %", real wegen `interval.go`+`reconciler.go`-Erweiterung leicht abgesunken, aber deutlich über Floor. |
+| 5 | `make doc-refs` | ✓ Alle 60+ neuen Querverweise (docs/user/, slice-Plan-Anker, ADR-Verweise) auflösen. |
+| 6 | `make generated-drift-check` | ✓ Nach `make manifests`-Lauf in Step 1 keine weiteren Drift-Quellen. CRD-Schema enthält `Spec.Interval` ohne Pattern, ohne `nullable` (string statt `*string` nach Step-1-Review-Fixup). |
+| 7 | `make gates` | ✓ Bundle lokal grün; CI-Run-URL nachgereicht beim Push. |
+| 8 | `make security-gates` | ✓ `govulncheck` ohne Findings (Stand wie M5, keine neuen Imports). |
+| 9 | `make cluster-smoke` mit fünf CRs | ✓ Alle Assertions bestanden — `smoke` (passed-Bestand) mit fünf Conditions True; vier failed-CRs jeweils mit erwarteter Failed-Condition+Reason und vier anderen Conditions=True (keine Co-Failures). LH-AK-005/-006/-007/-009 sind damit auch im failed-Pfad attestiert. |
+| 10 | `/metrics`-Endpoint Port-Forward-Pfad | ✓ `operator-http-smoke.sh` liefert /metrics mit 664 nicht-leeren Zeilen; 3-Assert-Block (Format/Inhalt/Sanity) bestanden. `LH-SST-004` erfüllt. |
+| 11 | `/metrics`-Service via Service-DNS reachable, E2E-Pflicht | ✓ Probe-Pod scraped via FQDN `k-deskflight-operator-metrics.k-deskflight-system.svc.cluster.local:8080/metrics` mit identischen Asserts. **Strukturell + funktional attestiert**: Service-DNS löst, Selector matched ≥ 1 Backend, Port 8080 routet, Body ist Prometheus-Format mit Inhalt. ClusterRole `k-deskflight-metrics-scrape` strukturell verifiziert (Step 9c jq-Inhaltscheck: `nonResourceURLs=[/metrics]` + `verbs==["get"]`). **Pattern-Asset ausgeliefert; funktional ungeschützt — Auth-/RBAC-Absicherung Übergabe an v0.2 mit eigener ADR-Folge zu `ADR 0007`** (Pflicht-Formulierung §10-Skelett, hier wörtlich eingehalten). |
+| 12 | `LH-AK-013` Dokumentation vorhanden | ✓ `docs/user/` enthält fünf neue/erweiterte Dateien (README mit ToC, installation, cr-examples, conditions, troubleshooting). Conditions-Katalog ist quelltext-validiert per strukturiertem grep (Doku §1 nennt die zwei bekannten grep-Lücken `SpecInvalid`/`UnknownCheck`). |
+| 13 | `Spec.Interval`-Verhalten | ✓ §2.3.1-Klassifikations-Regel (Parse-Erfolg + `< min/> max` → clamp; Parse-Fehler → Default) ist im Code 1:1 implementiert; `-5m` clamped auf `30s`, nicht auf Default `5m` (Pflicht-Formulierung §10-Skelett). 11-Cases-Tabelle + 4 Reconciler-Tests + 4 Whitebox-Tests für `mergeIntervalWarning`-Tie-Break (Round-2-Fixup). |
+| 14 | `LH-AK-016` RBAC-failed-Smoke als manueller Pfad | ✓ `troubleshooting.md §2` dokumentiert den Reproduktions-Pfad mit Spec-Mutation (nicht Annotation-Bump — Doku-Review-Befund 2 korrigiert). M5 §10.3-Übergabe damit erfüllt. |
+
+### 10.3 Out-of-Scope-Übergaben an M7 / v0.2
+
+- **Beispielmanifest-Vollständigkeit + v0.1.0-Tag** (`LH-MVP-002`,
+  `LH-AK-014`) — M7. Die M6-CR-Beispiele in `docs/user/cr-examples.md`
+  werden in M7 als kanonische Samples nach `deploy/manifests/samples/`
+  gehoben.
+- **Trivy-Image-Scan** (`LH-QG-007`) — M7-Release-Gate.
+- **DCO-Compliance-Check** vor Merge — M7-Release-Pflicht
+  (`ADR 0011`).
+- **Leader-Election scharf via Flag/Env** (`AR-026`) — M7-Release-
+  Hardening. M6 dokumentiert nur den MVP-Default.
+- **Metrics-Endpoint-Authentication** (Auth-Filter via controller-
+  runtime-`FilterProvider` oder `kube-rbac-proxy`-Sidecar samt
+  TLS-Cert-Lifecycle und Token-Webhook-Pfad) — v0.2 mit eigener
+  ADR-Folge zu `ADR 0007`. Die `nonResourceURLs`-ClusterRole und
+  der Step-9c-jq-Check müssen im selben v0.2-Commit angepasst
+  werden (Code-Kommentar in `scripts/cluster-smoke.sh` als Hinweis
+  verankert).
+- **`envtest`-basierte Integrationstests** (`AR-024`) — v0.2;
+  begründete Abweichung in §2.1.
+- **Eigene Domänen-Metriken** (`LH-NF-008` wörtlich,
+  `kdeskflight_*`-Prefix) — v0.2 (`ADR 0007 §2.3`); Prefix in
+  `docs/user/README.md` reserviert.
+- **ServiceMonitor / PodMonitor / PrometheusRule** — v0.2 mit
+  Helm-Chart (`ADR 0007 §4`, `ADR 0005`).
+- **cert-manager failed-Pfad im Cluster-Smoke** — bleibt
+  M4-Stand-attestiert (`LH-AK-008`); Re-Attest im Smoke wäre
+  M4-Refactor (cluster-state-stubs cluster-global vs. per-CR).
+  v0.2 mit ClusterIssuer-Detail-Validierung (`LH-F-014`).
+- **Conditions-Katalog-Audit-Test** (Quelltext-Reasons ↔ Doku-
+  Reasons als `go/parser`-Audit) — v0.2-Pattern, sobald die
+  Reason-Liste > ~50 Einträge erreicht oder externe Service-Checks
+  (`LH-F-018..021`) neue Reasons einführen.
+- **PROBE_NAMESPACE als echter Override** — heute Symbol-Konstante
+  (Probe-Yaml hat `namespace: default` hardcoded an drei Stellen).
+  v0.2, falls je nötig.
+- **K8s-Events** (`LH-F-027`) — v0.2; Sanitize-Hook-Pattern aus
+  M5 bereits vorbereitet.
+- **HTML-Report / kubectl-Plugin** — spätere Versionen
+  (`LH-PRI-003`).
+- **CHANGELOG.md-Erstaufbau** — M7-Release; Pflicht-Inhalte
+  bereits in [`docs/plan/planning/open/changelog.md §4`](../open/changelog.md)
+  akkumuliert (heute ein Eintrag: `Spec.Interval *string→string`).
+
+### 10.4 Lessons learned
+
+- **Plan-Review-Anzahl hoch:** fünf Plan-Review-Runden vor der
+  Aktivierung (Befunde von Pattern-vs-Fallback bis ClusterRole-Inhalt-
+  vs-Existenz). Plus drei Code-Review-Runden für Step 1 und zwei für
+  Step 2. Pattern war jedes Mal: erster Wurf zu optimistisch in
+  Annahmen über controller-runtime-Verhalten (z. B. `RequeueAfter` bei
+  non-nil err), Reviewer fängt es im zweiten Durchlauf. **Lektion**:
+  Bei vergleichbaren Slices (M7) ein expliziter Stop-Punkt nach Plan-
+  Review-Runde 3 — wenn dann noch Mittel-Befunde kommen, ist das ein
+  Signal, dass der Plan tiefer überarbeitet werden muss statt
+  iterativ.
+- **controller-runtime-Default-Verhalten ist nicht offensichtlich:**
+  Step-1-Review-Befund 1 hat aufgedeckt, dass `Result{RequeueAfter:
+  interval}` mit non-nil `retErr` verworfen wird — und zusätzlich
+  eine Warnung loggt. Im Plan stand das andersrum versprochen. Heute
+  klar als Pflicht-Pattern für M7-Folge-Slices: bei jeder
+  `RequeueAfter`-Verwendung beide Pfade (`err == nil` und `err !=
+  nil`) explizit durchdenken.
+- **Reason-Code-Naming als API-Stabilität-Risiko:** Step-1-Round-2-
+  Befund 3 (Reason-Granularität: `IntervalNormalized` für drei
+  semantisch verschiedene Fälle) hat zu einem Split in drei Reasons
+  geführt. Hätte das in v0.1.0 mit `IntervalNormalized`-Singular
+  durchgekommen werden müssen, wäre die v0.2-Auflösung ein API-
+  Bruch (Reason-Strings sind Bestandteil der CR-Status-API).
+  **Lektion für v0.2-Reasons:** strikt nach `Reason<Feature><State>`-
+  Konvention benennen.
+- **Doku-Review fängt was Code-Review nicht sieht:** drei Hoch-
+  Befunde in der Doku-Review (wget-im-distroless, Annotation-Bump-
+  Versprechen, ADR-0010-Linktext) — alle drei waren Falsch-
+  Versprechungen, die nur durch das tatsächliche Lesen des Doku-
+  Texts auffielen. Code-Review hätte sie nie gefunden.
+  **Lektion:** Doku-Reviews sind nicht optional, auch wenn der
+  Code bereits durch ist.
+- **Strukturierter grep statt freier Audit-Test funktioniert:** der
+  Plan-§4-Step-5-grep hat zwei eigene Befunde aufgedeckt
+  (`ChecksNotResolved` existiert im Code nicht; `SpecInvalid`/
+  `UnknownCheck` als String-Literals statt Konstanten). Coverage-
+  Pattern (`(reason|Reason|conditionType|ConditionType)[A-Z][a-zA-Z]+
+  *= *"..."`) reicht für die heutige Codebase. v0.2-Trigger für
+  Audit-Test ist real (Reason-Wachstum), aber heute Overhead.
+- **Cluster-Smoke mit failed-CRs funktioniert mit nur kleinen
+  Smoke-Skript-Erweiterungen:** Step 6b (serielles Apply + Wait
+  jsonpath) + Step 8 Phase 2 (Co-Failure-Gegenprobe) waren je 30
+  Zeilen Bash. Eindeutige `metadata.name`-Werte und
+  Vollkonfiguration in jeder failed-CR (statt Minimal-Konfig mit
+  Profile-Defaults) hielten die Step-8-Assertions einfach.
+- **Pattern-Asset-Disclaimer ist Pflicht-Sprache:** die ClusterRole-
+  Behandlung war über drei Review-Runden hinweg das Thema mit den
+  meisten Sprach-Befunden („RBAC vorhanden" suggeriert funktionale
+  Wirkung, die heute nicht da ist). Die Pflicht-Formulierung im
+  §10-Skelett (vor Closure) hat die Closure-Sprache stabil gehalten.
+  Pattern für M7-Slices: wenn Pattern-Asset, dann Disclaimer in
+  README, Manifest-Comment, Closure-Notiz konsistent.
+- **`make`/Docker-Konvention für Reviewer-Subagent durchsetzen:**
+  Die Doku-Review-Runde hat als zweites Mal explizit `make`/Docker
+  als Verifikations-Pflicht im Briefing genannt — der Reviewer hat
+  sich daran gehalten (keine direkten `go test`/`kubectl`-Aufrufe).
+  **Lektion:** Convention im Briefing wiederholen, auch wenn sie
+  schon mal gesagt wurde — Subagents starten ohne Repo-Memory.
+
+### 10.5 Folge-Attest
+
+| Item | Datum | Notiz |
+| ---- | ----- | ----- |
+| `make gates` + `make security-gates` lokal grün | 2026-05-19 | Über alle 12 Implementierungs-Commits + 4 Review-Fixup-Commits hinweg. CI-Run-URL nachgereicht beim Push (analog M5 §10.5). |
+| `make cluster-smoke` gegen kind, fünf CRs grün | 2026-05-19 | `smoke` Phase=Passed mit fünf Conditions True; `smoke-failed-version/-storage/-ingress/-resources` Phase=Failed mit erwarteter Reason + vier Co-Conditions True. Probe-Pod scraped /metrics-Service-DNS mit 663-664 nicht-leeren Zeilen; jq-Inhaltscheck der metrics-ClusterRole strukturell valid. |
+| Architektur-Punkt AR-OP-005 geschlossen | 2026-05-19 | `docs/user/installation.md §4` dokumentiert den Kustomize-Overlay-Pattern mit den zwei nötigen Patches (Namespace-Resource selbst + ClusterRoleBinding-Subject). `spec/architecture.md` aktualisiert mit M6-Folge-Closure (Folge-Commit). |
+
+### 10.6 Pflicht-Formulierungen-Konsistenz-Check
+
+Diese §10-Sektion erfüllt die drei Pflicht-Formulierungen aus dem
+ursprünglichen §10-Skelett (vor Closure dokumentiert, damit
+Closure-Sprache nicht von Plan-Scope-Begrenzung driftet):
+
+1. **§7 #11 RBAC-Wirkung**: in §10.2 #11 wörtlich „Pattern-Asset
+   ausgeliefert; funktional ungeschützt — Auth-/RBAC-Absicherung
+   Übergabe an v0.2 mit eigener ADR-Folge zu `ADR 0007`".
+   **Nicht** verwendet: „RBAC vorhanden" / „RBAC eingerichtet" /
+   „RBAC passend".
+2. **§7 #4 Coverage**: in §10.2 #4 mit realem Wert „92.5 %"
+   (nicht „grün bei 90 %"); Prognose-vs-Real-Diskrepanz erklärt.
+3. **§7 #13 Interval**: in §10.2 #13 wörtlich „§2.3.1-Klassifikations-
+   Regel (Parse-Erfolg + `< min/> max` → clamp; Parse-Fehler →
+   Default) ist im Code 1:1 implementiert; `-5m` clamped auf `30s`,
+   nicht auf Default `5m`."

@@ -389,7 +389,7 @@ und [cr-examples.md §5](cr-examples.md#5-specinterval-verhalten).
 > liefert den `/metrics`-Endpoint unauthentisiert (controller-runtime-
 > Default; siehe
 > [installation.md §5](installation.md#5-prometheus-scrape-binding-pattern-asset)
-> und [Slice-M6 §2.2.1](../plan/planning/in-progress/slice-M6-metrics-tests-doku.md)).
+> und [Slice-M6 §2.2.1](../plan/planning/done/slice-M6-metrics-tests-doku.md)).
 > Der Eintrag ist Vorgriff für die v0.2-Auth-Filter-Aktivierung
 > (eigene ADR-Folge zu
 > [ADR 0007](../plan/adr/0007-prometheus-metrik-scope-im-mvp.md)).

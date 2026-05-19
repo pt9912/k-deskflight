@@ -173,7 +173,7 @@ Operator pollt nicht endlos.
 
 **Klassifikations-Regel** (siehe
 [architecture.md AR-010.1](../../spec/architecture.md) und
-[Slice-M6 §2.3.1](../plan/planning/in-progress/slice-M6-metrics-tests-doku.md)):
+[Slice-M6 §2.3.1](../plan/planning/done/slice-M6-metrics-tests-doku.md)):
 
 | Eingabe | Ergebnis | Status-Effekt |
 | ------- | -------- | ------------- |
@@ -185,7 +185,7 @@ Operator pollt nicht endlos.
 
 **Wichtig:** Phase wird durch eine Interval-Warning **maximal** auf
 `Warning` gehoben — eine Failed-Phase aus einem Check-Failure bleibt
-Failed (siehe [Slice-M6 §2.3 `mergeIntervalWarning`](../plan/planning/in-progress/slice-M6-metrics-tests-doku.md)).
+Failed (siehe [Slice-M6 §2.3 `mergeIntervalWarning`](../plan/planning/done/slice-M6-metrics-tests-doku.md)).
 Das `Summary`-Zählwerk zählt die Warning-Condition **nicht** mit —
 sie ist CR-Spec-Scope, kein Check-Result.
 
