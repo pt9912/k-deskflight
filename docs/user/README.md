@@ -18,12 +18,11 @@ Entscheidungen in [`docs/plan/adr/`](../plan/adr/).
 | -------- | ------ |
 | [installation.md](installation.md) | Installation via raw manifests, Namespace-Override, Image-Pin, Prometheus-Scrape-Binding-Pattern. |
 | [cr-examples.md](cr-examples.md) | Zwei vollständige CR-Beispiele (`evaluation` und `production`) mit Profile-Default-Auswertung und Wiederholintervall. |
+| [conditions.md](conditions.md) | Conditions-Katalog: Reasons + Severity pro ConditionType, plus Per-Check-Runner-Reasons aus Slice M5. |
 
-Folgende Dokumente entstehen ebenfalls in der M6-Slice und werden
-hier eingetragen, sobald sie committed sind:
+Folgendes Dokument entsteht ebenfalls in der M6-Slice und wird hier
+eingetragen, sobald es committed ist:
 
-- `conditions.md` — Conditions-Katalog (Reason/Severity pro
-  ConditionType, geplant für M6 §4 Step 5).
 - `troubleshooting.md` — typische Fehlerbilder + Diagnose-Kommandos
   (geplant für M6 §4 Step 6).
 
