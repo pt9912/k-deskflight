@@ -1017,9 +1017,12 @@ Vorbereitet, aktiv ab späterer Slice:
 
 ### 10.1 Geliefertes Datei-Set
 
-M6 wurde an einem Tag von Eröffnung bis Closure durchgezogen — sechs
-Implementierungs-Steps (§4 Step 1–6) plus sechs Review-Fixup-Commits
-über drei Code-Review-Runden + eine Doku-Review-Runde. Hohe
+M6 wurde an einem Tag von Eröffnung bis Closure durchgezogen — ein
+Plan-Aktivierungs-Commit + sechs Implementierungs-Steps (§4 Step 1–6)
++ fünf Review-Fixup-Commits (Step 1 zwei Runden, Step 2 zwei Runden,
+Step 4–6 eine Doku-Review-Runde — Step 3 keine Fixup-Runde) + dieser
+Closure-Commit + (Folge-Commit nach Review-Befunden der Closure-
+Notiz). 12 Commits zwischen Aktivierung und Closure, hohe
 Review-Iterations-Zahl (Lessons learned in §10.4).
 
 | Commit | Inhalt |
@@ -1109,14 +1112,23 @@ Pattern-Asset, §7 #13 Interval-Klassifikation).
 
 - **Plan-Review-Anzahl hoch:** fünf Plan-Review-Runden vor der
   Aktivierung (Befunde von Pattern-vs-Fallback bis ClusterRole-Inhalt-
-  vs-Existenz). Plus drei Code-Review-Runden für Step 1 und zwei für
-  Step 2. Pattern war jedes Mal: erster Wurf zu optimistisch in
-  Annahmen über controller-runtime-Verhalten (z. B. `RequeueAfter` bei
-  non-nil err), Reviewer fängt es im zweiten Durchlauf. **Lektion**:
-  Bei vergleichbaren Slices (M7) ein expliziter Stop-Punkt nach Plan-
-  Review-Runde 3 — wenn dann noch Mittel-Befunde kommen, ist das ein
-  Signal, dass der Plan tiefer überarbeitet werden muss statt
-  iterativ.
+  vs-Existenz). Plus zwei Code-Review-Runden für Step 1 und zwei für
+  Step 2 plus eine Doku-Review-Runde für Step 4–6. Pattern war jedes
+  Mal: erster Wurf zu optimistisch in Annahmen über controller-runtime-
+  Verhalten (z. B. `RequeueAfter` bei non-nil err), Reviewer fängt es
+  im zweiten Durchlauf. **Lektion**: Bei vergleichbaren Slices (M7)
+  ein expliziter Stop-Punkt nach Plan-Review-Runde 3 — wenn dann
+  noch Mittel-Befunde kommen, ist das ein Signal, dass der Plan
+  tiefer überarbeitet werden muss statt iterativ. **Reproduzierbarkeit
+  via git** (Closure-Befund 3): die fünf Plan-Review-Runden fanden in
+  der Chat-Iteration **ohne Zwischen-Commits** statt; im
+  `git log`-Verlauf sind nur die Aktivierung (`585bc9b`) und die
+  Closure (dieser Commit) sichtbar. M5 hatte hingegen einen separaten
+  Plan-Review-Fixup-Commit (`868314c`), der die Run-Counts
+  rückverfolgbar machte. Für M7 empfohlen: pro Plan-Review-Runde
+  einen `docs(plan): slice-M7 plan-review round N`-Commit
+  zwischenschalten, damit die §10.4-Lessons-Zahl aus dem Repo-Stand
+  herleitbar bleibt.
 - **controller-runtime-Default-Verhalten ist nicht offensichtlich:**
   Step-1-Review-Befund 1 hat aufgedeckt, dass `Result{RequeueAfter:
   interval}` mit non-nil `retErr` verworfen wird — und zusätzlich
@@ -1170,9 +1182,9 @@ Pattern-Asset, §7 #13 Interval-Klassifikation).
 
 | Item | Datum | Notiz |
 | ---- | ----- | ----- |
-| `make gates` + `make security-gates` lokal grün | 2026-05-19 | Über alle 12 Implementierungs-Commits + 4 Review-Fixup-Commits hinweg. CI-Run-URL nachgereicht beim Push (analog M5 §10.5). |
+| `make gates` + `make security-gates` lokal grün | 2026-05-19 | Über alle 6 Step-Commits + 5 Review-Fixup-Commits + 1 Closure + Closure-Fixup-Commit hinweg. CI-Run-URLs werden nach Push in einem nachgelagerten `docs: sync status indicators…`-Commit nachgetragen, analog M5-Pattern (Commit `1d9330e` nach M5-Closure). |
 | `make cluster-smoke` gegen kind, fünf CRs grün | 2026-05-19 | `smoke` Phase=Passed mit fünf Conditions True; `smoke-failed-version/-storage/-ingress/-resources` Phase=Failed mit erwarteter Reason + vier Co-Conditions True. Probe-Pod scraped /metrics-Service-DNS mit 663-664 nicht-leeren Zeilen; jq-Inhaltscheck der metrics-ClusterRole strukturell valid. |
-| Architektur-Punkt AR-OP-005 geschlossen | 2026-05-19 | `docs/user/installation.md §4` dokumentiert den Kustomize-Overlay-Pattern mit den zwei nötigen Patches (Namespace-Resource selbst + ClusterRoleBinding-Subject). `spec/architecture.md` aktualisiert mit M6-Folge-Closure (Folge-Commit). |
+| Architektur-Punkt AR-OP-005 geschlossen | 2026-05-19 | `docs/user/installation.md §4` dokumentiert den Kustomize-Overlay-Pattern mit den zwei nötigen Patches (Namespace-Resource selbst + ClusterRoleBinding-Subject). [`spec/architecture.md` Z. 1209](../../../../spec/architecture.md) ist im Closure-Fixup-Commit auf „Geschlossen mit M6"-Stand gehoben (Befund 2 des Closure-Reviews). |
 
 ### 10.6 Pflicht-Formulierungen-Konsistenz-Check
 
