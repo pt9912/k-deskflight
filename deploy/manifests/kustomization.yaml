@@ -13,3 +13,7 @@ resources:
   - serviceaccount.yaml
   - clusterrolebinding.yaml
   - deployment.yaml
+  # slice-M6 §2.2: /metrics-Endpoint via Service exposed +
+  # ClusterRole-Pattern-Asset für künftige Auth-Filter-Aktivierung.
+  - service.yaml
+  - metrics-clusterrole.yaml

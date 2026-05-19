@@ -72,7 +72,7 @@ done
 probe() {
     local label="$1"
     local url="$2"
-    local check="$3"   # entweder "ok-body" oder "any-200"
+    local check="$3"   # "ok-body" oder "prometheus-text"
 
     log "GET ${url}"
     local body
@@ -89,11 +89,35 @@ probe() {
             fi
             ;;
         prometheus-text)
-            if ! grep -q '^# HELP' <<<"${body}"; then
-                log "FAIL ${label}: response does not look like Prometheus exposition format"
-                echo "${body}" | head -5 >&2
+            # slice-M6 §2.2: drei Asserts gegen die /metrics-Response.
+            # (a) Format-Marker: # HELP/# TYPE — generisch, robust gegen
+            #     controller-runtime-library-Drift einer einzelnen Metrik.
+            if ! grep -qE '^# (HELP|TYPE) ' <<<"${body}"; then
+                log "FAIL ${label}: response missing '# HELP' / '# TYPE' marker"
+                echo "${body}" | head -10 >&2
                 return 1
             fi
+            # (b) Inhalts-Beweis: mindestens eine der drei controller-
+            #     runtime-Standard-Metriken muss da sein. OR-verknüpft —
+            #     wenn eine Library-Version eine Metrik umbenennt, gewinnt
+            #     der Test trotzdem solange ≥ 1 da ist.
+            if ! grep -qE '^(workqueue_depth|rest_client_requests_total|controller_runtime_reconcile_total)( |\{)' <<<"${body}"; then
+                log "FAIL ${label}: response missing any expected controller-runtime metric"
+                echo "${body}" | head -20 >&2
+                return 1
+            fi
+            # (c) Sanity-Mindestlänge: controller-runtime exponiert typisch
+            #     > 80 nicht-leere Zeilen; 20 als konservative Untergrenze
+            #     gegen den "HTTP 200 mit leerem Body, Manager-Init noch
+            #     nicht durch"-Race.
+            local nonempty_lines
+            nonempty_lines="$(grep -vc '^$' <<<"${body}" || true)"
+            if [[ "${nonempty_lines}" -lt 20 ]]; then
+                log "FAIL ${label}: only ${nonempty_lines} non-empty lines, want >= 20"
+                echo "${body}" >&2
+                return 1
+            fi
+            log "  /metrics body ${nonempty_lines} non-empty lines (format+content+sanity)"
             ;;
     esac
     log "OK ${label}"
@@ -103,4 +127,4 @@ probe "/healthz" "http://localhost:${LOCAL_HEALTHZ}/healthz" ok-body
 probe "/readyz"  "http://localhost:${LOCAL_HEALTHZ}/readyz"  ok-body
 probe "/metrics" "http://localhost:${LOCAL_METRICS}/metrics" prometheus-text
 
-log "PASSED — healthz, readyz, /metrics reachable + valid"
+log "PASSED — healthz, readyz, /metrics reachable + format+content+sanity OK"

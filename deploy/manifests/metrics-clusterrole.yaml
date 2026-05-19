@@ -1,0 +1,39 @@
+---
+# ClusterRole für Prometheus-/metrics-Scrape (slice-M6 §2.2 + §2.2.1).
+#
+# **Disclaimer — in M6 funktional ohne Wirkung:**
+# Der von dieser Rolle gewährte Zugriff auf `/metrics` greift nur,
+# wenn der Operator-Endpoint authentisiert ausgeliefert wird. Der MVP
+# läuft mit dem controller-runtime-Default ohne Auth-Filter — jeder
+# Pod im Cluster kann scrapen, auch ohne ClusterRoleBinding. Diese
+# Rolle ist deshalb in M6 ein **Pattern-Asset** für Anwender, die
+# `kube-rbac-proxy`-Sidecar oder controller-runtime-`FilterProvider`
+# selbst aktivieren. Die funktionale Endpoint-Authentication ist
+# v0.2-Scope mit eigener ADR-Folge zu ADR 0007.
+#
+# **Anwender-Pflicht in M6:** Wer Scrape-Pfade absichern will,
+# kombiniert diese ClusterRole mit (a) einem ClusterRoleBinding an
+# den konkreten Monitoring-ServiceAccount UND (b) entweder
+# kube-rbac-proxy oder einer NetworkPolicy, die Cross-Namespace-
+# Zugriff auf den Service-Port einschränkt. Pattern-Beispiel folgt in
+# `docs/user/installation.md` (slice-M6 §4 Step 4).
+#
+# **Bewusst kein ClusterRoleBinding mitgeliefert** — der Monitoring-
+# ServiceAccount ist je nach Stack unterschiedlich
+# (`prometheus-k8s`, `victoriametrics`, `grafana-agent`, `vector`,
+# …), und das Pattern „ClusterRole mitliefern, Binding extern" ist
+# Standard im Operator-Ökosystem (`cert-manager`, `external-dns`,
+# `metrics-server` verfahren so).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k-deskflight-metrics-scrape
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: metrics-scrape
+    app.kubernetes.io/part-of: k-deskflight
+rules:
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get

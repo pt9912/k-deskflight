@@ -182,7 +182,60 @@ condition_status="True"
 log "Step 9: HTTP-Smoke gegen Operator-Endpoints"
 bash scripts/operator-http-smoke.sh
 
-log "PASSED — phase=${phase}, condition=${condition_type}=${condition_status}, HTTP probes OK"
+# Step 9b — E2E-Verifikation für das neue /metrics-Service-Objekt
+# (slice-M6 §2.2.2). Der M3-Stand in operator-http-smoke.sh prüft
+# /metrics nur via Port-Forward direkt zum Pod — das Service-Routing
+# bleibt damit ungetestet. Hier scraped ein Probe-Pod via Service-DNS-
+# FQDN, und drei Asserts attestieren Format + Inhalt + Sanity.
+log "Step 9b: /metrics via Service-DNS aus Probe-Pod (FQDN-Routing)"
+kubectl --context "${KIND_CONTEXT}" apply -f hack/cluster-smoke/metrics-scrape-probe.yaml
+kubectl --context "${KIND_CONTEXT}" -n default wait pod/metrics-scrape-probe \
+    --for=condition=Ready --timeout=60s
+METRICS_BODY="$(kubectl --context "${KIND_CONTEXT}" -n default exec metrics-scrape-probe -- \
+    curl -sf --max-time 5 \
+    http://k-deskflight-operator-metrics.k-deskflight-system.svc:8080/metrics)"
+# Assert (a): Prometheus-Format-Marker.
+if ! grep -qE '^# (HELP|TYPE) ' <<<"${METRICS_BODY}"; then
+    log "FAIL Step 9b: response missing '# HELP' / '# TYPE' marker"
+    echo "${METRICS_BODY}" | head -10 >&2
+    exit 1
+fi
+# Assert (b): Inhalts-Beweis — mindestens eine controller-runtime-
+# Standard-Metrik (OR-verknüpft, robust gegen library-Drift in einer
+# einzelnen Metrik).
+if ! grep -qE '^(workqueue_depth|rest_client_requests_total|controller_runtime_reconcile_total)( |\{)' <<<"${METRICS_BODY}"; then
+    log "FAIL Step 9b: response missing any expected controller-runtime metric"
+    echo "${METRICS_BODY}" | head -20 >&2
+    exit 1
+fi
+# Assert (c): Sanity-Mindestlänge (controller-runtime exponiert typisch
+# > 80 nicht-leere Zeilen; 20 als konservative Untergrenze gegen den
+# „HTTP 200 mit leerem Body, Manager-Init noch nicht durch"-Race).
+nonempty_lines="$(grep -vc '^$' <<<"${METRICS_BODY}" || true)"
+if [[ "${nonempty_lines}" -lt 20 ]]; then
+    log "FAIL Step 9b: response only ${nonempty_lines} non-empty lines, want >= 20"
+    echo "${METRICS_BODY}" >&2
+    exit 1
+fi
+log "  /metrics via Service-DNS OK (${nonempty_lines} non-empty lines, format+content+sanity)"
+
+# Step 9c — Struktureller Inhalts-Check der metrics-scrape-ClusterRole
+# (slice-M6 §2.2.2). Schützt gegen Drift wie zusätzliche Verben
+# (`["get", "list"]`), erweiterte Pfade (`["/metrics", "/admin"]`)
+# oder Wildcard (`["*"]`) — auch wenn der Endpoint in M6 unauthen-
+# tisiert ist und die Rolle funktional wirkungslos bleibt, soll das
+# Pattern-Asset semantisch sauber bleiben.
+log "Step 9c: jq-Inhaltscheck der metrics-scrape-ClusterRole"
+if ! kubectl --context "${KIND_CONTEXT}" get clusterrole k-deskflight-metrics-scrape -o json \
+    | jq -e '.rules[] | select(.nonResourceURLs[]? == "/metrics") | select(.verbs == ["get"])' \
+    > /dev/null; then
+    log "FAIL Step 9c: ClusterRole missing '/metrics nonResourceURL with verbs=[get]' rule"
+    kubectl --context "${KIND_CONTEXT}" get clusterrole k-deskflight-metrics-scrape -o yaml >&2 || true
+    exit 1
+fi
+log "  ClusterRole rule structurally valid (nonResourceURLs=[/metrics], verbs=[get])"
+
+log "PASSED — phase=${phase}, condition=${condition_type}=${condition_status}, HTTP probes OK, Service-DNS OK, ClusterRole structurally valid"
 
 # Attest-Artefakt: Status-Dump unter /src/.cluster-smoke-attest.yaml
 # (Workspace-Mount); CI-Workflow `cluster-smoke.yml` lädt das als

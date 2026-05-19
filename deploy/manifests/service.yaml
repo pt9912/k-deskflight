@@ -1,0 +1,36 @@
+---
+# Service für den Prometheus-/metrics-Endpoint des Operators
+# (architecture.md AR-024, ADR 0007 §2.1+§2.4, slice-M6 §2.2).
+#
+# Der Operator exponiert `/metrics` auf Container-Port 8080
+# (controller-runtime-Framework-Defaults — Workqueue-Tiefe, Reconcile-
+# Latenzen, REST-Client-Counter). Dieses Service-Objekt macht den
+# Endpoint im Cluster scrapbar; Anwender bindet einen Prometheus-/
+# VictoriaMetrics-/Vector-Scrape-Job gegen den Service-DNS-FQDN
+# `k-deskflight-operator-metrics.k-deskflight-system.svc.cluster.local`.
+#
+# Endpoint-Authentication: in M6 bewusst NICHT aktiv (slice-M6 §2.2.1).
+# Die `nonResourceURLs`-ClusterRole in metrics-clusterrole.yaml ist
+# Pattern-Asset für künftige `kube-rbac-proxy`-/FilterProvider-
+# Aktivierung (v0.2-ADR-Folge zu ADR 0007). Wer im Cluster Netzwerk-
+# Zugriff auf den Service hat, kann scrapen — NetworkPolicy ist
+# Anwender-Pflicht.
+apiVersion: v1
+kind: Service
+metadata:
+  name: k-deskflight-operator-metrics
+  namespace: k-deskflight-system
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: k-deskflight
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+      protocol: TCP

@@ -85,6 +85,7 @@ RUN apk add --no-cache \
         ca-certificates \
         curl \
         docker-cli \
+        jq \
     && curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64" -o /usr/local/bin/kind \
     && chmod +x /usr/local/bin/kind \
     && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \

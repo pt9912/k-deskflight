@@ -1,0 +1,82 @@
+---
+# Probe-Pod für die E2E-Verifikation des /metrics-Service-Routings
+# (slice-M6 §2.2.2). Wird von scripts/cluster-smoke.sh Step 9b
+# appliziert und scraped via `kubectl exec curl` den Service-DNS-FQDN
+# `k-deskflight-operator-metrics.k-deskflight-system.svc.cluster.local`.
+#
+# Was Step 9b damit attestiert (in einem Curl-Aufruf):
+#   - Service-DNS löst auf (DNS-Suchpfad funktioniert über Namespaces).
+#   - Service-Selector matched mindestens ein Backend.
+#   - Service-Port 8080 routet auf den korrekten Container-Port.
+#   - /metrics-Response ist im Prometheus-Format (# HELP/# TYPE).
+#   - Response hat Inhalt (mindestens eine controller-runtime-
+#     Standard-Metrik) — Schutz gegen den HTTP-200-mit-leerem-Body-Race.
+#   - Response-Länge ≥ 20 nicht-leere Zeilen — Sanity-Linie gegen
+#     Mini-Response-Regressionen.
+#
+# **Funktional NICHT getestet**: die ClusterRole-Wirkung selbst.
+# In M6 ist der Endpoint unauthentisiert (slice-M6 §2.2.1) — die
+# ClusterRoleBinding hier ist Pattern-Asset, kein Gating. Step 9c
+# verifiziert die ClusterRole stattdessen strukturell per `jq`.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-scrape-probe
+  namespace: default
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: cluster-smoke-probe
+---
+# Bindet die k-deskflight-metrics-scrape-ClusterRole an die Probe-SA.
+# In M6 wirkungslos (Endpoint unauthentisiert), aber das Apply muss
+# strukturell sauber durchgehen — sonst hätte die ClusterRole einen
+# Validierungs-Defekt.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: metrics-scrape-probe
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: cluster-smoke-probe
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k-deskflight-metrics-scrape
+subjects:
+  - kind: ServiceAccount
+    name: metrics-scrape-probe
+    namespace: default
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metrics-scrape-probe
+  namespace: default
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: cluster-smoke-probe
+spec:
+  serviceAccountName: metrics-scrape-probe
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: curlimages/curl:8.10.1
+      command:
+        - sh
+        - -c
+        - sleep 3600
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65532
+        capabilities:
+          drop:
+            - ALL
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
