@@ -1263,64 +1263,11 @@ func TestReconcileSpecInvalidIngressClass(t *testing.T) {
 	}
 }
 
-// intervalTestRig baut den Standard-CR/Client/Reconciler/stubCheck-
-// Aufbau für die drei Interval-Cases (slice-M6 §4 Step 1c).
-// `intervalRaw == nil` bedeutet „Feld nicht gesetzt".
-func intervalTestRig(
-	t *testing.T,
-	name string,
-	intervalRaw *string,
-) *application.Reconciler {
-	t.Helper()
-	scheme := newSchemeWithAPI(t)
-
-	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       name,
-			Namespace:  "default",
-			Generation: 1,
-		},
-		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
-			Profile:  preflightv1alpha1.ProfileProduction,
-			Interval: intervalRaw,
-			Checks: preflightv1alpha1.ChecksSpec{
-				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
-			},
-		},
-	}
-
-	client := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(cr).
-		WithStatusSubresource(cr).
-		Build()
-
-	registry := newFakeRegistry()
-	registry.Register(stubCheck{
-		name: domain.KubernetesVersionSpecKind,
-		result: domain.Result{
-			Name:           "KubernetesVersionReady",
-			Status:         domain.StatusTrue,
-			Reason:         "KubernetesVersionReady",
-			Severity:       domain.SeverityInfo,
-			Message:        "server version 1.34.2 satisfies minimum 1.34",
-			LastTransition: fixedClock()(),
-		},
-	})
-
-	return &application.Reconciler{
-		Client:   client,
-		Scheme:   scheme,
-		Registry: registry,
-		Now:      fixedClock(),
-	}
-}
-
 // TestReconcileIntervalDefaulted (slice-M6 §7 #13, Case „Leer →
 // Default 5m"): kein `Spec.Interval` gesetzt → RequeueAfter == 5m,
 // keine ConfigurationInvalid-Condition, Phase = Passed.
 func TestReconcileIntervalDefaulted(t *testing.T) {
-	reconciler := intervalTestRig(t, "interval-default", nil)
+	reconciler := coAuthorRig(t, "interval-default", "", nil)
 
 	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "interval-default", Namespace: "default"},
@@ -1352,8 +1299,7 @@ func TestReconcileIntervalDefaulted(t *testing.T) {
 // RequeueAfter == 5m, ConfigurationInvalid-Condition mit Reason
 // IntervalNormalized/Severity warning, Phase auf Warning gehoben.
 func TestReconcileIntervalNormalized(t *testing.T) {
-	raw := "abc"
-	reconciler := intervalTestRig(t, "interval-bad", &raw)
+	reconciler := coAuthorRig(t, "interval-bad", "abc", nil)
 
 	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "interval-bad", Namespace: "default"},
@@ -1407,8 +1353,7 @@ func TestReconcileIntervalNormalized(t *testing.T) {
 // „Out-of-bounds → clamp + Warning"): 25h overshoot → RequeueAfter ==
 // 24h, ConfigurationInvalid-Condition mit Reason IntervalNormalized.
 func TestReconcileIntervalClamped(t *testing.T) {
-	raw := "25h"
-	reconciler := intervalTestRig(t, "interval-clamped", &raw)
+	reconciler := coAuthorRig(t, "interval-clamped", "25h", nil)
 
 	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "interval-clamped", Namespace: "default"},
@@ -1441,5 +1386,223 @@ func TestReconcileIntervalClamped(t *testing.T) {
 	}
 	if !strings.Contains(found.Message, "exceeds maximum") {
 		t.Errorf("Message %q must mention 'exceeds maximum'", found.Message)
+	}
+}
+
+// (TestReconcileIntervalEmpty wurde mit dem `*string→string`-Refactor
+// gegenstandslos — `TestReconcileIntervalDefaulted` deckt den
+// Empty-String-Pfad bereits ab, weil „nicht gesetzt" und `""` jetzt
+// semantisch identisch sind.)
+
+// coAuthorRig wie der frühere `intervalTestRig`, aber mit anpassbarer Spec.Checks
+// und stubCheck-Result für Co-Auftreten-Tests (Befund 3). `mutate`
+// modifiziert Spec/Result vor dem Build des fake-clients.
+func coAuthorRig(
+	t *testing.T,
+	name string,
+	intervalRaw string,
+	mutate func(spec *preflightv1alpha1.ChecksSpec, result *domain.Result),
+) *application.Reconciler {
+	t.Helper()
+	scheme := newSchemeWithAPI(t)
+
+	checks := preflightv1alpha1.ChecksSpec{
+		KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+	}
+	stubResult := domain.Result{
+		Name:           "KubernetesVersionReady",
+		Status:         domain.StatusTrue,
+		Reason:         "KubernetesVersionReady",
+		Severity:       domain.SeverityInfo,
+		LastTransition: fixedClock()(),
+	}
+	if mutate != nil {
+		mutate(&checks, &stubResult)
+	}
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       name,
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile:  preflightv1alpha1.ProfileProduction,
+			Interval: intervalRaw,
+			Checks:   checks,
+		},
+	}
+
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	registry := newFakeRegistry()
+	registry.Register(stubCheck{
+		name:   domain.KubernetesVersionSpecKind,
+		result: stubResult,
+	})
+
+	return &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+}
+
+// TestReconcileIntervalPlusSpecInvalid (Befund 3 aus M6 Step-1-Review,
+// Case a): Interval-bad + ungültige IngressClass (Names: nil) →
+// Phase=Failed bleibt, **beide** Conditions (SpecInvalid +
+// ConfigurationInvalid) im Status sichtbar. Escalate-Pfad darf
+// Failed nicht abschwächen.
+func TestReconcileIntervalPlusSpecInvalid(t *testing.T) {
+	reconciler := coAuthorRig(t, "interval-and-spec", "abc",
+		func(spec *preflightv1alpha1.ChecksSpec, _ *domain.Result) {
+			spec.IngressClass = &preflightv1alpha1.IngressClassCheckSpec{Names: nil}
+		})
+
+	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "interval-and-spec", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != application.DefaultInterval {
+		t.Errorf("RequeueAfter: got %s, want %s (interval default after parse-fail)",
+			res.RequeueAfter, application.DefaultInterval)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := reconciler.Get(context.Background(),
+		types.NamespacedName{Name: "interval-and-spec", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed (interval warning must not lower SpecInvalid Failed)",
+			after.Status.Phase)
+	}
+	typeSet := map[string]bool{}
+	for _, c := range after.Status.Conditions {
+		typeSet[c.Type] = true
+	}
+	if !typeSet["SpecInvalid"] {
+		t.Errorf("expected SpecInvalid condition, got %+v", after.Status.Conditions)
+	}
+	if !typeSet[application.ConditionTypeConfigurationInvalid] {
+		t.Errorf("expected ConfigurationInvalid condition, got %+v", after.Status.Conditions)
+	}
+}
+
+// TestReconcileIntervalPlusSelectionIssue (Befund 3 Case b): Interval-bad
+// + Registry-Selection-Issue → Phase=Failed bleibt, beide Conditions.
+func TestReconcileIntervalPlusSelectionIssue(t *testing.T) {
+	scheme := newSchemeWithAPI(t)
+
+	cr := &preflightv1alpha1.OpenDeskPreflightCheck{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "interval-and-selection",
+			Namespace:  "default",
+			Generation: 1,
+		},
+		Spec: preflightv1alpha1.OpenDeskPreflightCheckSpec{
+			Profile:  preflightv1alpha1.ProfileProduction,
+			Interval: "abc",
+			Checks: preflightv1alpha1.ChecksSpec{
+				KubernetesVersion: &preflightv1alpha1.KubernetesVersionCheckSpec{Min: "1.34"},
+			},
+		},
+	}
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(cr).
+		Build()
+
+	registry := newFakeRegistry()
+	registry.issues = []port.CheckSelectionIssue{
+		{Name: "ghost-check", Reason: "ChecksNotResolved"},
+	}
+
+	reconciler := &application.Reconciler{
+		Client:   client,
+		Scheme:   scheme,
+		Registry: registry,
+		Now:      fixedClock(),
+	}
+
+	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "interval-and-selection", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != application.DefaultInterval {
+		t.Errorf("RequeueAfter: got %s, want %s", res.RequeueAfter, application.DefaultInterval)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := reconciler.Get(context.Background(),
+		types.NamespacedName{Name: "interval-and-selection", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed (selection issue + interval warning)",
+			after.Status.Phase)
+	}
+	typeSet := map[string]bool{}
+	for _, c := range after.Status.Conditions {
+		typeSet[c.Type] = true
+	}
+	if !typeSet["SpecInvalid"] {
+		t.Errorf("expected SpecInvalid (selection-issue) condition, got %+v", after.Status.Conditions)
+	}
+	if !typeSet[application.ConditionTypeConfigurationInvalid] {
+		t.Errorf("expected ConfigurationInvalid condition, got %+v", after.Status.Conditions)
+	}
+}
+
+// TestReconcileIntervalPlusFailedCheck (Befund 3 Case c): Interval-bad
+// + ein Check liefert Failed/critical → Phase=Failed bleibt (escalate
+// hebt nicht ab), ConfigurationInvalid zusätzlich.
+func TestReconcileIntervalPlusFailedCheck(t *testing.T) {
+	reconciler := coAuthorRig(t, "interval-and-failed", "abc",
+		func(_ *preflightv1alpha1.ChecksSpec, result *domain.Result) {
+			result.Status = domain.StatusFalse
+			result.Severity = domain.SeverityCritical
+			result.Reason = "KubernetesVersionTooOld"
+			result.Message = "synthetic failed for test"
+		})
+
+	res, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "interval-and-failed", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != application.DefaultInterval {
+		t.Errorf("RequeueAfter: got %s, want %s", res.RequeueAfter, application.DefaultInterval)
+	}
+
+	var after preflightv1alpha1.OpenDeskPreflightCheck
+	if err := reconciler.Get(context.Background(),
+		types.NamespacedName{Name: "interval-and-failed", Namespace: "default"}, &after); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if after.Status.Phase != preflightv1alpha1.PhaseFailed {
+		t.Errorf("Phase: got %q, want Failed (Failed must not be lowered to Warning)",
+			after.Status.Phase)
+	}
+	typeSet := map[string]bool{}
+	for _, c := range after.Status.Conditions {
+		typeSet[c.Type] = true
+	}
+	if !typeSet["KubernetesVersionReady"] {
+		t.Errorf("expected KubernetesVersionReady condition, got %+v", after.Status.Conditions)
+	}
+	if !typeSet[application.ConditionTypeConfigurationInvalid] {
+		t.Errorf("expected ConfigurationInvalid condition, got %+v", after.Status.Conditions)
 	}
 }

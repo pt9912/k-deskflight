@@ -99,11 +99,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 
 	var cr preflightv1alpha1.OpenDeskPreflightCheck
 	var crLoaded bool
+	// `interval` und `intervalWarning` werden im äußeren Scope deklariert,
+	// damit der defer-Recover-Pfad (Befund 1 aus M6 Step-1-Review) sie
+	// lesen kann — `RequeueAfter: interval` muss auch im Panic-Fall
+	// gesetzt sein, und die `ConfigurationInvalid`-Warning soll auch
+	// dort sichtbar sein. Initial sind beide auf den Default-Werten,
+	// solange das CR noch nicht geladen ist.
+	interval := DefaultInterval
+	var intervalWarning *ConditionWarning
 
 	defer func() {
 		if rec := recover(); rec != nil {
-			result = ctrl.Result{}
-			retErr = r.handleReconcilePanic(ctx, runCtx, req, &cr, crLoaded, rec)
+			result = ctrl.Result{RequeueAfter: interval}
+			retErr = r.handleReconcilePanic(ctx, runCtx, req, &cr, crLoaded, rec, intervalWarning)
 		}
 	}()
 
@@ -115,22 +123,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	}
 	crLoaded = true
 
+	// AR-010 / slice-M6 §2.3: `Spec.Interval` wird **direkt nach dem
+	// Get** normalisiert, weil das `RequeueAfter` an allen return-
+	// Stellen (Skip-/Pending-/Spec-/Selection-/Final-/Panic-Pfad) den
+	// gleichen Wert tragen muss. Die `intervalWarning`-Condition wird in
+	// jedes Output-Set hinein-gemerged (`mergeIntervalWarning`).
+	interval, intervalWarning = NormalizeInterval(cr.Spec.Interval)
+
 	if r.isAlreadyReconciled(&cr) {
-		// AR-010: auch im Skip-Pfad muss der RequeueAfter den
-		// normalisierten Intervall-Wert tragen, damit ein einmal-fertiger
-		// CR nicht nur auf den controller-runtime-Cache-Resync wartet.
-		interval, _ := NormalizeInterval(cr.Spec.Interval)
+		// Skip-Pfad: kein writeStatus, damit ObservedGeneration nicht
+		// versehentlich neu geschrieben wird; nur RequeueAfter setzen.
 		return ctrl.Result{RequeueAfter: interval}, nil
 	}
-
-	// AR-010 / slice-M6 §2.3: `Spec.Interval` wird vor allen Check-
-	// Pfaden normalisiert, weil das `RequeueAfter` an allen
-	// return-Stellen (Pending-/Spec-/Selection-/Final-Pfad) gesetzt
-	// werden muss. Die `intervalWarning`-Condition wird in jedes
-	// Output-Set hinein-gemerged (`mergeIntervalWarning`), damit der
-	// Anwender die `ConfigurationInvalid`-Diagnose auch sieht, wenn
-	// gleichzeitig ein anderer Spec-/Selection-/Check-Fehler aktiv ist.
-	interval, intervalWarning := NormalizeInterval(cr.Spec.Interval)
 
 	// AR-009 / Roadmap §3 M2: sichtbare Phasen-Transition Pending →
 	// Running → Final. Pending signalisiert „Controller hat den CR für
@@ -138,31 +142,41 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	// Phase; Final ist das Aggregat. Drei sequenzielle Status-Updates
 	// sind günstig (lokale Generation bleibt, controller-runtime liefert
 	// die neue resourceVersion direkt in das Objekt zurück).
+	//
+	// **Befund 2 aus M6 Step-1-Review:** bei markPhase-Fehler (häufig
+	// `apierrors.IsConflict`) wird `RequeueAfter: interval` gesetzt,
+	// damit der nächste Reconcile dem AR-010-Intervall folgt und nicht
+	// dem controller-runtime-Default-Backoff.
 	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhasePending); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: interval}, err
 	}
 
 	profile := profileWithDefault(cr.Spec.Profile)
 	defaults := defaultsForProfile(profile)
 
+	// **Befund 4 aus M6 Step-1-Review:** ein lokales `now` an alle
+	// Output-Pfade weiterreichen, damit `Summary.LastChecked` und
+	// `ConfigurationInvalid.LastTransitionTime` denselben Stempel tragen.
+	now := r.now()
+
 	specs, validationErrs := buildSpecMap(runCtx, &cr.Spec.Checks, defaults)
 	if len(validationErrs) > 0 {
-		out := mergeIntervalWarning(r.specInvalidOutput(validationErrs), intervalWarning, r.now())
+		out := mergeIntervalWarning(r.specInvalidOutputAt(validationErrs, now), intervalWarning, now)
 		return ctrl.Result{RequeueAfter: interval}, r.writeStatus(runCtx, &cr, out)
 	}
 
 	active, issues := r.Registry.ListByProfile(profile, specs)
 	if len(issues) > 0 {
-		out := mergeIntervalWarning(r.selectionIssueOutput(issues, len(specs)), intervalWarning, r.now())
+		out := mergeIntervalWarning(r.selectionIssueOutputAt(issues, len(specs), now), intervalWarning, now)
 		return ctrl.Result{RequeueAfter: interval}, r.writeStatus(runCtx, &cr, out)
 	}
 
 	if err := r.markPhase(runCtx, &cr, preflightv1alpha1.PhaseRunning); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: interval}, err
 	}
 
 	results := r.runChecks(runCtx, active, specs)
-	out := mergeIntervalWarning(Aggregate(results, r.now()), intervalWarning, r.now())
+	out := mergeIntervalWarning(Aggregate(results, now), intervalWarning, now)
 
 	// Per-Result-Diagnose-Log (slice-M5 §2.6, Folge-Review-Befund 3):
 	// jeder Result-Eintrag wandert über LogResult, damit beide
@@ -197,6 +211,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 // (slice-M6 §2.3). Verhalten:
 //
 //   - `warning == nil` → `out` unverändert.
+//   - existiert bereits eine Condition mit gleichem `Type` (z. B. von
+//     einem v0.2-Check, der ConfigurationInvalid selbst meldet) →
+//     Severity-Tie-Break analog AR-014 / `dedupeAndSortConditions`:
+//     höhere Severity gewinnt, bei Gleichstand bleibt die existierende
+//     (Stable-Verhalten, Befund 6 aus M6 Step-1-Review).
 //   - sonst → Condition wird angehängt, alphabetisch nach Type
 //     einsortiert, und die Phase auf mindestens `Warning` gehoben
 //     (Failed/Unknown bleiben unverändert; Passed steigt zu Warning).
@@ -221,6 +240,20 @@ func mergeIntervalWarning(
 		LastTransitionTime: metav1.NewTime(now.UTC()),
 		Severity:           warning.Severity,
 	}
+	// Befund 6: Dedup nach Type. Wenn der Aggregator bereits eine
+	// Condition mit gleichem Type produziert hat (heute fiktiv,
+	// v0.2-relevant), gewinnt höhere Severity; bei Gleichstand bleibt
+	// die existierende.
+	for i := range out.Conditions {
+		if out.Conditions[i].Type != cond.Type {
+			continue
+		}
+		if conditionSeverityRank(cond.Severity) > conditionSeverityRank(out.Conditions[i].Severity) {
+			out.Conditions[i] = cond
+		}
+		out.Phase = escalatePhase(out.Phase, preflightv1alpha1.PhaseWarning)
+		return out
+	}
 	out.Conditions = append(out.Conditions, cond)
 	// Stable-Sort hält die Aggregator-Reihenfolge der bestehenden
 	// Conditions; die neu angehängte Condition rutscht an die richtige
@@ -228,6 +261,23 @@ func mergeIntervalWarning(
 	sortConditionsByType(out.Conditions)
 	out.Phase = escalatePhase(out.Phase, preflightv1alpha1.PhaseWarning)
 	return out
+}
+
+// conditionSeverityRank entspricht `severityRank` aus dem Aggregator
+// (AR-014), arbeitet aber auf `api/v1alpha1.Severity` statt
+// `domain.Severity` — der CR-Spec-Scope-Pfad geht nicht durch das
+// domain-Layer.
+func conditionSeverityRank(s preflightv1alpha1.Severity) int {
+	switch s {
+	case preflightv1alpha1.SeverityCritical:
+		return 3
+	case preflightv1alpha1.SeverityWarning:
+		return 2
+	case preflightv1alpha1.SeverityInfo:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // sortConditionsByType sortiert die Condition-Slice in-place
@@ -323,12 +373,19 @@ func (r *Reconciler) logger() *slog.Logger {
 // Status — mit innerem Recover, der bei Sekundär-Panic im
 // writeStatus-Pfad **nicht stumm** ist, sondern loggt (slice-M5
 // Review-Befund 2).
+//
+// **Befund 1 aus M6 Step-1-Review:** `intervalWarning` wird mit in den
+// `reconcilePanicOutput` gemerged, damit ein CR mit `interval: "abc"`
+// auch im Panic-Fall die ConfigurationInvalid-Diagnose im Status
+// behält — sonst sieht der Anwender nur den ReconcileError und
+// versteht nicht, warum sein Interval seltsam war.
 func (r *Reconciler) handleReconcilePanic(
 	ctx, runCtx context.Context,
 	req ctrl.Request,
 	cr *preflightv1alpha1.OpenDeskPreflightCheck,
 	crLoaded bool,
 	rec interface{},
+	intervalWarning *ConditionWarning,
 ) error {
 	r.logger().LogAttrs(ctx, slog.LevelError, "panic recovered in Reconcile",
 		SanitizeAttrs(
@@ -352,7 +409,9 @@ func (r *Reconciler) handleReconcilePanic(
 					)
 				}
 			}()
-			_ = r.writeStatus(runCtx, cr, r.reconcilePanicOutput(rec))
+			now := r.now()
+			out := mergeIntervalWarning(r.reconcilePanicOutputAt(rec, now), intervalWarning, now)
+			_ = r.writeStatus(runCtx, cr, out)
 		}()
 	}
 	return fmt.Errorf("reconcile panic: %v", rec)
@@ -467,37 +526,39 @@ func sanitizeConditions(in []preflightv1alpha1.Condition) []preflightv1alpha1.Co
 	return out
 }
 
-// reconcilePanicOutput baut das AggregationOutput für den Outer-Recover-
-// Pfad (slice-M5 §2.4): Phase=Unknown, Condition=ReconcileError mit
-// Reason=ReconcilePanic. Die Panic-Detail-Message wird über
-// `SanitizeMessage` geführt (slice-M5 Review-Befund 3), damit
-// eventuelle Variablenwerte aus dem panickenden Frame nicht
-// ungefiltert im Status landen (LH-SEC-002). In M5 ist
-// `SanitizeMessage` Identität; v0.2 ersetzt das durch echte
-// Pattern-Maskierung, deshalb muss der Hook hier verankert sein.
-func (r *Reconciler) reconcilePanicOutput(panicVal interface{}) AggregationOutput {
-	now := r.now().UTC()
+// reconcilePanicOutputAt baut das AggregationOutput für den Outer-
+// Recover-Pfad (slice-M5 §2.4) mit einem **explizit übergebenen
+// Zeitstempel** (Befund 4 aus M6 Step-1-Review): Phase=Unknown,
+// Condition=ReconcileError mit Reason=ReconcilePanic. Die Panic-
+// Detail-Message wird über `SanitizeMessage` geführt (slice-M5
+// Review-Befund 3), damit eventuelle Variablenwerte aus dem
+// panickenden Frame nicht ungefiltert im Status landen (LH-SEC-002).
+// In M5 ist `SanitizeMessage` Identität; v0.2 ersetzt das durch
+// echte Pattern-Maskierung, deshalb muss der Hook hier verankert sein.
+func (r *Reconciler) reconcilePanicOutputAt(panicVal interface{}, now time.Time) AggregationOutput {
+	stamp := now.UTC()
 	return AggregationOutput{
 		Phase: preflightv1alpha1.PhaseUnknown,
 		Summary: preflightv1alpha1.Summary{
 			ChecksTotal: 0,
-			LastChecked: ptrMetaTime(metav1.NewTime(now)),
+			LastChecked: ptrMetaTime(metav1.NewTime(stamp)),
 		},
 		Conditions: []preflightv1alpha1.Condition{{
 			Type:               conditionTypeReconcileError,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonReconcilePanic,
 			Message:            SanitizeMessage(fmt.Sprintf("reconcile panic recovered: %v", panicVal)),
-			LastTransitionTime: metav1.NewTime(now),
+			LastTransitionTime: metav1.NewTime(stamp),
 			Severity:           preflightv1alpha1.SeverityCritical,
 		}},
 	}
 }
 
-// specInvalidOutput formuliert die Phase-Failed-Antwort, wenn
-// CheckSpec.Validate fehlschlägt (AR-009 Phase 2 minimal).
-func (r *Reconciler) specInvalidOutput(errs []specError) AggregationOutput {
-	now := r.now().UTC()
+// specInvalidOutputAt formuliert die Phase-Failed-Antwort, wenn
+// CheckSpec.Validate fehlschlägt (AR-009 Phase 2 minimal). `now` wird
+// vom Aufrufer geliefert (Befund 4 aus M6 Step-1-Review).
+func (r *Reconciler) specInvalidOutputAt(errs []specError, now time.Time) AggregationOutput {
+	stamp := now.UTC()
 	messages := make([]string, 0, len(errs))
 	for _, e := range errs {
 		messages = append(messages, fmt.Sprintf("%s: %s", e.check, e.err.Error()))
@@ -506,26 +567,28 @@ func (r *Reconciler) specInvalidOutput(errs []specError) AggregationOutput {
 		Phase: preflightv1alpha1.PhaseFailed,
 		Summary: preflightv1alpha1.Summary{
 			ChecksTotal: 0,
-			LastChecked: ptrMetaTime(metav1.NewTime(now)),
+			LastChecked: ptrMetaTime(metav1.NewTime(stamp)),
 		},
 		Conditions: []preflightv1alpha1.Condition{{
 			Type:               "SpecInvalid",
 			Status:             metav1.ConditionFalse,
 			Reason:             "SpecInvalid",
 			Message:            strings.Join(messages, "; "),
-			LastTransitionTime: metav1.NewTime(now),
+			LastTransitionTime: metav1.NewTime(stamp),
 			Severity:           preflightv1alpha1.SeverityCritical,
 		}},
 	}
 }
 
-// selectionIssueOutput formuliert die Phase-Failed-Antwort, wenn
+// selectionIssueOutputAt formuliert die Phase-Failed-Antwort, wenn
 // CheckRegistry-Resolution unauflösbare Einträge meldet (AR-009 Phase 3).
-func (r *Reconciler) selectionIssueOutput(
+// `now` wird vom Aufrufer geliefert (Befund 4 aus M6 Step-1-Review).
+func (r *Reconciler) selectionIssueOutputAt(
 	issues []port.CheckSelectionIssue,
 	specCount int,
+	now time.Time,
 ) AggregationOutput {
-	now := r.now().UTC()
+	stamp := now.UTC()
 	messages := make([]string, 0, len(issues))
 	for _, i := range issues {
 		messages = append(messages, fmt.Sprintf("%s: %s", i.Name, i.Reason))
@@ -534,14 +597,14 @@ func (r *Reconciler) selectionIssueOutput(
 		Phase: preflightv1alpha1.PhaseFailed,
 		Summary: preflightv1alpha1.Summary{
 			ChecksTotal: int32(specCount),
-			LastChecked: ptrMetaTime(metav1.NewTime(now)),
+			LastChecked: ptrMetaTime(metav1.NewTime(stamp)),
 		},
 		Conditions: []preflightv1alpha1.Condition{{
 			Type:               "SpecInvalid",
 			Status:             metav1.ConditionFalse,
 			Reason:             issues[0].Reason,
 			Message:            strings.Join(messages, "; "),
-			LastTransitionTime: metav1.NewTime(now),
+			LastTransitionTime: metav1.NewTime(stamp),
 			Severity:           preflightv1alpha1.SeverityCritical,
 		}},
 	}

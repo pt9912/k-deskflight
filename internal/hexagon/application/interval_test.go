@@ -27,37 +27,37 @@ type intervalCaseExpectation struct {
 
 type intervalCase struct {
 	name  string
-	input *string
+	input string
 	want  intervalCaseExpectation
 }
 
 // normalizeIntervalCases hält die §2.3.1-Klassifikations-Tabelle als
 // separate Helper-Funktion, damit der Test-Body unter dem funlen-
-// Threshold bleibt.
+// Threshold bleibt. `NormalizeInterval` nimmt seit Step-1-Review-
+// Fixup Befund 5 plain `string` statt `*string` — der ehemalige
+// „nil pointer"-Case ist semantisch identisch zum Empty-String-Case
+// und entfällt deshalb.
 func normalizeIntervalCases() []intervalCase {
-	stringPtr := func(s string) *string { return &s }
 	return []intervalCase{
-		{name: "nil pointer falls back to default", input: nil,
+		{name: "empty string falls back to default", input: "",
 			want: intervalCaseExpectation{duration: application.DefaultInterval}},
-		{name: "empty string falls back to default", input: stringPtr(""),
-			want: intervalCaseExpectation{duration: application.DefaultInterval}},
-		{name: "zero duration clamps to min", input: stringPtr("0s"),
+		{name: "zero duration clamps to min", input: "0s",
 			want: intervalCaseExpectation{duration: application.MinInterval, warning: true, reasonSub: "below minimum"}},
-		{name: "below-min duration clamps to min", input: stringPtr("15s"),
+		{name: "below-min duration clamps to min", input: "15s",
 			want: intervalCaseExpectation{duration: application.MinInterval, warning: true, reasonSub: "below minimum"}},
-		{name: "min boundary passes through", input: stringPtr("30s"),
+		{name: "min boundary passes through", input: "30s",
 			want: intervalCaseExpectation{duration: application.MinInterval}},
-		{name: "default boundary passes through", input: stringPtr("5m"),
+		{name: "default boundary passes through", input: "5m",
 			want: intervalCaseExpectation{duration: 5 * time.Minute}},
-		{name: "composite duration passes through", input: stringPtr("1h30m"),
+		{name: "composite duration passes through", input: "1h30m",
 			want: intervalCaseExpectation{duration: 90 * time.Minute}},
-		{name: "max boundary passes through", input: stringPtr("24h"),
+		{name: "max boundary passes through", input: "24h",
 			want: intervalCaseExpectation{duration: application.MaxInterval}},
-		{name: "above-max duration clamps to max", input: stringPtr("25h"),
+		{name: "above-max duration clamps to max", input: "25h",
 			want: intervalCaseExpectation{duration: application.MaxInterval, warning: true, reasonSub: "exceeds maximum"}},
-		{name: "parse-fail falls back to default", input: stringPtr("abc"),
+		{name: "parse-fail falls back to default", input: "abc",
 			want: intervalCaseExpectation{duration: application.DefaultInterval, warning: true, reasonSub: "not a valid Go duration"}},
-		{name: "negative duration clamps to min", input: stringPtr("-5m"),
+		{name: "negative duration clamps to min", input: "-5m",
 			want: intervalCaseExpectation{duration: application.MinInterval, warning: true, reasonSub: "below minimum"}},
 	}
 }

@@ -15,6 +15,12 @@ metadata:
   namespace: default
 spec:
   profile: production
+  # interval — Wiederholintervall des Reconciles (AR-010, slice-M6 §2.3).
+  # `time.ParseDuration`-String; Default `5m`, Bounds `[30s, 24h]`.
+  # Ungültige Werte werden vom Reconciler-Normalisierer geklemmt und
+  # als ConfigurationInvalid/IntervalNormalized im Status gemeldet —
+  # der Operator bleibt liveness-sicher (AR-010.1).
+  interval: "5m"
   checks:
     kubernetesVersion:
       min: "1.34"

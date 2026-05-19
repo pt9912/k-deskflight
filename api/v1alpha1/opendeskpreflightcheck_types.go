@@ -171,9 +171,13 @@ type OpenDeskPreflightCheckSpec struct {
 	// `Status.Conditions[ConfigurationInvalid]=True`,
 	// Reason=`IntervalNormalized`, Severity=`warning`).
 	//
+	// Plain `string` (kein Pointer) — `""` und „nicht gesetzt" werden
+	// vom Normalisierer identisch behandelt, daher kein semantischer
+	// Bedarf für `*string` (slice-M6 §4 Step-1-Review-Fixup Befund 5).
+	//
 	// +kubebuilder:default="5m"
 	// +optional
-	Interval *string `json:"interval,omitempty"`
+	Interval string `json:"interval,omitempty"`
 
 	// Checks selects and configures the individual preflight checks.
 	Checks ChecksSpec `json:"checks,omitempty"`
