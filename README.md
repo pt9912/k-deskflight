@@ -8,16 +8,16 @@ checks on a cluster before an [OpenDesk](https://docs.opendesk.eu/) installation
 
 ## Status
 
-Implementation is **in progress** (`LH-VM-004`). Five of seven MVP
-slices are closed; M6 (metrics endpoint, integration tests,
-user-facing docs) and M7 (release v0.1.0) remain:
+Implementation is **in progress** (`LH-VM-004`). Six of seven MVP
+slices are closed; only M7 (release v0.1.0 with example manifests,
+Trivy image scan and DCO) remains before the first tagged release:
 
 | Phase | Status | Source |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Draft 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
 | Architecture decisions | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architecture spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementation (`LH-VM-004`) | M1–M5 done — M6 and M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Implementation (`LH-VM-004`) | M1–M6 done — M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
 | Pflichtenheft (`LH-VM-002`) | grows alongside slices | per-slice plans in [`docs/plan/planning/done/`](docs/plan/planning/done/) |
 
 All five MVP-mandatory checks are live (`LH-AK-005..-009`):
@@ -31,6 +31,21 @@ installation, operator deployment, status reconcile and HTTP
 health/readiness/metrics endpoints are attested against a real
 kind cluster on every push (see
 [`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
+
+**New in M6** (`LH-AK-013`): the `/metrics` endpoint is now
+exposed via a dedicated `Service` and end-to-end attested through
+the cluster-smoke pipeline — a probe pod scrapes via the Service
+DNS FQDN and the response is verified for Prometheus format,
+controller-runtime baseline metrics, and a sanity line count.
+Cluster-smoke also runs four failed-CR scenarios alongside the
+passed sample, re-attesting `LH-AK-005`/`-006`/`-007`/`-009` on
+both passed and failed paths. The operator now sets a configurable
+`spec.interval` (default `5m`, bounds `[30s, 24h]`, AR-010-conformant
+normalization). End-user documentation under
+[`docs/user/`](docs/user/) covers installation, evaluation/production
+CR examples, the conditions catalogue and a troubleshooting
+runbook. Architecture point `AR-OP-005` (namespace override
+mechanics) is closed in [`spec/architecture.md`](spec/architecture.md).
 
 ## What the operator does
 

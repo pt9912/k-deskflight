@@ -8,16 +8,17 @@ Cluster-Voraussetzungen für [OpenDesk](https://docs.opendesk.eu/)-Installatione
 
 ## Status
 
-Die Implementierung ist **im Gang** (`LH-VM-004`). Fünf von sieben
-MVP-Slices sind geschlossen; M6 (Metrics-Endpoint, Integrationstests,
-Anwender-Doku) und M7 (Release v0.1.0) stehen aus:
+Die Implementierung ist **im Gang** (`LH-VM-004`). Sechs von sieben
+MVP-Slices sind geschlossen; nur M7 (Release v0.1.0 mit
+Beispielmanifesten, Trivy-Image-Scan und DCO) steht vor dem ersten
+getaggten Release noch aus:
 
 | Phase | Status | Quelle |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Entwurf 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
 | Architekturentscheidungen | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architektur-Spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementierung (`LH-VM-004`) | M1–M5 done — M6 und M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Implementierung (`LH-VM-004`) | M1–M6 done — M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
 | Pflichtenheft (`LH-VM-002`) | wächst mit den Slices | Slice-Pläne unter [`docs/plan/planning/done/`](docs/plan/planning/done/) |
 
 Alle fünf MVP-Pflicht-Prüfungen (`LH-AK-005..-009`) sind produktiv:
@@ -31,6 +32,21 @@ Installation, Operator-Rollout, Status-Reconcile und HTTP-Healthz/
 Readyz/Metrics-Endpoints werden bei jedem Push gegen einen
 realen kind-Cluster attestiert (siehe
 [`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
+
+**Neu in M6** (`LH-AK-013`): Der `/metrics`-Endpoint wird jetzt über
+ein dediziertes `Service`-Objekt exponiert und End-zu-End im
+Cluster-Smoke attestiert — ein Probe-Pod scraped via Service-DNS-FQDN,
+und die Response wird auf Prometheus-Format, controller-runtime-
+Baseline-Metriken und Sanity-Zeilenzahl geprüft. Cluster-Smoke führt
+zusätzlich vier failed-CR-Szenarien parallel zum passed-Sample aus
+und re-attestiert `LH-AK-005`/`-006`/`-007`/`-009` sowohl auf
+passed- als auch auf failed-Pfad. Der Operator unterstützt jetzt
+ein konfigurierbares `spec.interval` (Default `5m`, Bounds
+`[30s, 24h]`, AR-010-konforme Normalisierung). Anwender-Doku unter
+[`docs/user/`](docs/user/) deckt Installation, evaluation/production-
+CR-Beispiele, den Conditions-Katalog und ein Troubleshooting-Runbook
+ab. Architektur-Punkt `AR-OP-005` (Namespace-Override-Mechanik)
+ist in [`spec/architecture.md`](spec/architecture.md) geschlossen.
 
 ## Was der Operator tun soll
 
