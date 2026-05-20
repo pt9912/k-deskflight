@@ -12,7 +12,8 @@
 #
 # Quality-Gates (ADR 0012 §2.11):
 #   make gates           — Pflicht-Gates der Inner-Loop, PR-blockierend.
-#   make security-gates  — externe Gates (govulncheck; Image-Scan in M7).
+#   make security-gates  — externe Gates (govulncheck). Mit VER=X.Y.Z
+#                          zusätzlich Trivy image-scan (LH-QG-007).
 
 IMAGE := k-deskflight
 
@@ -165,7 +166,12 @@ govulncheck: ## Run govulncheck (function-based scanning).
 	    bash -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && \
 	             "$$(go env GOPATH)/bin/govulncheck" ./...'
 
-security-gates: govulncheck ## Externe Pflicht-Gates (Vuln-Scan; Image-Scan in M7).
+# security-gates bündelt die externen Pflicht-Gates (slice-M7 §2.4,
+# ADR 0012 §2.11). govulncheck läuft immer (Inner-Loop-Pfad bleibt
+# schnell); image-scan kommt nur dazu, wenn VER gesetzt ist, weil
+# Trivy einen gebauten GHCR-Tagged-Image-Pfad braucht. Mit VER ist
+# das Bündel der Release-Gate-Aufruf (`make security-gates VER=0.1.0`).
+security-gates: govulncheck $(if $(strip $(VER)),image-scan) ## govulncheck immer; mit VER=X.Y.Z zusätzlich Trivy image-scan.
 	@echo "[security-gates] passed"
 
 # ---- cluster-smoke ---------------------------------------------------------
