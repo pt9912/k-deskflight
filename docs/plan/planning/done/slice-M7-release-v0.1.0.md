@@ -903,10 +903,12 @@ Folge-Attest in §10.5 vorgesehen (analog M1 §10.5).
 
 | Item | Datum | Notiz |
 | ---- | ----- | ----- |
-| §7 #10 — Tag `v0.1.0` auf origin | TBD | wird nach `git tag -a v0.1.0` + `git push origin v0.1.0` (slice-§4 Step 15) attestiert. |
-| §7 #11 — `ghcr.io/pt9912/k-deskflight:v0.1.0` public-pullable | TBD | wird nach `make image-publish VER=0.1.0` + GHCR-Package-Public-Toggle (slice-§4 Step 16) attestiert. |
-| §10.1 — Branch Protection auf `main` | TBD | wird nach Maintainer-Setting auf <https://github.com/pt9912/k-deskflight/settings/branches> attestiert. |
-| §10.1 — Public-Switch exaktes Datum | TBD | aus dem GitHub-Audit-Log nachzutragen, falls minutengenaue Auflösung gewünscht ist. |
+| §7 #10 — Tag `v0.1.0` auf origin | 2026-05-20 | Annotated Tag `v0.1.0 → 6e53cc76eaf1773cfe75a5fda9c689193df1d339` auf `origin` gepushed; `git ls-remote --tags origin refs/tags/v0.1.0` bestätigt. Tag-Message führt den MVP-Funktionsumfang plus die Verweise auf `CHANGELOG.md` und `docs/user/installation.md`. |
+| §7 #11a — `ghcr.io/pt9912/k-deskflight:v0.1.0` gepushed | 2026-05-20 | `make image-publish VER=0.1.0` (`K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1`) hat den Image-Manifest `sha256:172619d23c643146972d4de9f76301b775c38b51c34e45625589982dce14d300` (Size 3023) nach GHCR gepushed. Großteil der Layers wurden via cross-package mount aus `pt9912/m-trace-api` deduplikatiert (distroless-Base ist geteilt). |
+| §7 #11b — GHCR-Package public-pullable | ⏳ Maintainer-Aktion offen | Package-Visibility ist nach dem ersten Push standardmäßig `private`. Toggle nur via Web-UI <https://github.com/users/pt9912/packages/container/k-deskflight/settings> (GitHub-API kennt für User-Container-Pakete keinen Visibility-PATCH-Endpoint; beide Versuche `PATCH /user/packages/container/...` lieferten `HTTP 404`). Anonyme `docker pull ghcr.io/pt9912/k-deskflight:v0.1.0` schlägt aktuell mit `unauthorized` fehl — wird nach dem Public-Toggle reproduziert. |
+| §10.1 — GitHub-Release v0.1.0 | 2026-05-20 | `gh release create v0.1.0 --title "v0.1.0 — MVP release" --notes-file <CHANGELOG-section>` publiziert auf <https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0>. Body ist die `## [0.1.0]`-Section aus `CHANGELOG.md` inklusive Header-Blockquote (mit `docker pull`-Snippet) und Reference-Link-Defs am Ende. |
+| §10.1 — Branch Protection auf `main` | ⏳ Maintainer-Aktion offen | Settings unter <https://github.com/pt9912/k-deskflight/settings/branches>; `DCO`-Status-Check-Name ist seit PR #1 im Picker registriert. Empfehlung: `DCO` + `gates` + `security-gates (govulncheck)` als required checks plus „Require a pull request before merging". Nicht v0.1.0-Tag-blockierend, daher nach dem Release durchführbar. |
+| §10.1 — Public-Switch exaktes Datum | ⏳ optional | Aus dem GitHub-Audit-Log nachzutragen, falls minutengenaue Auflösung gewünscht ist; Soft-Bound `≤ 2026-05-20T15:30Z` (User-Browser-Submit) reicht für `LH-AK-014`-Audit. |
 
 ### 10.6 Sammel-Closure: Roadmap nach `done/`
 
