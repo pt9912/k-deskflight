@@ -171,6 +171,19 @@ RUN CGO_ENABLED=0 go build \
 # ---- runtime ---------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
+# OCI image labels. The `source` label is what GitHub uses to auto-
+# link the GHCR package to this repository (Packages sidebar on the
+# repo home page). The first v0.1.0 image was pushed before this
+# label was added — for that release the repo↔package link must be
+# set manually via the Package-Settings web UI; v0.1.1+ inherits the
+# link automatically.
+LABEL org.opencontainers.image.source="https://github.com/pt9912/k-deskflight" \
+      org.opencontainers.image.description="OpenDesk Preflight Operator — Kubernetes-native pre-installation checks for OpenDesk deployments." \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.title="k-deskflight" \
+      org.opencontainers.image.vendor="pt9912" \
+      org.opencontainers.image.documentation="https://github.com/pt9912/k-deskflight/blob/main/docs/user/installation.md"
+
 COPY --from=build /out/operator /usr/local/bin/operator
 
 USER 65532:65532
