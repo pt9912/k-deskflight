@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Sub-section placeholders for the next release follow the same
+order as the [0.1.0] section below: Added, Changed, Deprecated,
+Removed, Fixed, Security. -->
+
 ## [0.1.0] - 2026-05-XX <!-- DATE_PLACEHOLDER -->
 
 > **MVP release** of the OpenDesk Preflight Operator
