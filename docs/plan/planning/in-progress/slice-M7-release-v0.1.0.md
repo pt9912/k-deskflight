@@ -428,7 +428,7 @@ Neu im Repository:
 | `deploy/manifests/deployment.yaml` (Update) | Container-`args`: `--leader-elect=true`. `env`: `POD_NAMESPACE` per Downward-API. | bestehend |
 | `spec/lastenheft.md` (Update) | `LH-PROD-003a` und `LH-PROD-003b`-Beispiele auf aktuelle CRD-Feldnamen angleichen (§2.9). Versionsmarker im Header. | bestehend |
 | `docs/user/cr-examples.md` (Update) | Inline-Beispiele auf `deploy/samples/<file>.yaml`-Verlinkungen umstellen. | bestehend |
-| `docs/user/installation.md` (Update) | §6-Erweiterung: Default-Sample applizieren (`kubectl apply -f deploy/samples/cluster-readiness-production.yaml`). | bestehend |
+| `docs/user/installation.md` (Update) | Neuer §6 „Beispiel-CR applizieren" (Default-Sample applizieren, `kubectl apply -f deploy/samples/cluster-readiness-production.yaml` + Status-Pfad). Bisheriges §6 wandert auf §7 („Wiederherstellung und Update"), §7 auf §8 („Weiterführend"); `troubleshooting.md`-Anker auf §2/§4/§5 bleiben stabil. | bestehend |
 
 **Keine Anpassung** in dieser Slice: `README.md`/`README.de.md`,
 `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `LICENSE`
