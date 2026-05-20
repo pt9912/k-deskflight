@@ -386,7 +386,39 @@ if ! kubectl --context "${KIND_CONTEXT}" get clusterrole k-deskflight-metrics-sc
 fi
 log "  ClusterRole rule structurally valid (nonResourceURLs=[/metrics], verbs=[get])"
 
-log "PASSED — passed-CR (smoke): phase=${phase}, ${condition_type}=${condition_status}; failed-CRs: 4×Phase=Failed with expected reason; HTTP probes OK, Service-DNS OK, ClusterRole structurally valid"
+# Step 9d — Lease-Existenz-Check (AR-026, slice-M7 §2.8).
+# Attestiert, dass die in M7 scharfgeschaltete Leader-Election im echten
+# Cluster funktioniert: das `coordination.k8s.io/leases`-Objekt
+# `k-deskflight-operator` wurde vom Operator-Pod erstellt und trägt
+# einen nicht-leeren `holderIdentity` (Pod-Name + Renew-UUID).
+#
+# Retry-Schleife (bis zu 30s in 5s-Schritten) gegen den AR-026-Risiko-
+# pfad „Lease-Race beim ersten Reconcile" (siehe slice-M7 §9): der
+# Operator-Pod ist via `kubectl wait --for=condition=Available`
+# (Step 5) bereits up, aber die Lease-Erst-Acquisition kann ein paar
+# Sekunden brauchen, weil `LeaderElectionReleaseOnCancel=true` (siehe
+# cmd/operator/main.go) das Lease im Worst-Case-Vorgänger-Zyklus erst
+# nach Manager-Start aufnimmt.
+log "Step 9d: Lease-Existenz-Check für Leader-Election (AR-026)"
+lease_holder=""
+for attempt in 1 2 3 4 5 6; do
+    lease_holder="$(kubectl --context "${KIND_CONTEXT}" -n k-deskflight-system \
+        get leases.coordination.k8s.io k-deskflight-operator \
+        -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)"
+    if [[ -n "${lease_holder}" ]]; then
+        break
+    fi
+    sleep 5
+done
+if [[ -z "${lease_holder}" ]]; then
+    log "FAIL Step 9d: lease k-deskflight-operator missing or holderIdentity empty after 30s"
+    kubectl --context "${KIND_CONTEXT}" -n k-deskflight-system get leases.coordination.k8s.io >&2 || true
+    kubectl --context "${KIND_CONTEXT}" -n k-deskflight-system describe lease k-deskflight-operator >&2 || true
+    exit 1
+fi
+log "  Lease k-deskflight-operator vorhanden, holderIdentity=${lease_holder}"
+
+log "PASSED — passed-CR (smoke): phase=${phase}, ${condition_type}=${condition_status}; failed-CRs: 4×Phase=Failed with expected reason; HTTP probes OK, Service-DNS OK, ClusterRole structurally valid, Lease scharf"
 
 # Attest-Artefakt: Status-Dump unter /src/.cluster-smoke-attest.yaml
 # (Workspace-Mount); CI-Workflow `cluster-smoke.yml` lädt das als

@@ -1,8 +1,8 @@
 ---
-# Operator-Deployment. M2 stellt das Skelett bereit; M5/M6 ziehen
-# Leader-Election (AR-026) und Health-/Metrics-Probes (AR-024) nach.
-# Image-Pin wird beim Apply via Kustomize-Edit oder Helm-Wert gesetzt;
-# der hier eingetragene `:dev`-Tag ist ein lokaler Platzhalter.
+# Operator-Deployment. M2 stellt das Skelett bereit; M6 hat Health-/
+# Metrics-Probes (AR-024) gezogen; M7 schaltet Leader-Election (AR-026)
+# scharf. Image-Pin wird beim Apply via Kustomize-Edit oder Helm-Wert
+# gesetzt; der hier eingetragene `:dev`-Tag ist ein lokaler Platzhalter.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,6 +36,24 @@ spec:
         - name: operator
           image: ghcr.io/pt9912/k-deskflight:dev
           imagePullPolicy: IfNotPresent
+          # AR-026: Produktions-Modus mit Leader-Election; bei einer
+          # späteren Deployment.spec.replicas > 1 elected die
+          # controller-runtime-Manager-Schleife einen einzelnen Leader
+          # über ein coordination.k8s.io/lease, das nach
+          # --leader-election-id benannt ist. MVP behält replicas: 1,
+          # aber das Flag-Wiring ist scharf — eine Hebung auf >1 ist
+          # ohne weitere Code-Änderung möglich (HA-Folge-ADR ist v0.2).
+          args:
+            - --leader-elect=true
+          env:
+            # Downward-API liefert den Operator-Namespace an
+            # cmd/operator/main.go als POD_NAMESPACE; das wird zum
+            # Default für --leader-election-namespace, falls kein Flag
+            # gesetzt ist (AR-026, slice-M7 §2.8).
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
