@@ -111,7 +111,7 @@ unter `deploy/samples/` (nicht `config/samples/` — das ist die
 | Datei | Profil | Zweck |
 | ----- | ------ | ----- |
 | `deploy/samples/cluster-readiness-production.yaml` | `production` | Default-Vorlage für Anwender, deckt alle fünf MVP-Checks ab (`LH-PROD-003a`-Pattern, mit aktuellen CRD-Feldnamen). |
-| `deploy/samples/cluster-readiness-evaluation.yaml` | `evaluation` | Lower-Profile-Vorlage mit reduzierten Schwellen — Anwender kann ohne Cluster-Aufbau eine erste passed-Run-Validierung machen. |
+| `deploy/samples/cluster-readiness-evaluation.yaml` | `evaluation` | Lower-Profile-Vorlage mit reduzierten Schwellen — Anwender kann ohne Cluster-Aufbau eine erste Pass-Run-Validierung machen. |
 
 **Verhältnis zu existierenden Sample-Dateien:**
 
@@ -182,7 +182,8 @@ appliziert (Doku-Pfad in `installation.md` §6).
   greift unverändert (Commit `dc4a14d`, M6 Round-2 §4 Befund 6).
   Quellen-Anker in der Entry.
 
-**Pflicht-Inhalte der ersten `## [0.1.0] - 2026-05-XX`-Section:**
+**Pflicht-Inhalte der ersten `## [0.1.0] - <RELEASE_DATE>`-Section:**  
+(`RELEASE_DATE` wird beim Tag-Commit ersetzt.)
 
 - **Added** — kompletter MVP-Funktionsumfang (CRD, Reconciler,
   fünf Checks, RBAC-Selbstprüfung, `/metrics`-Service,
@@ -469,13 +470,12 @@ nach K-1-Konvention (siehe `planning/in-progress/README.md`).
    adaptieren. `make release-guard-test` lokal grün.
    `feat(release):`-Commit.
 9. **`CHANGELOG.md`** anlegen: `## [Unreleased]` plus erste
-   `## [0.1.0] - 2026-05-XX`-Section (Datum wird mit Tag-Commit
-   final). Pflicht-Inhalte aus §2.2 + slice-Liste M1–M7.
+   `## [0.1.0] - <RELEASE_DATE>`-Section (`RELEASE_DATE` wird mit Tag-Commit
+   final gesetzt). Pflicht-Inhalte aus §2.2 + slice-Liste M1–M7.
    `docs(changelog):`-Commit. K-1-Doku-Review verpflichtend.
 10. **DCO-Bot-Aktivierung** (operativ, kein Commit) + Closure-
     Notiz in `cms`-Section: probot/dco aktiviert per Datum
-    `2026-05-XX`, alle Commits seit ADR-0011-Acceptance
-    (`abc1234`) attestiert.
+    und Commit-Range seit ADR-0011-Acceptance attestiert.
 11. **GitHub-Repository public-stellen** (operativ) — schließt
     `LH-AK-014` final (GHSA-Pfad aktiv). Closure-Notiz mit Datum.
 12. **Roadmap M7 auf Done ziehen** (`docs(plan)`-Commit):
