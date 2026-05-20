@@ -65,6 +65,12 @@ Beschreibung, Commit-/Slice-Referenz.
 
 ## 5. Status
 
-Offen. Wandert nach `next/`, sobald die erste Roadmap unter
-`in-progress/` steht. Bis dahin sind Commit-Log und ADRs ausreichende
-Auditspuren.
+**Entschieden in M7** (2026-05-20). Format/Sprache/Pflege sind in
+[`slice-M7-release-v0.1.0.md §2.2`](../in-progress/slice-M7-release-v0.1.0.md)
+verankert: **Keep-a-Changelog 1.1.0, Englisch, manuelle Pflege pro
+Release-Tag, keine eigene ADR**. Die `CHANGELOG.md` entsteht mit
+dem M7-Slice (Reihenfolge-Schritt 9, siehe Slice-Plan §4); dieser
+Trigger wandert mit dem M7-Closure-Move nach `planning/done/`.
+
+Die Pflicht-Erstaufnahmen aus §4 (`Interval`-Bruch) bleiben
+verbindlich für die erste `[0.1.0]`-Section.

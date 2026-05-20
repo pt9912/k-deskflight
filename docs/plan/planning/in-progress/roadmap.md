@@ -64,7 +64,7 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
 | M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Done (Closure: [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md)) |
 | M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Done (Closure: [`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md)) |
 | M6 | Metrics-Endpoint, Tests, Doku | M5 | Done (Closure: [`done/slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md)) |
-| M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | Pending |
+| M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | In Progress (Plan: [`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md), eröffnet 2026-05-20) |
 
 Abhängigkeitsgraph: `M1 → M2 → {M3, M4} → M5 → M6 → M7`.
 
@@ -480,11 +480,12 @@ Sammel-Closure-Notiz nach `done/`.
 ## 7. Status
 
 In Progress. M1, M2 und M3 geschlossen am 2026-05-17; M4 und M5
-geschlossen am 2026-05-18; **M6 geschlossen am 2026-05-19**
+geschlossen am 2026-05-18; M6 geschlossen am 2026-05-19
 ([`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md),
 [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md),
 [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md),
 [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md),
 [`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md),
 [`done/slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md));
-M7 als letzter Slice vor `v0.1.0`-Tag weiterhin Pending.
+**M7 eröffnet am 2026-05-20** als letzter Slice vor `v0.1.0`-Tag
+([`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md)).

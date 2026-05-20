@@ -135,14 +135,20 @@ unter `deploy/samples/` (nicht `config/samples/` — das ist die
   Defaults pro Profile).
 - Production: `kubernetesVersion.min: "1.34"` (ADR-0009-Default
   production), `storageClass.names: [default, backup]`,
-  `ingressClass.names: [nginx]`, `certManager: {}`,
-  `clusterResources.minCPU: "16"`, `minMemory: "64Gi"`,
-  `interval: "5m"`.
+  `requireDefault: true`, `ingressClass.names: [nginx]`,
+  `certManager: {}`, `clusterResources.minCPU: "16"`,
+  `minMemory: "64Gi"`, `interval: "5m"`.
 - Evaluation: `kubernetesVersion.min: "1.33"`
   (ADR-0009-Default evaluation), `storageClass.names: [standard]`,
-  `requireDefault: false`, `ingressClass.names: [nginx]`,
-  `certManager: {}`, `clusterResources.minCPU: "2"`,
-  `minMemory: "4Gi"`, `interval: "5m"`.
+  `requireDefault: false` (Default-Annotation in
+  Eval-Clustern oft nicht gepflegt), **kein `ingressClass`-Sub-
+  Spec** (Sub-Spec optional → Check inaktiv; Eval-Cluster haben
+  oft keinen Ingress installiert), `certManager: {}`,
+  `clusterResources.minCPU: "2"`, `minMemory: "4Gi"`,
+  `interval: "5m"`. Damit unterscheidet sich Eval von Production
+  in drei semantischen Dimensionen — niedrigere Schwellen,
+  weicherer StorageClass-Default-Anspruch und reduziertes
+  Check-Set.
 
 **Kustomize-Integration:** Samples werden **nicht** in
 `deploy/manifests/kustomization.yaml` referenziert — sie sind
@@ -190,7 +196,11 @@ appliziert (Doku-Pfad in `installation.md` §6).
   Anwender-Doku). Pro Bullet ein Slice-Anker.
 - **Changed** — der `Interval`-Bruch (siehe oben). Sonst keine,
   da dies das Erst-Release ist.
-- **Security** — leer (Erst-Release ohne CVE-Historie).
+- **Security** — leer, **falls** der Trivy-Erst-Run keine
+  ungeklärten `MEDIUM`-Funde liefert. Andernfalls: pro Eintrag
+  ein Bullet mit CVE-ID, Komponente, `expires`-Datum aus
+  `.security/.trivyignore`, und Empfehlung (Base-Image-Bump oder
+  Workaround). Konsistent zum Risikopfad in §9.
 
 **Datei-Layout:** `CHANGELOG.md` im Repository-Root,
 `scripts/verify-doc-refs.sh`-Geltungsbereich erweitern (das Skript
@@ -418,10 +428,14 @@ Neu im Repository:
 
 **Keine Anpassung** in dieser Slice: `README.md`/`README.de.md`,
 `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `LICENSE`
-(`LH-AK-014`-Pflicht ist seit M1 erfüllt). Das M7-Closure-Datum
-trägt einen impliziten README-Stand-Marker — sollten Folge-
-Reviewer-Findings README-Edits erzwingen, sind sie additive Commits
-in derselben Slice-Aktivität.
+— das Datei-Set `LH-AK-014` (MIT-Lizenz, README, grundlegende
+Beitragsinformationen) ist seit M1 erfüllt. M7 schließt
+`LH-AK-014` **operativ final** (Repository public stellen,
+GHSA-Pfad scharf, CHANGELOG-Auslieferung) ohne Edit dieser
+Top-Level-Dateien. Das M7-Closure-Datum trägt einen impliziten
+README-Stand-Marker — sollten Folge-Reviewer-Findings README-
+Edits erzwingen, sind sie additive Commits in derselben Slice-
+Aktivität.
 
 ---
 
@@ -558,9 +572,14 @@ nach K-1-Konvention (siehe `planning/in-progress/README.md`).
   das Multi-Class-Pattern für `storageClass.names`/`ingressClass.
   names` umgesetzt. Keine M7-Pflicht.
 - `AR-027` (Health-/Metrics-Probe-Topologie mit Leader-Filter) —
-  Readiness-Leader-Filter ist M7-Pflicht zusammen mit
-  Leader-Election; falls Implementierungs-Scope wachsen sollte,
-  Übergabe an v0.2 mit `AR-027`-Folge-ADR (M7-Closure entscheidet).
+  **v0.2-Übergabe**. Der Leader-basierte Readiness-Filter ist
+  konzeptuell in `AR-026` mitverankert (Standardmäßig
+  `isLeader()`-basierte Readiness), aber die explizite
+  controller-runtime-Probe-Topologie mit Leader-Filter braucht
+  eine eigene `AR-027`-Folge-ADR. M7 liefert nur die
+  Manager-Default-Readiness (controller-runtime baut die
+  Leader-Election-Probe selbst auf); explizite Topologie-
+  Probe-Konfiguration ist v0.2-Trigger. Konsistent zu §8.
 
 ---
 
