@@ -133,22 +133,26 @@ unter `deploy/samples/` (nicht `config/samples/` — das ist die
 - Header-Kommentare verlinken auf `docs/user/cr-examples.md`,
   `docs/user/conditions.md` und auf `ADR 0009` (Kubernetes-Min-Version-
   Defaults pro Profile).
-- Production: `kubernetesVersion.min: "1.34"` (ADR-0009-Default
-  production), `storageClass.names: [default, backup]`,
+- Production: `kubernetesVersion.min: "1.34"`
+  (Operator-Floor, `ADR 0009 §2.2`),
+  `storageClass.names: [default, backup]`,
   `requireDefault: true`, `ingressClass.names: [nginx]`,
   `certManager: {}`, `clusterResources.minCPU: "16"`,
   `minMemory: "64Gi"`, `interval: "5m"`.
-- Evaluation: `kubernetesVersion.min: "1.33"`
-  (ADR-0009-Default evaluation), `storageClass.names: [standard]`,
-  `requireDefault: false` (Default-Annotation in
-  Eval-Clustern oft nicht gepflegt), **kein `ingressClass`-Sub-
-  Spec** (Sub-Spec optional → Check inaktiv; Eval-Cluster haben
-  oft keinen Ingress installiert), `certManager: {}`,
-  `clusterResources.minCPU: "2"`, `minMemory: "4Gi"`,
-  `interval: "5m"`. Damit unterscheidet sich Eval von Production
-  in drei semantischen Dimensionen — niedrigere Schwellen,
-  weicherer StorageClass-Default-Anspruch und reduziertes
-  Check-Set.
+- Evaluation: `kubernetesVersion.min: "1.34"` (identisch zum
+  Production-Default — `ADR 0009 §2.2` legt für beide Profile
+  den Operator-Floor fest; Profile-Differenzierung erfolgt
+  bewusst **nicht** über die K8s-Version, sondern über
+  Ressourcen, Storage und Check-Set),
+  `storageClass.names: [standard]`, `requireDefault: false`
+  (Default-Annotation in Eval-Clustern oft nicht gepflegt),
+  **kein `ingressClass`-Sub-Spec** (Sub-Spec optional → Check
+  inaktiv; Eval-Cluster haben oft keinen Ingress installiert),
+  `certManager: {}`, `clusterResources.minCPU: "2"`,
+  `minMemory: "4Gi"`, `interval: "5m"`. Damit unterscheidet
+  sich Eval von Production in drei semantischen Dimensionen —
+  niedrigere Ressourcen-Schwellen, weicherer StorageClass-
+  Default-Anspruch und reduziertes Check-Set.
 
 **Kustomize-Integration:** Samples werden **nicht** in
 `deploy/manifests/kustomization.yaml` referenziert — sie sind
@@ -449,12 +453,13 @@ nach K-1-Konvention (siehe `planning/in-progress/README.md`).
    `make doc-refs` grün. Kein Code-Review nötig (reine
    Doku-Sync), aber `code-reviewer`-Subagent-Run analog K-1.
 2. **Beispielmanifeste** `deploy/samples/*.yaml` (zwei Dateien)
-   anlegen. `docs(samples):`-Commit. Smoke-Apply gegen den
-   `cluster-smoke`-Cluster: `kubectl apply -f deploy/samples/
-   cluster-readiness-production.yaml`, danach
-   `kubectl wait --for=condition=KubernetesVersionReady=true
-   opendeskpreflightcheck/cluster-readiness-production --timeout=60s`.
-   Sample-Apply via Mini-Smoke-Pfad attestieren (siehe §7 #2).
+   anlegen. `docs(samples):`-Commit. Schema-Validation gegen
+   einen lebenden Cluster mit installierter CRD via
+   `kubectl apply --dry-run=server -f deploy/samples/cluster-
+   readiness-production.yaml` und `… cluster-readiness-
+   evaluation.yaml` — Erwartung: beide passieren das CRD-
+   Schema. Funktional-Smoke gegen `config/samples/`-CR bleibt
+   beim Cluster-Smoke-Lauf (siehe §7 #2 + #2a).
 3. **`docs/user/cr-examples.md`** und **`installation.md`**
    Updates: Verlinkungen auf neue Sample-Dateien. K-1-Doku-
    Review verpflichtend.
@@ -589,10 +594,25 @@ nach K-1-Konvention (siehe `planning/in-progress/README.md`).
 
 1. `make image-build VER=0.1.0` produziert
    `ghcr.io/pt9912/k-deskflight:v0.1.0` (lokal, ohne Push).
-2. `kubectl apply -f deploy/samples/cluster-readiness-
-   production.yaml` gegen den `cluster-smoke`-Cluster
-   transitioniert die CR in `status.phase: Passed` mit fünf
-   Conditions `True` (Re-Attest `LH-AK-001..-009/-011`).
+2. **Schema-Apply** (`deploy/samples/`-Vorlagen): beide
+   Anwender-Samples bestehen die CRD-Schema-Validation gegen
+   einen lebenden Cluster mit installierter CRD (Standard-
+   Verifikation via `kubectl apply --dry-run=server -f
+   deploy/samples/cluster-readiness-production.yaml` und
+   `… cluster-readiness-evaluation.yaml`). Diese Samples sind
+   anwendungsorientiert für echte Produktions-/Evaluations-
+   Cluster; auf dem bare-kind-Smoke-Cluster sind sie **bewusst
+   Mixed/Failed** (z. B. fordert das Production-Sample
+   `storageClass: [default, backup]` und 16 CPU / 64 Gi —
+   Werte, die der Smoke-Cluster nicht erfüllt).
+2a. **Funktional-Passed-Smoke** läuft weiterhin gegen
+   `config/samples/k-deskflight_v1alpha1_opendeskpreflightcheck.
+   yaml` (smoke-tauglicher CR aus M2-Closure, gegen
+   `hack/cluster-smoke/cluster-state-stubs.yaml` abgestimmt
+   und beim Cluster-Smoke automatisch appliziert):
+   `make cluster-smoke` transitioniert diese CR in
+   `status.phase: Passed` mit fünf Conditions `True`
+   (Re-Attest `LH-AK-001..-009/-011`).
 3. `make image-publish-dry-run VER=0.1.0` ohne Approval-
    Variable schlägt mit Exit 2 fehl; mit
    `K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1` läuft `would push`
@@ -625,8 +645,10 @@ nach K-1-Konvention (siehe `planning/in-progress/README.md`).
 **Slice-übergreifende Re-Attests** (bewusst, weil M7 die Sammel-
 Closure ist):
 
-- `LH-AK-001..-009` — via `deploy/samples/`-Apply gegen Cluster-
-  Smoke (Schritt 2).
+- `LH-AK-001..-009` — `deploy/samples/`-Vorlagen via `kubectl
+  apply --dry-run=server` schema-validiert (§7 #2);
+  Funktional-Passed-Re-Attest läuft über den `config/samples/`-
+  Smoke-CR im Cluster-Smoke (§7 #2a + #8).
 - `LH-AK-010` — robust gegen Per-Check-Fehler, durch M5-Tests
   bereits attestiert; M7 verifiziert via `make test` grün.
 - `LH-AK-011` — Conditions vorhanden, M3-Re-Attest.
