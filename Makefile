@@ -52,7 +52,7 @@ TRIVY_IMAGE ?= aquasec/trivy:0.59.1
         manifests generated-drift-check govulncheck image-build run gates \
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
         operator-http-smoke image-publish-dry-run image-publish-guard \
-        image-publish image-scan clean
+        image-publish image-scan release-guard release-guard-test clean
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -274,6 +274,24 @@ image-publish: image-publish-guard ## Push the GHCR-tagged image. Requires VER a
 
 run: build ## Run the runtime image in the foreground.
 	docker run --rm --name $(IMAGE)-smoke $(IMAGE):go
+
+# release-guard ist die Pre-Release-Konsistenzprüfung (slice-M7 §2.5,
+# ADR 0011 §2.5). Erforderlich: VER=X.Y.Z (ohne v-Prefix) und
+# K_DESKFLIGHT_RELEASE_APPROVED=1. Das Skript validiert nur — die
+# tatsächliche Tag-Erzeugung (`git tag -a vX.Y.Z`) ist ein separater
+# Schritt (slice-M7 §4 step 15).
+#
+# Anders als das m-trace-Pendant ohne fest verdrahtetes DRY_RUN: der
+# Guard hat ohnehin keine Side-Effects (kein Tag, kein Push, kein
+# File-Edit), der DRY_RUN-Switch wechselt nur das Erfolgs-Label.
+release-guard: ## Pre-release consistency guard. Requires VER and K_DESKFLIGHT_RELEASE_APPROVED=1.
+	@test -n "$(strip $(VER))" || { echo "release-guard: VER=X.Y.Z is required (e.g. make release-guard VER=0.1.0)" >&2; exit 2; }
+	bash scripts/release-guard.sh $(VER)
+
+# release-guard-test exerciert die Failure-Paths des Guards gegen
+# synthetische Fixtures unter /tmp. Nicht im CI (m-trace-Konvention).
+release-guard-test: ## Local failure-path tests for release-guard.sh (not run in CI).
+	bash scripts/test-release-guard.sh
 
 clean: ## Remove all skeleton-related images.
 	-docker rmi $(IMAGE):go $(IMAGE):go-test $(IMAGE):go-lint \
