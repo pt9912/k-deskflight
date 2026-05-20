@@ -6,7 +6,7 @@
 **Vorgänger:** [M6 — Metrics-Endpoint, Tests, Doku (Done)](../done/slice-M6-metrics-tests-doku.md)
 **Nachfolger:** v0.2-Roadmap (entsteht mit M7-Closure als Sammel-Notiz; M7 ist der letzte MVP-Slice)
 **Bezug:**
-[Roadmap §3 M7](../../roadmap.md#m7--beispielmanifest-release-tag-v010),
+[Roadmap §3 M7](roadmap.md#m7--beispielmanifest-release-tag-v010),
 [`spec/architecture.md` §8 (AR-019, AR-020, AR-021), §AR-022, §AR-026](../../../../spec/architecture.md),
 [ADR 0005](../../adr/0005-helm-chart-nicht-im-mvp.md),
 [ADR 0009](../../adr/0009-k8s-versions-support-und-profile-mindestversionen.md),
