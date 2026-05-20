@@ -191,7 +191,70 @@ nur aus dem Monitoring-Namespace erlaubt.
 
 ---
 
-## 6. Wiederherstellung und Update
+## 6. Beispiel-CR applizieren
+
+Mit installiertem Operator legst du eine `OpenDeskPreflightCheck`-CR
+an, die der Operator picked up und reconciled. Zwei vorgefertigte
+Vorlagen sind unter [`deploy/samples/`](../../deploy/samples/)
+ausgeliefert:
+
+- [`cluster-readiness-production.yaml`](../../deploy/samples/cluster-readiness-production.yaml)
+  — Profil `production`, alle fünf MVP-Checks aktiv. Schwellen: 16 CPU / 64 Gi
+  Ressourcen, `default`+`backup` StorageClass mit Default-Anforderung,
+  `nginx` IngressClass, cert-manager-Vorhandensein.
+- [`cluster-readiness-evaluation.yaml`](../../deploy/samples/cluster-readiness-evaluation.yaml)
+  — Profil `evaluation`, vier Checks (kein `ingressClass`-Sub-Spec).
+  Schwellen: 2 CPU / 4 Gi, `standard` StorageClass ohne Default-Anforderung.
+
+**Beide Vorlagen sind anwendungsorientiert** — die Schwellen sind
+gegen reale Cluster konfiguriert. Auf einem Test-Cluster (kind, k3d
+mit Default-Profil, etc.) liefert besonders die Production-Vorlage
+oft `Failed`-Conditions; das ist beabsichtigt und kein Defekt der
+Vorlage. Für lokale Test-Apply-Pfade siehe
+[cr-examples.md](cr-examples.md), das pädagogische CR-Beispiele mit
+schmaleren Anforderungen führt.
+
+Apply der Production-Vorlage:
+
+```bash
+kubectl apply -f deploy/samples/cluster-readiness-production.yaml
+```
+
+Status verfolgen:
+
+```bash
+kubectl get opendeskpreflightcheck cluster-readiness-production -o yaml
+```
+
+Auf eine terminale Phase warten (`Passed` / `Failed` / `Warning` /
+`Unknown`). Auf einem Cluster, der die Production-Schwellen erfüllt,
+fängt `kubectl wait` das `Passed` ab; auf einem Test-Cluster läuft
+es ins Timeout und der Fallback zeigt die tatsächliche Phase samt
+Summary an:
+
+```bash
+kubectl wait --for=jsonpath='{.status.phase}'=Passed \
+    opendeskpreflightcheck/cluster-readiness-production --timeout=120s \
+  || kubectl get opendeskpreflightcheck cluster-readiness-production \
+       -o jsonpath='{"phase="}{.status.phase}{" summary="}{.status.summary}{"\n"}'
+```
+
+(`kubectl wait --for=jsonpath=` matched String-gleich, kann also
+`Failed`/`Warning`/`Unknown` nicht direkt mitnehmen — daher der
+`||`-Fallback.)
+
+Anwender, die ohne Repo-Checkout arbeiten, applizieren die Vorlage
+direkt aus der Repo-URL — z. B. via
+`kubectl apply -f https://raw.githubusercontent.com/pt9912/k-deskflight/v0.1.0/deploy/samples/cluster-readiness-production.yaml`.
+**Vor Tag-Setzung liefert diese URL 404**; ab dem `v0.1.0`-Tag
+(Slice-M7-Closure) ist sie stabil pinned und stabil scrapebar.
+
+Für CR-Lebenszyklus-Operationen (Re-Run, Edit, Delete) siehe
+[§7 Wiederherstellung und Update](#7-wiederherstellung-und-update).
+
+---
+
+## 7. Wiederherstellung und Update
 
 - **CR-Edit:** Änderungen am `spec`-Block einer
   `OpenDeskPreflightCheck`-CR bumpen `metadata.generation` und lösen
@@ -228,7 +291,7 @@ nur aus dem Monitoring-Namespace erlaubt.
 
 ---
 
-## 7. Weiterführend
+## 8. Weiterführend
 
 - [`cr-examples.md`](cr-examples.md) — zwei CR-Beispiele
   (`evaluation` + `production`) mit Profile-Default-Erklärung.

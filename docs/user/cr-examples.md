@@ -45,6 +45,14 @@ versucht). Hintergrund in
 Geeignet für Test-/Demo-Cluster (1-3 Nodes, einzelne
 Storage-Klasse, keine Hochlast-Erwartung).
 
+> **Direkt-Apply-Variante:**
+> [`deploy/samples/cluster-readiness-evaluation.yaml`](../../deploy/samples/cluster-readiness-evaluation.yaml)
+> liefert eine ready-to-apply-Datei mit reduziertem Check-Set (kein
+> `ingressClass`) und Schwellen 2 CPU / 4 Gi. Das pädagogische
+> Inline-Beispiel unten zeigt zusätzlich den Profile-Default-Override-
+> Mechanismus (`clusterResources` weggelassen → Default greift) und
+> einen abweichenden `interval`-Wert.
+
 ```yaml
 apiVersion: k-deskflight.geo-terrain.net/v1alpha1
 kind: OpenDeskPreflightCheck
@@ -88,6 +96,14 @@ spec:
 
 Geeignet für produktive Cluster mit hochverfügbarem Storage, Ingress
 und cert-manager.
+
+> **Direkt-Apply-Variante:**
+> [`deploy/samples/cluster-readiness-production.yaml`](../../deploy/samples/cluster-readiness-production.yaml)
+> liefert eine ready-to-apply-Datei mit allen fünf MVP-Checks und
+> Schwellen 16 CPU / 64 Gi sowie `storageClass.names: [default, backup]`
+> mit `requireDefault: true`. Das pädagogische Inline-Beispiel unten
+> zeigt zusätzlich das Profile-Default-Greifen für `clusterResources`
+> (Felder weggelassen) und einen Block-Kommentar-Override-Pfad.
 
 ```yaml
 apiVersion: k-deskflight.geo-terrain.net/v1alpha1
@@ -146,6 +162,14 @@ spec:
 
 ## 4. Was sich zwischen den Beispielen unterscheidet
 
+Der folgende Vergleich bezieht sich auf die **pädagogischen
+Inline-Beispiele** aus §2 (`eval`) und §3 (`prod`). Die
+ready-to-apply-Varianten unter `deploy/samples/` haben eigene,
+schärfere Schwellen — siehe die Header-Kommentare in
+[`cluster-readiness-evaluation.yaml`](../../deploy/samples/cluster-readiness-evaluation.yaml)
+und
+[`cluster-readiness-production.yaml`](../../deploy/samples/cluster-readiness-production.yaml).
+
 | Aspekt | `eval` (§2) | `prod` (§3) |
 | ------ | ----------- | ----------- |
 | `spec.profile` | `evaluation` | `production` |
@@ -194,11 +218,15 @@ sie ist CR-Spec-Scope, kein Check-Result.
 ## 6. Weiterführend
 
 - [`installation.md`](installation.md) — Operator-Setup und
-  Namespace-/Image-Override.
-- `conditions.md` *(folgt mit M6 §4 Step 5)* — Reason-Codes pro
-  Condition + Anwender-Action.
-- `troubleshooting.md` *(folgt mit M6 §4 Step 6)* — typische
-  Fehlerbilder.
+  Namespace-/Image-Override; §6 zeigt den Apply-Pfad für die
+  ausgelieferten Sample-CRs.
+- [`conditions.md`](conditions.md) — Reason-Codes pro Condition +
+  Anwender-Action.
+- [`troubleshooting.md`](troubleshooting.md) — typische Fehlerbilder.
+- [`deploy/samples/cluster-readiness-production.yaml`](../../deploy/samples/cluster-readiness-production.yaml)
+  und
+  [`deploy/samples/cluster-readiness-evaluation.yaml`](../../deploy/samples/cluster-readiness-evaluation.yaml)
+  — direkt applizierbare CR-Vorlagen für reale Cluster.
 - [Lastenheft `LH-F-025`](../../spec/lastenheft.md) — Wiederholintervall.
 - [Lastenheft `LH-PROF-002`/`-003`](../../spec/lastenheft.md) —
   Profile-Definitionen.
