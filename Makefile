@@ -43,11 +43,15 @@ NO_CACHE_FILTER_COVERAGE := --no-cache-filter coverage
 # keine ADR; Begründung gehört in den Commit-Body.
 GOVULNCHECK_VERSION ?= v1.1.4
 
+# Trivy-Pin (ADR 0012 §2.9, slice-M7 §2.4). m-trace-Match. Pin-Hebung
+# Routine ohne ADR.
+TRIVY_IMAGE ?= aquasec/trivy:0.59.1
+
 .PHONY: help build compile deps tools lint test coverage coverage-gate doc-refs \
         manifests generated-drift-check govulncheck image-build run gates \
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
         operator-http-smoke image-publish-dry-run image-publish-guard \
-        image-publish clean
+        image-publish image-scan clean
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -241,6 +245,16 @@ image-publish-dry-run: ## Build the GHCR-tagged image and announce the push targ
 # Exit 2 fehl — kein versehentlicher GHCR-Push.
 image-publish-guard:
 	@test "$(K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED)" = "1" || { echo "Refusing to publish images without K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1" >&2; exit 2; }
+
+# image-scan scannt das GHCR-tagged Image mit Trivy (slice-M7 §2.4,
+# ADR 0012 §2.9). Die Recipe ist intentionell schlank — die Trivy-
+# Logik (Two-Pass CRITICAL/HIGH + MEDIUM, Vulnignore-Render,
+# Docker-Socket-Mount-Pattern) lebt in scripts/image-scan.sh und ist
+# damit unabhängig vom Make-Wrapper testbar/aufrufbar.
+# IMAGE_REPO + TRIVY_IMAGE werden via Env in die Skript-Schicht
+# durchgereicht; ohne sie greifen die Skript-Defaults.
+image-scan: ## Trivy-Scan des GHCR-tagged Image. Requires VER. CRITICAL/HIGH break; MEDIUM reported.
+	IMAGE_REPO=$(IMAGE_REPO) TRIVY_IMAGE=$(TRIVY_IMAGE) bash scripts/image-scan.sh $(VER)
 
 # image-publish pushed das GHCR-tagged Image. Pflicht: VER=X.Y.Z und
 # K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1. Ein Push ohne Approval ist

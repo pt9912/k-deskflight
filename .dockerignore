@@ -7,3 +7,9 @@
 *.md
 docs/
 spec/
+
+# Trivy-Cache + generierte Vulnignore (slice-M7 §2.4). Die Files
+# können root-owned sein (Trivy läuft als root im Container) und
+# blockierten sonst den Docker-Build-Kontext-Send mit
+# "permission denied".
+.security/
