@@ -6,7 +6,7 @@
 **Fachliche Produktbeschreibung:** OpenDesk Preflight Operator  
 **Artefakt:** Lastenheft  
 **Zielbild:** Kubernetes-native Vorabprüfung für OpenDesk-Bereitstellungen  
-**Version:** 0.1.0  
+**Version:** 0.1.1  
 **Status:** Entwurf  
 **Autor:** Dietmar Burkard  
 **Lizenzziel:** MIT  
@@ -162,7 +162,7 @@ vom Projektowner kontrolliert.
 
 ### LH-PROD-003a — MVP-Beispiel
 
-Das folgende Beispiel deckt ausschließlich Prüfungen ab, die im MVP (LH-PRI-001, LH-MVP-002) enthalten sind.
+Das folgende Beispiel deckt alle **CR-konfigurierbaren** MVP-Prüfungen (LH-PRI-001, LH-MVP-002) ab: `kubernetesVersion` (LH-F-008), `ingressClass` (LH-F-012), `certManager` (LH-F-013), `storageClass` (LH-F-010 / LH-F-011 mit `requireDefault: true` für die Default-StorageClass-Erkennung), `clusterResources` (LH-F-015). Die RBAC-Selbstprüfung (LH-F-024) ist Operator-Automatik und läuft implizit pro aktiviertem Check ohne eigenes CR-Feld. Die Feldnamen entsprechen dem in `api/v1alpha1/opendeskpreflightcheck_types.go` festgeschriebenen CRD-Schema; die kanonische Quelle der Wahrheit ist seit M2-Closure die Implementation, dieses Beispiel folgt ihr.
 
 ```yaml
 apiVersion: k-deskflight.geo-terrain.net/v1alpha1
@@ -171,31 +171,32 @@ metadata:
   name: cluster-readiness
 spec:
   profile: production
+  interval: "5m"
 
   checks:
     kubernetesVersion:
       min: "1.34"
 
-    ingress:
-      required: true
-      className: nginx
+    ingressClass:
+      names:
+        - nginx
 
-    certManager:
-      required: true
+    certManager: {}
 
-    storage:
-      requiredClasses:
+    storageClass:
+      names:
         - default
         - backup
+      requireDefault: true
 
-    resources:
-      minCpu: "16"
+    clusterResources:
+      minCPU: "16"
       minMemory: "64Gi"
 ```
 
 ### LH-PROD-003b — Zielbild-Beispiel (spätere Ausbaustufen)
 
-Das folgende Beispiel zeigt das vollständige Zielbild inklusive Prüfungen, die in späteren Versionen vorgesehen sind (LH-PRI-002, LH-PRI-003).
+Das folgende Beispiel zeigt das vollständige Zielbild inklusive Prüfungen, die in späteren Versionen vorgesehen sind (LH-PRI-002, LH-PRI-003). MVP-Felder (`kubernetesVersion`, `ingressClass`, `certManager`, `storageClass`, `clusterResources`) entsprechen dem in M2 festgelegten CRD-Schema; v0.2+-Felder (`domain`, `certManager.clusterIssuers`, `externalServices`) sind **konzeptuell** dargestellt — die exakten Feldnamen werden mit der jeweiligen Aktivierungs-ADR finalisiert (DNS/TLS gemäß `ADR 0010`, externe Dienste gemäß Folge-ADR aus `planning/open/external-services-v03-activation.md`).
 
 Das Feld `domain` benennt den primären DNS-Namen der OpenDesk-Installation und dient als Eingabe für DNS- und TLS-Prüfungen (LH-F-018, LH-F-019).
 
@@ -208,30 +209,34 @@ metadata:
   name: cluster-readiness
 spec:
   profile: production
-  domain: example.org
+  interval: "5m"
+  domain: example.org  # v0.2+ (LH-F-018, LH-F-019)
 
   checks:
     kubernetesVersion:
       min: "1.34"
 
-    ingress:
-      required: true
-      className: nginx
+    ingressClass:
+      names:
+        - nginx
 
     certManager:
-      required: true
+      # v0.2+: ClusterIssuer-Detail-Validierung (LH-F-014)
       clusterIssuers:
         - letsencrypt-prod
 
-    storage:
-      requiredClasses:
+    storageClass:
+      names:
         - default
         - backup
+      requireDefault: true
 
-    resources:
-      minCpu: "16"
+    clusterResources:
+      minCPU: "16"
       minMemory: "64Gi"
 
+    # v0.3+ (LH-F-020, LH-F-021); Feldnamen konzeptuell, finale
+    # Form mit Folge-ADR aus planning/open/external-services-v03-activation.md.
     externalServices:
       postgres:
         required: true
