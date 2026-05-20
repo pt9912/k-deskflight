@@ -16,6 +16,14 @@
 
 IMAGE := k-deskflight
 
+# Image-Publish-Pattern (slice-M7 §2.3, m-trace-Adaption). Default-Repo
+# zeigt auf GHCR; override via IMAGE_REGISTRY/IMAGE_OWNER falls Anwender
+# Mirror-Registries oder Fork-Repos nutzen. Der GHCR-Push-Pfad nutzt
+# das Approval-Pattern aus ADR 0011 §2.5 (siehe `image-publish-guard`).
+IMAGE_REGISTRY ?= ghcr.io
+IMAGE_OWNER    ?= pt9912
+IMAGE_REPO     := $(IMAGE_REGISTRY)/$(IMAGE_OWNER)/$(IMAGE)
+
 # Coverage-Schwelle für `make coverage-gate`. M1 startete mit 0
 # (Smoke-Pfad, bootstrap-aware in coverage-gate.sh); M4 zieht 90 %
 # vor (slice-M4 §3.3 / §7 — Adapter sind ab M4 via fake clientset
@@ -38,7 +46,8 @@ GOVULNCHECK_VERSION ?= v1.1.4
 .PHONY: help build compile deps tools lint test coverage coverage-gate doc-refs \
         manifests generated-drift-check govulncheck image-build run gates \
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
-        operator-http-smoke clean
+        operator-http-smoke image-publish-dry-run image-publish-guard \
+        image-publish clean
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -205,7 +214,43 @@ operator-http-smoke: cluster-smoke-image ## HTTP-Smoke gegen healthz/readyz/metr
 
 # ---- ops -------------------------------------------------------------------
 
-image-build: build ## Alias for `build` — slice-plan-Konvention.
+# image-build ist zweigleisig (slice-M7 §2.3, m-trace-Adaption):
+#   - Ohne VER:    baut $(IMAGE):go  (Dev-Tag; gleichwertig zu `build`).
+#   - Mit VER:     baut $(IMAGE_REPO):vX.Y.Z (GHCR-Tag für Release-Pfad).
+# Migration ist additiv: der Inner-Loop-Aufruf `make image-build` bleibt
+# funktional unverändert, die Tag-Variante kommt für M7-Release-Pfad dazu.
+image-build: ## Build runtime image. With VER=X.Y.Z builds $(IMAGE_REPO):vX.Y.Z; otherwise builds $(IMAGE):go.
+ifeq ($(strip $(VER)),)
+	docker build --target runtime -t $(IMAGE):go .
+else
+	docker build --target runtime -t $(IMAGE_REPO):v$(VER) .
+endif
+
+# image-publish-dry-run baut das GHCR-tagged Image und verifiziert lokal
+# via `docker image inspect`, ohne zu pushen. Release-Rehearsal-Pfad
+# (slice-M7 §4 step 5). VER ist Pflicht — fail-fast vor `image-build`,
+# damit ein vergessenes VER nicht den :go-Build triggert.
+image-publish-dry-run: ## Build the GHCR-tagged image and announce the push target. Requires VER.
+	@test -n "$(strip $(VER))" || { echo "image-publish-dry-run: VER=X.Y.Z is required (e.g. make image-publish-dry-run VER=0.1.0)" >&2; exit 2; }
+	$(MAKE) --no-print-directory image-build VER=$(VER)
+	docker image inspect $(IMAGE_REPO):v$(VER) >/dev/null
+	@echo "[image-publish-dry-run] would push: $(IMAGE_REPO):v$(VER)"
+
+# image-publish-guard verifiziert die operator-approved Approval-Variable
+# (slice-M7 §2.3, ADR 0011 §2.5). Ohne sie schlägt `image-publish` mit
+# Exit 2 fehl — kein versehentlicher GHCR-Push.
+image-publish-guard:
+	@test "$(K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED)" = "1" || { echo "Refusing to publish images without K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1" >&2; exit 2; }
+
+# image-publish pushed das GHCR-tagged Image. Pflicht: VER=X.Y.Z und
+# K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1. Ein Push ohne Approval ist
+# bewusst nicht möglich (ADR 0011 §2.5). Approval-Guard läuft als
+# Prereq und exited fail-fast; VER-Check vor `image-build`-Sub-Make,
+# damit ein vergessenes VER nicht zum :go-Build degeneriert.
+image-publish: image-publish-guard ## Push the GHCR-tagged image. Requires VER and K_DESKFLIGHT_IMAGE_PUBLISH_APPROVED=1.
+	@test -n "$(strip $(VER))" || { echo "image-publish: VER=X.Y.Z is required (e.g. make image-publish VER=0.1.0)" >&2; exit 2; }
+	$(MAKE) --no-print-directory image-build VER=$(VER)
+	docker push $(IMAGE_REPO):v$(VER)
 
 run: build ## Run the runtime image in the foreground.
 	docker run --rm --name $(IMAGE)-smoke $(IMAGE):go
