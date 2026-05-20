@@ -1,0 +1,59 @@
+---
+# k-deskflight — OpenDesk Preflight Check (production profile)
+#
+# Anwender-Vorlage für die fünf MVP-CR-konfigurierbaren Prüfungen
+# (LH-PRI-001, LH-MVP-002) gegen einen produktionsnahen Cluster.
+# RBAC-Selbstprüfung (LH-F-024) läuft implizit pro aktiviertem
+# Check und braucht kein CR-Feld.
+#
+# Schema und Default-Werte:
+#   - kubernetesVersion: Operator-Floor 1.34 (ADR 0009 §2.2).
+#   - storageClass: zwei benannte Klassen + Default-StorageClass-
+#       Erkennung (LH-F-010 / LH-F-011).
+#   - ingressClass: Standard `nginx` (LH-F-012).
+#   - certManager: API-Gruppe `cert-manager.io` vorhanden
+#       (LH-F-013). Detail-Validierung der ClusterIssuer ist v0.2
+#       (LH-F-014, ADR 0010).
+#   - clusterResources: 16 CPU / 64Gi RAM Mindest-Aggregat
+#       (LH-F-015 / LH-AK-009).
+#   - interval: Wiederholintervall 5m (AR-010).
+#
+# Anwender-Doku:
+#   - docs/user/cr-examples.md — pro-Check-Erläuterungen
+#   - docs/user/conditions.md — Conditions-Katalog mit Severity
+#   - docs/user/installation.md — Installation des Operators
+#   - docs/plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md
+#     — Profile-Defaults und Operator-Floor-Politik
+#
+# Apply:
+#   kubectl apply -f deploy/samples/cluster-readiness-production.yaml
+#
+# Status abfragen:
+#   kubectl get opendeskpreflightcheck cluster-readiness-production -o yaml
+#
+# Auf Final-Phase warten (Passed / Failed / Unknown — je nach Cluster-State):
+#   kubectl wait --for=jsonpath='{.status.phase}'=Passed \
+#     opendeskpreflightcheck/cluster-readiness-production --timeout=120s
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: cluster-readiness-production
+  namespace: default
+spec:
+  profile: production
+  interval: "5m"
+  checks:
+    kubernetesVersion:
+      min: "1.34"
+    storageClass:
+      names:
+        - default
+        - backup
+      requireDefault: true
+    ingressClass:
+      names:
+        - nginx
+    certManager: {}
+    clusterResources:
+      minCPU: "16"
+      minMemory: "64Gi"

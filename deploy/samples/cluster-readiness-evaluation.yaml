@@ -1,0 +1,62 @@
+---
+# k-deskflight — OpenDesk Preflight Check (evaluation profile)
+#
+# Anwender-Vorlage für eine Evaluations-Umgebung mit reduzierten
+# Schwellen und kleinerem Check-Set. Unterschiede zur production-
+# Vorlage (deploy/samples/cluster-readiness-production.yaml):
+#
+#   - Niedrigere Ressourcen-Schwellen (2 CPU / 4Gi statt 16 / 64Gi).
+#   - StorageClass ohne Default-Anforderung (`requireDefault: false`)
+#       — Default-Annotation ist in Eval-Clustern oft nicht gepflegt.
+#   - Kein `ingressClass`-Sub-Spec — Check inaktiv (Sub-Spec optional);
+#       viele Eval-Cluster betreiben keinen Ingress-Controller.
+#
+# Die Kubernetes-Mindestversion bleibt auf dem Operator-Floor `1.34`
+# (ADR 0009 §2.2: Profile-Differenzierung erfolgt bewusst nicht
+# über die K8s-Version). cert-manager und KubernetesVersion bleiben
+# aktiv, weil ihre Adapter ohne externen Cluster-State auskommen.
+#
+# Aktivierte Checks (vier statt fünf):
+#   - kubernetesVersion: Operator-Floor 1.34 (ADR 0009 §2.2).
+#   - storageClass: eine benannte Klasse, keine Default-Anforderung
+#       (LH-F-010 / LH-F-011).
+#   - certManager: API-Gruppe `cert-manager.io` vorhanden (LH-F-013).
+#   - clusterResources: 2 CPU / 4Gi RAM Mindest-Aggregat
+#       (LH-F-015 / LH-AK-009).
+#   - interval: Wiederholintervall 5m (AR-010).
+#
+# Anwender-Doku:
+#   - docs/user/cr-examples.md — pro-Check-Erläuterungen
+#   - docs/user/conditions.md — Conditions-Katalog mit Severity
+#   - docs/user/installation.md — Installation des Operators
+#   - docs/plan/adr/0009-k8s-versions-support-und-profile-mindestversionen.md
+#     — Profile-Defaults und Operator-Floor-Politik
+#
+# Apply:
+#   kubectl apply -f deploy/samples/cluster-readiness-evaluation.yaml
+#
+# Status abfragen:
+#   kubectl get opendeskpreflightcheck cluster-readiness-evaluation -o yaml
+#
+# Auf Final-Phase warten (Passed / Failed / Unknown — je nach Cluster-State):
+#   kubectl wait --for=jsonpath='{.status.phase}'=Passed \
+#     opendeskpreflightcheck/cluster-readiness-evaluation --timeout=120s
+apiVersion: k-deskflight.geo-terrain.net/v1alpha1
+kind: OpenDeskPreflightCheck
+metadata:
+  name: cluster-readiness-evaluation
+  namespace: default
+spec:
+  profile: evaluation
+  interval: "5m"
+  checks:
+    kubernetesVersion:
+      min: "1.34"
+    storageClass:
+      names:
+        - standard
+      requireDefault: false
+    certManager: {}
+    clusterResources:
+      minCPU: "2"
+      minMemory: "4Gi"
