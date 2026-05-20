@@ -85,15 +85,36 @@ Sign-off erfolgt via `git commit -s` (Email-Adresse aus `git config
 user.email`, Klarname aus `git config user.name`). Kein separates
 CLA, kein digitales Signing-Tool — DCO ist Standard-Git-Mechanik.
 
-**Geltungsbereich:** ab Akzeptanz dieser ADR. Frühere Commits sind
-*grandfathered* und werden nicht nachträglich signiert; alle
-früheren Commits stammen vom Projektowner selbst und sind damit
-implizit unter MIT lizenziert.
+**Geltungsbereich:** ab operativer Aktivierung der DCO-GitHub-App
+(`probot/dco`, siehe Durchsetzung unten). Frühere Commits sind
+*grandfathered* und werden nicht nachträglich signiert. Diese
+Grandfathering-Klausel hat zwei Stufen:
 
-**Durchsetzung:** sobald CI eingerichtet ist (`LH-VM-005`), prüft
-ein DCO-Check (z. B. GitHub-Apps wie `probot/dco`) jede neue PR
-auf Sign-off-Zeilen pro Commit. Bis dahin manuell beim Merge
-kontrollieren.
+1. **Vor ADR-Akzeptanz** (`d3aab77`, 2026-05-16): 16 Commits,
+   alle vom Projektowner — implizit MIT-lizenziert, kein
+   Sign-off-Bedarf.
+2. **Zwischen ADR-Akzeptanz und Bot-Aktivierung**: eine begrenzte
+   Anzahl Commits ohne Sign-off, weil der DCO-Bot erst mit der
+   M7-Slice-Closure (siehe `docs/plan/planning/in-progress/
+   slice-M7-release-v0.1.0.md §2.7`) operativ installiert wird.
+   Diese Commits sind die historisch-zählbare Ausnahme; ihre
+   genaue Anzahl wird im jeweiligen Slice-Closure-Notiz
+   referenziert (Audit-Zähler `git log d3aab77..<bot-activation
+   commit> --invert-grep --grep "Signed-off-by:" --oneline`).
+   Sie stammen ausschließlich vom Projektowner und sind damit
+   ebenfalls implizit MIT-lizenziert.
+
+**Bruchkante:** die operative DCO-Bot-Aktivierung (Datum und
+Repo-Settings-Klick werden in der M7-Slice-Closure dokumentiert).
+Ab diesem Zeitpunkt gilt strikt: jeder neue Commit auf `main`
+muss eine Sign-off-Zeile tragen; der DCO-Bot blockt PR-Merges
+ohne Sign-off.
+
+**Durchsetzung:** GitHub-App `probot/dco` (<https://github.com/apps/dco>)
+prüft pro PR jeden Commit auf die Sign-off-Trailer-Zeile. Branch
+Protection auf `main` macht den `DCO`-Status-Check zu einer
+Merge-Pflicht. Vor Bot-Aktivierung erfolgt die Kontrolle manuell
+beim Merge.
 
 ### 2.5 Branch- und Release-Strategie
 
