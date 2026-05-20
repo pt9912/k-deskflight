@@ -58,13 +58,13 @@ MVP v0.1 (`LH-REL-001`) gemäß `LH-MVP-002` und `LH-PRI-001`:
 
 | Slice | Titel | Vorgänger | Status |
 | ----- | ----- | --------- | ------ |
-| M1 | Repo & Build-Skeleton | — | Done (Closure: [`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md)) |
-| M2 | CRD + Controller-Skeleton | M1 | Done (Closure: [`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md)) |
-| M3 | Erste Prüfung — Kubernetes-Version | M2 | Done (Closure: [`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md)) |
-| M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Done (Closure: [`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md)) |
-| M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Done (Closure: [`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md)) |
-| M6 | Metrics-Endpoint, Tests, Doku | M5 | Done (Closure: [`done/slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md)) |
-| M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | In Progress (Plan: [`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md), eröffnet 2026-05-20) |
+| M1 | Repo & Build-Skeleton | — | Done (Closure: [`done/slice-M1-repo-skeleton.md`](slice-M1-repo-skeleton.md)) |
+| M2 | CRD + Controller-Skeleton | M1 | Done (Closure: [`done/slice-M2-crd-controller-skeleton.md`](slice-M2-crd-controller-skeleton.md)) |
+| M3 | Erste Prüfung — Kubernetes-Version | M2 | Done (Closure: [`done/slice-M3-kubernetes-version-check.md`](slice-M3-kubernetes-version-check.md)) |
+| M4 | Cluster-State-Prüfungen (Storage, Ingress, cert-manager, Ressourcen) | M2 (kann mit M3 parallel) | Done (Closure: [`done/slice-M4-cluster-state-checks.md`](slice-M4-cluster-state-checks.md)) |
+| M5 | RBAC-Selbstprüfung & Robustheit | M3 + M4 | Done (Closure: [`done/slice-M5-rbac-self-check-robustness.md`](slice-M5-rbac-self-check-robustness.md)) |
+| M6 | Metrics-Endpoint, Tests, Doku | M5 | Done (Closure: [`done/slice-M6-metrics-tests-doku.md`](slice-M6-metrics-tests-doku.md)) |
+| M7 | Beispielmanifest, Release-Tag v0.1.0 | M6 | Done (Closure: [`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md)) |
 
 Abhängigkeitsgraph: `M1 → M2 → {M3, M4} → M5 → M6 → M7`.
 
@@ -377,7 +377,7 @@ folgen v0.2), `LH-NF-010` (Testbarkeit), `LH-NF-013`
 - [x] `LH-AK-013` — Dokumentation vorhanden. Erfüllt durch
   `docs/user/` mit fünf Dateien (README, installation, cr-examples,
   conditions, troubleshooting) — siehe Closure-Notiz
-  [`done/slice-M6-metrics-tests-doku.md §10.2 #12`](../done/slice-M6-metrics-tests-doku.md).
+  [`done/slice-M6-metrics-tests-doku.md §10.2 #12`](slice-M6-metrics-tests-doku.md).
 - [x] Coverage-Gate grün bei Default-Threshold 90 % (`ADR 0012 §2.5`).
   M6-Realstand 92.5 % über alle `internal/`-Pakete.
 - [x] `govulncheck`-Lauf ohne Treffer in aufgerufenen Funktionen.
@@ -479,13 +479,19 @@ Sammel-Closure-Notiz nach `done/`.
 
 ## 7. Status
 
-In Progress. M1, M2 und M3 geschlossen am 2026-05-17; M4 und M5
-geschlossen am 2026-05-18; M6 geschlossen am 2026-05-19
-([`done/slice-M1-repo-skeleton.md`](../done/slice-M1-repo-skeleton.md),
-[`done/slice-M2-crd-controller-skeleton.md`](../done/slice-M2-crd-controller-skeleton.md),
-[`done/slice-M3-kubernetes-version-check.md`](../done/slice-M3-kubernetes-version-check.md),
-[`done/slice-M4-cluster-state-checks.md`](../done/slice-M4-cluster-state-checks.md),
-[`done/slice-M5-rbac-self-check-robustness.md`](../done/slice-M5-rbac-self-check-robustness.md),
-[`done/slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md));
-**M7 eröffnet am 2026-05-20** als letzter Slice vor `v0.1.0`-Tag
-([`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md)).
+**Done** (2026-05-20). Alle sieben Slices der MVP-Roadmap sind
+geschlossen: M1, M2 und M3 am 2026-05-17; M4 und M5 am 2026-05-18;
+M6 am 2026-05-19; **M7 am 2026-05-20** als Release-Slice mit dem
+`v0.1.0`-Tag als finalem Artefakt
+([`slice-M1-repo-skeleton.md`](slice-M1-repo-skeleton.md),
+[`slice-M2-crd-controller-skeleton.md`](slice-M2-crd-controller-skeleton.md),
+[`slice-M3-kubernetes-version-check.md`](slice-M3-kubernetes-version-check.md),
+[`slice-M4-cluster-state-checks.md`](slice-M4-cluster-state-checks.md),
+[`slice-M5-rbac-self-check-robustness.md`](slice-M5-rbac-self-check-robustness.md),
+[`slice-M6-metrics-tests-doku.md`](slice-M6-metrics-tests-doku.md),
+[`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md)).
+
+Mit der M7-Closure wandert diese Roadmap als Sammel-Closure-Notiz
+ebenfalls nach `done/` (Move-Commit gemeinsam mit der
+slice-M7-Closure am 2026-05-20). Ein Folge-`v0.2`-Slice öffnet
+später seine eigene `roadmap.md` unter `in-progress/`.

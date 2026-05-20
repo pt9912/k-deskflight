@@ -7,7 +7,7 @@
 [ADR 0002](0002-adr-lifecycle.md),
 [ADR 0009](0009-k8s-versions-support-und-profile-mindestversionen.md),
 [ADR 0012](0012-quality-gates.md),
-[Roadmap §3 M2/M3](../planning/in-progress/roadmap.md)
+[Roadmap §3 M2/M3](../planning/done/roadmap.md)
 
 ---
 

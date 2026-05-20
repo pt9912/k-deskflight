@@ -4,8 +4,8 @@
 **Eröffnet:** 2026-05-17
 **Geschlossen:** 2026-05-17
 **Vorgänger:** keiner (Eintritts-Slice)
-**Nachfolger:** [M2 — CRD + Controller-Skeleton](../in-progress/roadmap.md#m2--crd--controller-skeleton)
-**Bezug:** [Roadmap §3 M1](../in-progress/roadmap.md#m1--repo--build-skeleton),
+**Nachfolger:** [M2 — CRD + Controller-Skeleton](roadmap.md#m2--crd--controller-skeleton)
+**Bezug:** [Roadmap §3 M1](roadmap.md#m1--repo--build-skeleton),
 [`spec/architecture.md` §3 (AR-001–AR-005) und §AR-019](../../../../spec/architecture.md),
 [ADR 0004 §2](../../adr/0004-projektname.md),
 [ADR 0011](../../adr/0011-governance-und-beitragskonventionen.md),
@@ -129,7 +129,7 @@ zulässig, ohne diesen Slice-Plan anzupassen.
 7. **Scripts** (`scripts/verify-doc-refs.sh`, `scripts/coverage-gate.sh`) mit
    den k-deskflight-spezifischen Pfaden.
 8. **`.github/workflows/ci.yml`** mit beiden Jobs.
-9. **Roadmap-Eintrag** in [`roadmap.md` §2 Tabelle und §7 Status](../in-progress/roadmap.md):
+9. **Roadmap-Eintrag** in [`roadmap.md` §2 Tabelle und §7 Status](roadmap.md):
    M1 von „Pending" auf „In Progress" und nach Abschluss auf „Done"
    ziehen; Closure-Notiz in `done/slice-M1-repo-skeleton.md`.
 
@@ -199,7 +199,7 @@ Vorbereitet, aktiv ab späterer Slice:
    Verifikationspfad.
 
 **Kein dediziertes `LH-AK-*`** für M1 selbst — M1 ist die Voraussetzung
-für alle weiteren `LH-AK-*` ab M2 ([`Roadmap §3 M1`](../in-progress/roadmap.md#m1--repo--build-skeleton)).
+für alle weiteren `LH-AK-*` ab M2 ([`Roadmap §3 M1`](roadmap.md#m1--repo--build-skeleton)).
 
 ---
 

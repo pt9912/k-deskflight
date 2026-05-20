@@ -4,9 +4,9 @@
 **Eröffnet:** 2026-05-19
 **Geschlossen:** 2026-05-19
 **Vorgänger:** [M5 — RBAC-Selbstprüfung & Robustheit (Done)](slice-M5-rbac-self-check-robustness.md)
-**Nachfolger:** [M7 — Beispielmanifest, Release-Tag v0.1.0 (Pending)](../in-progress/roadmap.md#m7--beispielmanifest-release-tag-v010)
+**Nachfolger:** [M7 — Beispielmanifest, Release-Tag v0.1.0 (Pending)](roadmap.md#m7--beispielmanifest-release-tag-v010)
 **Bezug:**
-[Roadmap §3 M6](../in-progress/roadmap.md#m6--metrics-endpoint-tests-doku),
+[Roadmap §3 M6](roadmap.md#m6--metrics-endpoint-tests-doku),
 [`spec/architecture.md` §6 (AR-010, AR-010.1), §9 (AR-024, AR-025), §AR-027](../../../../spec/architecture.md),
 [ADR 0007](../../adr/0007-prometheus-metrik-scope-im-mvp.md),
 [ADR 0012 §2.4–2.6](../../adr/0012-quality-gates.md),
@@ -1105,7 +1105,7 @@ Pattern-Asset, §7 #13 Interval-Klassifikation).
 - **HTML-Report / kubectl-Plugin** — spätere Versionen
   (`LH-PRI-003`).
 - **CHANGELOG.md-Erstaufbau** — M7-Release; Pflicht-Inhalte
-  bereits in [`docs/plan/planning/open/changelog.md §4`](../open/changelog.md)
+  bereits in [`docs/plan/planning/open/changelog.md §4`](changelog-trigger.md)
   akkumuliert (heute ein Eintrag: `Spec.Interval *string→string`).
 
 ### 10.4 Lessons learned

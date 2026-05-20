@@ -16,10 +16,10 @@ Abgeschlossene Pläne wandern als Closure-Notiz nach `../done/`.
 
 ## Bestand
 
-| Datei | Lieferziel | Status |
-| ----- | ---------- | ------ |
-| [`roadmap.md`](roadmap.md) | MVP v0.1 (`LH-MVP-002`, `LH-PRI-001`) in sieben Slices M1–M7 | In Progress — M1, M2, M3 geschlossen 2026-05-17; M4 und M5 geschlossen 2026-05-18; M6 geschlossen 2026-05-19; **M7 eröffnet 2026-05-20**. |
-| [`slice-M7-release-v0.1.0.md`](slice-M7-release-v0.1.0.md) | Beispielmanifeste, CHANGELOG, `image-publish`/`release-guard`/Trivy-Tooling, Leader-Election scharf, annotated `v0.1.0`-Tag. | In Progress — eröffnet 2026-05-20. |
+Aktuell keine Einträge. Die MVP-Roadmap (M1–M7) ist mit der
+M7-Closure am 2026-05-20 nach
+[`../done/roadmap.md`](../done/roadmap.md) gewandert; ein
+Folge-`v0.2`-Slice öffnet später seine eigene `roadmap.md` hier.
 
 Slice-spezifische Pläne (`slice-MX-…md`) entstehen pro Slice beim
 Aktivieren und tragen Detail-Lieferziele, Abnahmekriterien und

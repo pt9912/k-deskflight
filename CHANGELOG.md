@@ -15,7 +15,7 @@ Removed, Fixed, Security. -->
 
 > **MVP release** of the OpenDesk Preflight Operator
 > (`k-deskflight`). The release closes the seven-slice roadmap in
-> [`docs/plan/planning/in-progress/roadmap.md`](docs/plan/planning/in-progress/roadmap.md)
+> [`docs/plan/planning/done/roadmap.md`](docs/plan/planning/done/roadmap.md)
 > and delivers the
 > [`LH-PRI-001`](spec/lastenheft.md) must-have requirements plus
 > the [`LH-AK-001..-016`](spec/lastenheft.md) acceptance criteria

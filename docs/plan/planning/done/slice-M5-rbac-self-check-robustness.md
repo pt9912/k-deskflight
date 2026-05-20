@@ -4,9 +4,9 @@
 **Eröffnet:** 2026-05-18
 **Geschlossen:** 2026-05-18
 **Vorgänger:** [M4 — Cluster-State-Prüfungen (Done)](slice-M4-cluster-state-checks.md)
-**Nachfolger:** [M6 — Metrics-Endpoint, Tests, Doku](../in-progress/roadmap.md#m6--metrics-endpoint-tests-doku)
+**Nachfolger:** [M6 — Metrics-Endpoint, Tests, Doku](roadmap.md#m6--metrics-endpoint-tests-doku)
 **Bezug:**
-[Roadmap §3 M5](../in-progress/roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit),
+[Roadmap §3 M5](roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit),
 [`spec/architecture.md` §5 (AR-009 Phase 4), §5 (AR-011), §7 (AR-015 / AR-018)](../../../../spec/architecture.md),
 [ADR 0010 §2.3](../../adr/0010-externe-dienstpruefungen-und-secret-mechanik.md)
 

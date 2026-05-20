@@ -4,9 +4,9 @@
 **Eröffnet:** 2026-05-18
 **Geschlossen:** 2026-05-18
 **Vorgänger:** [M3 — Erste Prüfung: Kubernetes-Version (Done)](slice-M3-kubernetes-version-check.md)
-**Nachfolger:** [M5 — RBAC-Selbstprüfung & Robustheit](../in-progress/roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit)
+**Nachfolger:** [M5 — RBAC-Selbstprüfung & Robustheit](roadmap.md#m5--rbac-selbstpr%C3%BCfung--robustheit)
 **Bezug:**
-[Roadmap §3 M4](../in-progress/roadmap.md#m4--cluster-state-pr%C3%BCfungen),
+[Roadmap §3 M4](roadmap.md#m4--cluster-state-pr%C3%BCfungen),
 [`spec/architecture.md` §5 (AR-009), §6 (AR-012, AR-013, AR-014), §7 (AR-015)](../../../../spec/architecture.md),
 [ADR 0009 §2.2](../../adr/0009-k8s-versions-support-und-profile-mindestversionen.md),
 [ADR 0010](../../adr/0010-externe-dienstpruefungen-und-secret-mechanik.md),

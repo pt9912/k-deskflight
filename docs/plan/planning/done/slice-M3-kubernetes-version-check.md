@@ -4,9 +4,9 @@
 **Eröffnet:** 2026-05-17
 **Geschlossen:** 2026-05-17
 **Vorgänger:** [M2 — CRD + Controller-Skeleton (Done)](slice-M2-crd-controller-skeleton.md)
-**Nachfolger:** [M4 — Cluster-State-Prüfungen](../in-progress/roadmap.md#m4--cluster-state-pr%C3%BCfungen)
+**Nachfolger:** [M4 — Cluster-State-Prüfungen](roadmap.md#m4--cluster-state-pr%C3%BCfungen)
 **Bezug:**
-[Roadmap §3 M3](../in-progress/roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version),
+[Roadmap §3 M3](roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version),
 [`spec/architecture.md` §5 (AR-009), §6 (AR-012, AR-013, AR-014), §7 (AR-018)](../../../../spec/architecture.md),
 [ADR 0009](../../adr/0009-k8s-versions-support-und-profile-mindestversionen.md)
 
