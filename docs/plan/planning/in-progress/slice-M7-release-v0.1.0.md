@@ -324,7 +324,7 @@ aktivieren (`ADR 0011 §2.4`-Pflicht). Aktivierung ist Repo-
 Settings-Click und nicht im Code; Closure-Notiz dokumentiert
 Datum und PR-Verifikation.
 
-**Pre-Tag-Check:** `git log --pretty='%H %s%n%b' v0.0.0..HEAD |
+**Pre-Tag-Check:** `git log --pretty='%H %s%n%b' --since="2026-05-16" |
 grep -c "Signed-off-by:"` muss `>=` der Anzahl Commits seit
 ADR-0011-Acceptance sein. Frühere Commits (vor ADR-Acceptance)
 sind „grandfathered" laut `ADR 0011 §2.4` und nicht Pflicht.
@@ -474,7 +474,7 @@ nach K-1-Konvention (siehe `planning/in-progress/README.md`).
    final gesetzt). Pflicht-Inhalte aus §2.2 + slice-Liste M1–M7.
    `docs(changelog):`-Commit. K-1-Doku-Review verpflichtend.
 10. **DCO-Bot-Aktivierung** (operativ, kein Commit) + Closure-
-    Notiz in `cms`-Section: probot/dco aktiviert per Datum
+    Notiz in `closure`-Section: probot/dco aktiviert per Datum
     und Commit-Range seit ADR-0011-Acceptance attestiert.
 11. **GitHub-Repository public-stellen** (operativ) — schließt
     `LH-AK-014` final (GHSA-Pfad aktiv). Closure-Notiz mit Datum.
