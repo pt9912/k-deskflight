@@ -7,7 +7,7 @@
 **Artefakt:** Lastenheft  
 **Zielbild:** Kubernetes-native Vorabprüfung für OpenDesk-Bereitstellungen  
 **Version:** 0.1.1  
-**Status:** Entwurf  
+**Status:** Entwurf — MVP-Scope (`LH-REL-001`) umgesetzt mit Release [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0) (2026-05-20); v0.2+/v1.0-Anforderungen weiter in Arbeit  
 **Autor:** Dietmar Burkard  
 **Lizenzziel:** MIT  
 **Sprache des Lastenhefts:** Deutsch  
@@ -1216,6 +1216,12 @@ Das MVP umfasst:
 - Beispielmanifest
 - Prometheus-`/metrics`-Endpoint mit controller-runtime-Defaults (LH-SST-004 gemäß ADR 0007)
 
+**Umsetzungsstand:** Der oben gelistete MVP-Funktionsumfang wurde mit
+Release [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0)
+(2026-05-20) vollständig ausgeliefert; Slice-Trail unter
+[`docs/plan/planning/done/`](../docs/plan/planning/done/), Release-
+Notes in [`CHANGELOG.md`](../CHANGELOG.md).
+
 ### LH-MVP-003 — Nicht Bestandteil des MVP
 
 Nicht Bestandteil des MVP sind:
@@ -1292,7 +1298,11 @@ Als Betreiber möchte ich einen nachvollziehbaren Prüfstatus dokumentieren, dam
 
 ### LH-REL-001 — Version 0.1
 
-Version 0.1 soll ein technisches MVP bereitstellen.
+Version 0.1 stellt ein technisches MVP bereit. **Ausgeliefert als
+[`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0)
+am 2026-05-20**; konkreter Lieferumfang in
+[`CHANGELOG.md`](../CHANGELOG.md), Container-Image
+`ghcr.io/pt9912/k-deskflight:v0.1.0`.
 
 ### LH-REL-002 — Version 0.2
 

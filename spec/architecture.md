@@ -4,7 +4,7 @@
 **Bezug:** [Lastenheft `LH-OPD-PFO-001`](lastenheft.md)
 **Artefakt:** Architekturbeschreibung (`ADR 0001 §3`)
 **Version:** 0.1.0
-**Status:** Entwurf
+**Status:** MVP umgesetzt (Release [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0) — 2026-05-20)
 **Autor:** Dietmar Burkard
 **Sprache:** Deutsch (`LH-NF-021`)
 
@@ -1184,7 +1184,7 @@ entstehen mit M1.
 
 | Phase | Was aus dieser Architektur trägt | Was hinzukommt |
 | ----- | -------------------------------- | -------------- |
-| MVP v0.1 (`LH-REL-001`) | alle hier festgelegten `AR-*` (außer den explizit als v0.2+ markierten ConfigMap- und Event-RBAC-Anteilen) | konkrete Spec-Felder, Probe-Implementierungen, Test-Mocks |
+| MVP v0.1 (`LH-REL-001`) — **ausgeliefert als [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0) am 2026-05-20** | alle hier festgelegten `AR-*` (außer den explizit als v0.2+ markierten ConfigMap- und Event-RBAC-Anteilen) sind in M1–M7 umgesetzt; konkrete Spec-Felder, Probe-Implementierungen und Test-Doubles liegen in [`api/v1alpha1/`](../api/v1alpha1/), [`internal/adapter/check/`](../internal/adapter/check/) bzw. [`internal/hexagon/application/`](../internal/hexagon/application/). Release-Notes: [`CHANGELOG.md`](../CHANGELOG.md). | — (Phase abgeschlossen) |
 | v0.2 (`LH-PRI-002`) | Helm-Chart als alternativer Distributions-Pfad (`ADR 0005`); CRD bleibt `v1alpha1` | DNS-/TLS-/Netzwerk-Check-Module unter `adapter/check/`; ConfigMap-Report-Adapter; Events-Emission; Domänen-Metriken. RBAC-Erweiterung gegenüber MVP-`AR-016`: `core/events` mit `create`+`patch` (`LH-F-027`) und `core/configmaps` mit `get`/`list`/`create`/`update`/`patch` (`LH-F-028`). |
 | v0.3+ (`LH-PRI-003`) | mit-Auth-Checks bauen auf der bestehenden Check-Interface auf (`AR-012`); RBAC-Konzept (`AR-015`) wird um Secret-Read-Rechte erweitert | PostgreSQL-Adapter, S3-Adapter, evtl. CRD-Schema-Erweiterung auf `v1alpha2` oder `v1beta1` |
 

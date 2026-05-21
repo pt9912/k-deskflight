@@ -8,18 +8,24 @@ Cluster-Voraussetzungen für [OpenDesk](https://docs.opendesk.eu/)-Installatione
 
 ## Status
 
-Die Implementierung ist **im Gang** (`LH-VM-004`). Sechs von sieben
-MVP-Slices sind geschlossen; nur M7 (Release v0.1.0 mit
-Beispielmanifesten, Trivy-Image-Scan und DCO) steht vor dem ersten
-getaggten Release noch aus:
+**MVP als [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0)
+am 2026-05-20 veröffentlicht** (`LH-VM-004`). Alle sieben
+MVP-Slices sind geschlossen; das Container-Image
+`ghcr.io/pt9912/k-deskflight:v0.1.0` ist das Release-Artefakt. Die
+weitere Arbeit zielt auf den v0.2-Scope unter
+[`docs/plan/planning/open/`](docs/plan/planning/open/).
 
 | Phase | Status | Quelle |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Entwurf 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
 | Architekturentscheidungen | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architektur-Spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementierung (`LH-VM-004`) | M1–M6 done — M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Implementierung (`LH-VM-004`) | M1–M7 done — `v0.1.0` ausgeliefert | [`docs/plan/planning/done/`](docs/plan/planning/done/) |
 | Pflichtenheft (`LH-VM-002`) | wächst mit den Slices | Slice-Pläne unter [`docs/plan/planning/done/`](docs/plan/planning/done/) |
+
+Release-Notes pro Version: [`CHANGELOG.md`](CHANGELOG.md).
+
+### Was `v0.1.0` liefert
 
 Alle fünf MVP-Pflicht-Prüfungen (`LH-AK-005..-009`) sind produktiv:
 Kubernetes-Version, StorageClass, IngressClass, cert-manager-
@@ -27,26 +33,36 @@ Existenz und Cluster-Ressourcen (CPU/Memory). Der Operator prüft
 vor jedem Lauf seine eigenen RBAC-Rechte per
 `SelfSubjectAccessReview` (`LH-AK-016`), ist gegen Per-Check-
 Panics und -Timeouts gehärtet (`LH-AK-010`) und schreibt nie
-unsanitierte Messages in Status oder Logs (`LH-AK-012`). CRD-
-Installation, Operator-Rollout, Status-Reconcile und HTTP-Healthz/
-Readyz/Metrics-Endpoints werden bei jedem Push gegen einen
-realen kind-Cluster attestiert (siehe
-[`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
+unsanitierte Messages in Status oder Logs (`LH-AK-012`). Der
+controller-runtime-Manager läuft mit Leader-Election gegen ein
+`coordination.k8s.io/lease` (`AR-026`). Der `/metrics`-Endpoint
+wird über ein dediziertes `Service`-Objekt exponiert und
+End-zu-End im kind-basierten Cluster-Smoke attestiert (siehe
+[`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)) —
+sowohl gegen das passed-Sample als auch gegen vier failed-CR-
+Szenarien. Der Operator unterstützt ein konfigurierbares
+`spec.interval` (Default `5m`, Bounds `[30s, 24h]`,
+AR-010-konforme Normalisierung). Anwender-Doku unter
+[`docs/user/`](docs/user/) deckt Installation, evaluation/
+production-CR-Beispiele, den Conditions-Katalog und ein
+Troubleshooting-Runbook ab; zwei sofort einsetzbare CR-Templates
+liegen unter [`deploy/samples/`](deploy/samples/), die rohen
+Install-Manifeste unter
+[`deploy/manifests/`](deploy/manifests/). Die Release-Pipeline
+umfasst einen Trivy-Image-Scan (`CRITICAL`/`HIGH` blockierend)
+und einen `make release-guard`-Schritt, der Approval-, Branch-,
+Tag- und CHANGELOG-Section-Vorbedingungen vor dem Tag-Setzen
+erzwingt.
 
-**Neu in M6** (`LH-AK-013`): Der `/metrics`-Endpoint wird jetzt über
-ein dediziertes `Service`-Objekt exponiert und End-zu-End im
-Cluster-Smoke attestiert — ein Probe-Pod scraped via Service-DNS-FQDN,
-und die Response wird auf Prometheus-Format, controller-runtime-
-Baseline-Metriken und Sanity-Zeilenzahl geprüft. Cluster-Smoke führt
-zusätzlich vier failed-CR-Szenarien parallel zum passed-Sample aus
-und re-attestiert `LH-AK-005`/`-006`/`-007`/`-009` sowohl auf
-passed- als auch auf failed-Pfad. Der Operator unterstützt jetzt
-ein konfigurierbares `spec.interval` (Default `5m`, Bounds
-`[30s, 24h]`, AR-010-konforme Normalisierung). Anwender-Doku unter
-[`docs/user/`](docs/user/) deckt Installation, evaluation/production-
-CR-Beispiele, den Conditions-Katalog und ein Troubleshooting-Runbook
-ab. Architektur-Punkt `AR-OP-005` (Namespace-Override-Mechanik)
-ist in [`spec/architecture.md`](spec/architecture.md) geschlossen.
+### Installation
+
+```bash
+docker pull ghcr.io/pt9912/k-deskflight:v0.1.0
+kubectl apply -f deploy/manifests/
+```
+
+Vollständiger Apply-Flow, Namespace-Override und Metrics-Scrape-
+Binding: [`docs/user/installation.md`](docs/user/installation.md).
 
 ## Was der Operator tun soll
 
@@ -90,7 +106,8 @@ spec:
 ```
 
 Weitere Beispiele und Zielbilder unter `LH-PROD-003a` / `LH-PROD-003b` im
-Lastenheft.
+Lastenheft; sofort einsetzbare CR-Templates unter
+[`deploy/samples/`](deploy/samples/).
 
 ## Phasen-Roadmap (Stand der ADRs)
 

@@ -8,17 +8,23 @@ checks on a cluster before an [OpenDesk](https://docs.opendesk.eu/) installation
 
 ## Status
 
-Implementation is **in progress** (`LH-VM-004`). Six of seven MVP
-slices are closed; only M7 (release v0.1.0 with example manifests,
-Trivy image scan and DCO) remains before the first tagged release:
+**MVP released as [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0)
+on 2026-05-20** (`LH-VM-004`). All seven MVP slices are closed; the
+container image `ghcr.io/pt9912/k-deskflight:v0.1.0` is the release
+artifact. Subsequent work targets the v0.2 scope tracked under
+[`docs/plan/planning/open/`](docs/plan/planning/open/).
 
 | Phase | Status | Source |
 | ----- | ------ | ------ |
 | Lastenheft (`LH-VM-001`) | Draft 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
 | Architecture decisions | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architecture spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementation (`LH-VM-004`) | M1–M6 done — M7 pending | [`docs/plan/planning/`](docs/plan/planning/) |
+| Implementation (`LH-VM-004`) | M1–M7 done — `v0.1.0` shipped | [`docs/plan/planning/done/`](docs/plan/planning/done/) |
 | Pflichtenheft (`LH-VM-002`) | grows alongside slices | per-slice plans in [`docs/plan/planning/done/`](docs/plan/planning/done/) |
+
+Release notes per version: [`CHANGELOG.md`](CHANGELOG.md).
+
+### What `v0.1.0` ships
 
 All five MVP-mandatory checks are live (`LH-AK-005..-009`):
 Kubernetes version, StorageClass, IngressClass, cert-manager
@@ -26,26 +32,34 @@ presence, and cluster resources (CPU/memory). The operator
 self-checks its own RBAC permissions before each run via
 `SelfSubjectAccessReview` (`LH-AK-016`), is hardened against
 per-check panics and timeouts (`LH-AK-010`), and never writes
-unsanitised messages into status or logs (`LH-AK-012`). CRD
-installation, operator deployment, status reconcile and HTTP
-health/readiness/metrics endpoints are attested against a real
-kind cluster on every push (see
-[`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)).
+unsanitised messages into status or logs (`LH-AK-012`). The
+controller-runtime manager runs with leader election against a
+`coordination.k8s.io/lease` (`AR-026`). The `/metrics` endpoint
+is exposed via a dedicated `Service` and end-to-end attested
+through the kind-based cluster-smoke pipeline (see
+[`ADR 0013`](docs/plan/adr/0013-cluster-smoke-platform.md)),
+covering the passed sample and four failed-CR scenarios. The
+operator supports a configurable `spec.interval` (default `5m`,
+bounds `[30s, 24h]`, AR-010-conformant normalisation). End-user
+documentation under [`docs/user/`](docs/user/) covers
+installation, evaluation/production CR examples, the conditions
+catalogue and a troubleshooting runbook; two ready-to-apply CR
+templates ship under [`deploy/samples/`](deploy/samples/), raw
+install manifests under [`deploy/manifests/`](deploy/manifests/).
+The release pipeline includes a Trivy image scan
+(`CRITICAL`/`HIGH` blocking) and a `make release-guard` step
+that enforces approval, branch, tag and CHANGELOG-section
+preconditions before tagging.
 
-**New in M6** (`LH-AK-013`): the `/metrics` endpoint is now
-exposed via a dedicated `Service` and end-to-end attested through
-the cluster-smoke pipeline — a probe pod scrapes via the Service
-DNS FQDN and the response is verified for Prometheus format,
-controller-runtime baseline metrics, and a sanity line count.
-Cluster-smoke also runs four failed-CR scenarios alongside the
-passed sample, re-attesting `LH-AK-005`/`-006`/`-007`/`-009` on
-both passed and failed paths. The operator now sets a configurable
-`spec.interval` (default `5m`, bounds `[30s, 24h]`, AR-010-conformant
-normalization). End-user documentation under
-[`docs/user/`](docs/user/) covers installation, evaluation/production
-CR examples, the conditions catalogue and a troubleshooting
-runbook. Architecture point `AR-OP-005` (namespace override
-mechanics) is closed in [`spec/architecture.md`](spec/architecture.md).
+### Install
+
+```bash
+docker pull ghcr.io/pt9912/k-deskflight:v0.1.0
+kubectl apply -f deploy/manifests/
+```
+
+Full apply flow, namespace override and metrics-scrape binding:
+[`docs/user/installation.md`](docs/user/installation.md).
 
 ## What the operator does
 
@@ -88,7 +102,8 @@ spec:
 ```
 
 More examples and the target picture are in `LH-PROD-003a` / `LH-PROD-003b`
-of the Lastenheft.
+of the Lastenheft; ready-to-apply CR templates under
+[`deploy/samples/`](deploy/samples/).
 
 ## Phase roadmap (state of the ADRs)
 
