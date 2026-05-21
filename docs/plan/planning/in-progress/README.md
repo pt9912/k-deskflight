@@ -16,10 +16,10 @@ Abgeschlossene Pläne wandern als Closure-Notiz nach `../done/`.
 
 ## Bestand
 
-Aktuell keine Einträge. Die MVP-Roadmap (M1–M7) ist mit der
-M7-Closure am 2026-05-20 nach
-[`../done/roadmap.md`](../done/roadmap.md) gewandert; ein
-Folge-`v0.2`-Slice öffnet später seine eigene `roadmap.md` hier.
+| Datei | Eröffnet | Status | Lieferziel |
+| ----- | -------- | ------ | ---------- |
+| [`roadmap-0.2.md`](roadmap-0.2.md) | 2026-05-21 | In Progress | Folge-Roadmap zur abgeschlossenen MVP-Roadmap v0.1. Neun Slices M8–M16 lösen den in [`../../adr/0014-v0.2-scope-schnitt.md`](../../adr/0014-v0.2-scope-schnitt.md) fixierten v0.2-Scope-Schnitt (Voll-`LH-PRI-002` + `AR-OP-006`) operativ auf. |
+| [`slice-M8-helm-chart.md`](slice-M8-helm-chart.md) | 2026-05-21 | In Progress | Erster v0.2-Slice: Helm-Chart als Distributions-Pfad (`LH-NF-016`, `LH-SST-010`, `ADR 0005`). |
 
 Slice-spezifische Pläne (`slice-MX-…md`) entstehen pro Slice beim
 Aktivieren und tragen Detail-Lieferziele, Abnahmekriterien und

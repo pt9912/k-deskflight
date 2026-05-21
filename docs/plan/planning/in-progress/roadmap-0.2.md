@@ -1,7 +1,8 @@
 # Roadmap — v0.2
 
-**Status:** Draft (in `planning/next/`, wartet auf Review und Aktivierung)
+**Status:** In Progress (Roadmap aktiviert 2026-05-21; M8 in Arbeit)
 **Eröffnet:** 2026-05-21
+**Aktiviert:** 2026-05-21
 **Bezug:** [Lastenheft `LH-PRI-002`, `LH-REL-002`, `LH-VM-004`, `LH-VM-006`](../../../../spec/lastenheft.md),
 [Architektur](../../../../spec/architecture.md),
 [ADR 0001](../../adr/0001-dokumentations-und-planungsstruktur.md),
@@ -325,8 +326,10 @@ angereichert (analog zur abgeschlossenen v0.1-Roadmap).
 
 ## 7. Status
 
-**Aktueller Stand (2026-05-21):** Draft. Wartet auf Review der
-Slice-Schnitte M8–M16 (insbesondere Bündelung in M13/M14 und
-Trennung von Metrics/OTel in M11+M12). Aktivierung erfolgt durch
-Move dieser Datei nach `in-progress/roadmap-0.2.md` und
-Erstellung des `slice-M8-helm-chart.md`-Plans.
+**Aktueller Stand (2026-05-21):** **In Progress.** Slice-Schnitte
+M8–M16 nach Review aktiviert; die Datei ist von `planning/next/` nach
+`planning/in-progress/` gewandert. Der erste Slice
+[`slice-M8-helm-chart.md`](slice-M8-helm-chart.md) ist eröffnet und
+in Arbeit. Folge-Slices M9–M16 öffnen sich der Reihe nach mit der
+M8-Closure bzw. abhängigkeitsorientiert (siehe §3 pro Slice
+„Eingangsabhängigkeit").
