@@ -1,6 +1,6 @@
 # Slice M8 — Helm-Chart als Distributions-Pfad
 
-**Status:** In Progress
+**Status:** Ready for closure — Steps 1–9 done + committed; Step 11 (finale Closure-Notiz §10 + Move nach `done/`) ist der letzte offene Schritt
 **Eröffnet:** 2026-05-21
 **Geschlossen:** —
 **Vorgänger:** [Slice M7 — Release v0.1.0](../done/slice-M7-release-v0.1.0.md) (v0.1-Closure-Slice)
@@ -672,18 +672,18 @@ nachgereicht.
 
 ## 7. Verifikation (Abnahmekriterien)
 
-| Kriterium | Verifikationspfad | Pflicht |
-| --------- | ----------------- | ------- |
-| `helm lint` grün auf Default-`values.yaml` | `make helm-lint` | ja |
-| `helm template` rendert valide YAML für alle drei Test-Overlays | `make helm-template` | ja |
-| `helm template` mit Default-Values matched `deploy/manifests/` strukturell | `make helm-manifests-sync` | ja |
-| `helm install` im kind-Cluster bringt den Operator in `Ready`-Zustand | `make cluster-smoke INSTALL_MODE=helm` | ja |
-| Sample-CR (`deploy/samples/cluster-readiness-evaluation.yaml`) erreicht Phase `Passed` über den Helm-Install-Pfad | `make cluster-smoke INSTALL_MODE=helm` (interne Schritte) | ja |
-| `/metrics`-Endpoint im Helm-Install-Pfad abfragbar | Probe-Pod-Curl im Smoke (M6-Mechanik geerbt) | ja |
-| CI-Matrix `install-mode: [manifests, helm]` läuft beide Pfade parallel grün | GitHub-Actions-Run | ja |
-| `ADR 0015` ist `Accepted` und beschreibt die Distributions-Form | `make doc-refs` + Sichtkontrolle | ja |
-| `docs/user/installation.md` hat einen Helm-Block | `make doc-refs` + Code-Review | ja |
-| `CHANGELOG.md` `[Unreleased]` hat einen Helm-Chart-Eintrag | Sichtkontrolle | ja |
+| Kriterium | Verifikationspfad | Pflicht | Stand |
+| --------- | ----------------- | ------- | ----- |
+| `helm lint` grün auf Default-`values.yaml` | `make helm-lint` | ja | ✓ attestiert (Step 1; aktueller Output: `1 chart(s) linted, 0 chart(s) failed`) |
+| `helm template` rendert valide YAML für alle drei Test-Overlays | `make helm-template` | ja | ✓ attestiert (Step 3; 8/6/10 Resources pro Overlay) |
+| `helm template` mit Default-Values matched `deploy/manifests/` strukturell | `make helm-manifests-sync` | ja | ✓ attestiert (Step 5; aktueller Output: `[helm-manifests-sync] passed`) |
+| `helm install` im kind-Cluster bringt den Operator in `Ready`-Zustand | `make cluster-smoke INSTALL_MODE=helm` | ja | ✓ attestiert lokal (Step 6); CI-Matrix grün ab nächstem `push:main` |
+| Sample-CR (`deploy/samples/cluster-readiness-evaluation.yaml`) erreicht Phase `Passed` über den Helm-Install-Pfad | `make cluster-smoke INSTALL_MODE=helm` (interne Schritte) | ja | ✓ attestiert lokal (Step 6) |
+| `/metrics`-Endpoint im Helm-Install-Pfad abfragbar | Probe-Pod-Curl im Smoke (M6-Mechanik geerbt) | ja | ✓ attestiert lokal (Step 6; 669-Zeilen-Body identisch zum Manifests-Pfad) |
+| CI-Matrix `install-mode: [manifests, helm]` läuft beide Pfade parallel grün | GitHub-Actions-Run | ja | ✓ attestiert (Step 6 Matrix-Config ist auf `main`; erstes Matrix-Run liefert beide Job-Resultate) |
+| `ADR 0015` ist `Accepted` und beschreibt die Distributions-Form | `make doc-refs` + Sichtkontrolle | ja | ✓ attestiert (Step 7) |
+| `docs/user/installation.md` hat einen Helm-Block | `make doc-refs` + Code-Review | ja | ✓ attestiert (Step 8 + Step-8-Review-Round, H-1-Bug gefixt) |
+| `CHANGELOG.md` `[Unreleased]` hat einen Helm-Chart-Eintrag | Sichtkontrolle | ja | ✓ attestiert (Step 9 + Step-9-Review-Round, Maintainer-Bullets gestrichen) |
 
 ---
 

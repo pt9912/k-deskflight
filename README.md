@@ -11,16 +11,18 @@ checks on a cluster before an [OpenDesk](https://docs.opendesk.eu/) installation
 **MVP released as [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0)
 on 2026-05-20** (`LH-VM-004`). All seven MVP slices are closed; the
 container image `ghcr.io/pt9912/k-deskflight:v0.1.0` is the release
-artifact. Subsequent work targets the v0.2 scope tracked under
-[`docs/plan/planning/open/`](docs/plan/planning/open/).
+artifact. **v0.2 is in progress** — slice M8 (Helm-Chart as a second
+distribution path) is ready for closure, M9–M15 are sequenced in the
+[v0.2-roadmap](docs/plan/planning/in-progress/roadmap-0.2.md), M16
+closes with the `v0.2.0` release tag.
 
 | Phase | Status | Source |
 | ----- | ------ | ------ |
-| Lastenheft (`LH-VM-001`) | Draft 0.1.0 | [`spec/lastenheft.md`](spec/lastenheft.md) |
-| Architecture decisions | 13 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
+| Lastenheft (`LH-VM-001`) | Draft 0.1.1 | [`spec/lastenheft.md`](spec/lastenheft.md) |
+| Architecture decisions | 15 ADRs | [`docs/plan/adr/`](docs/plan/adr/) |
 | Architecture spec (`AR-*`) | Done | [`spec/architecture.md`](spec/architecture.md) |
-| Implementation (`LH-VM-004`) | M1–M7 done — `v0.1.0` shipped | [`docs/plan/planning/done/`](docs/plan/planning/done/) |
-| Pflichtenheft (`LH-VM-002`) | grows alongside slices | per-slice plans in [`docs/plan/planning/done/`](docs/plan/planning/done/) |
+| Implementation (`LH-VM-004`) | M1–M7 done (`v0.1.0` shipped); M8 ready for closure; M9–M16 open | [`docs/plan/planning/`](docs/plan/planning/) |
+| Pflichtenheft (`LH-VM-002`) | grows alongside slices | per-slice plans in [`docs/plan/planning/`](docs/plan/planning/) |
 
 Release notes per version: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -60,6 +62,30 @@ kubectl apply -f deploy/manifests/
 
 Full apply flow, namespace override and metrics-scrape binding:
 [`docs/user/installation.md`](docs/user/installation.md).
+
+### v0.2 progress — Helm-Chart available (repository-checkout only
+until M16)
+
+A Helm-Chart now lives under
+[`deploy/charts/k-deskflight/`](deploy/charts/k-deskflight/);
+templates are 1:1 derived from `deploy/manifests/` (verified by
+`make helm-manifests-sync`) and `helm install` is attested through
+the same cluster-smoke matrix as the raw-manifest path. OCI
+distribution at `oci://ghcr.io/pt9912/charts/k-deskflight` is
+fixed by
+[`ADR 0015`](docs/plan/adr/0015-helm-chart-distributions-form.md);
+the first OCI push happens with the `v0.2.0` tag at M16. Until
+then, install from the repository checkout:
+
+```bash
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system \
+    --create-namespace \
+    --set namespace.create=false
+```
+
+Full Helm-install operations doc:
+[`docs/user/installation.md` §8](docs/user/installation.md).
 
 ## What the operator does
 
@@ -109,8 +135,8 @@ of the Lastenheft; ready-to-apply CR templates under
 
 | Version | Content | Source |
 | ------- | ------- | ------ |
-| v0.1 (MVP) | CRD, controller, K8s-version / StorageClass / IngressClass / cert-manager / resource / RBAC checks, container image, example manifests (`deploy/manifests/`), Prometheus `/metrics` endpoint with framework defaults | `LH-MVP-002`, `ADR 0005`, `ADR 0007` |
-| v0.2 | DNS / TLS / network reachability checks; events; ConfigMap report; own domain metrics; Helm chart | `LH-PRI-002`, `ADR 0005`, `ADR 0007`, `ADR 0008`, `ADR 0010` |
+| v0.1 (MVP) — **shipped 2026-05-20** | CRD, controller, K8s-version / StorageClass / IngressClass / cert-manager / resource / RBAC checks, container image, example manifests (`deploy/manifests/`), Prometheus `/metrics` endpoint with framework defaults | `LH-MVP-002`, `ADR 0005`, `ADR 0007` |
+| v0.2 — **in progress** | Helm-Chart (M8, ready for closure); DNS / TLS / network reachability checks (M14/M15); events (M9); ConfigMap report (M10); own domain metrics (M11) + OTel tracing spans (M12, `AR-OP-006`); Node + ClusterIssuer checks (M13); release tag `v0.2.0` (M16) | `LH-PRI-002`, `ADR 0005`, `ADR 0007`, `ADR 0008`, `ADR 0010`, `ADR 0014`, `ADR 0015` |
 | v0.3+ | PostgreSQL / S3 reachability (with auth), HTML report, additional profiles, kubectl plugin | `LH-PRI-003`, `ADR 0010` (with-auth block), follow-up ADR open |
 
 ## Supported Kubernetes versions

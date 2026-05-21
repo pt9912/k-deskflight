@@ -4,7 +4,7 @@
 **Bezug:** [Lastenheft `LH-OPD-PFO-001`](lastenheft.md)
 **Artefakt:** Architekturbeschreibung (`ADR 0001 §3`)
 **Version:** 0.1.0
-**Status:** MVP umgesetzt (Release [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0) — 2026-05-20)
+**Status:** MVP umgesetzt (Release [`v0.1.0`](https://github.com/pt9912/k-deskflight/releases/tag/v0.1.0) — 2026-05-20); v0.2 in Arbeit (Slice M8 Helm-Chart Steps 1–9 done, Closure-pending; M9–M16 noch offen — siehe [Roadmap](../docs/plan/planning/in-progress/roadmap-0.2.md))
 **Autor:** Dietmar Burkard
 **Sprache:** Deutsch (`LH-NF-021`)
 
@@ -1118,6 +1118,23 @@ entstehen mit M1.
 - Branch-Builds: `vX.Y.Z-<commit-sha-short>` pro `main`-Commit.
 - Pre-Release: `vX.Y.Z-rc.N`.
 
+**Helm-Chart-Distribution (ab v0.2, fixiert mit
+[`ADR 0015`](../docs/plan/adr/0015-helm-chart-distributions-form.md)):**
+
+- OCI-Distribution auf derselben GHCR-Registry; Push-Ziel
+  `oci://ghcr.io/pt9912/charts`, Anwender-Referenz
+  `oci://ghcr.io/pt9912/charts/k-deskflight` (Helm hängt
+  `Chart.yaml.name` als letztes Pfadsegment beim Push an).
+- `Chart.yaml.version` (Chart-Schema-SemVer) und
+  `Chart.yaml.appVersion` (Operator-Image-SemVer) entkoppelt;
+  normative Versions-Sync-Constraint bei jedem Operator-
+  Release-Tag: `appVersion == "v<RELEASE_TAG>"` (`release-guard`-
+  Erweiterung in M16).
+- Tag-Präfix-Asymmetrie bewusst: Image-Tag `:v<X.Y.Z>` (mit `v`),
+  Chart-Version `X.Y.Z` (ohne `v`); Brücke via
+  `k-deskflight.imageRef`-Helper in `deploy/charts/k-deskflight/
+  templates/_helpers.tpl`.
+
 ---
 
 ## 9. Test-Konzept (Skizze)
@@ -1206,10 +1223,10 @@ ausdrücken kann. Dann eigene Folge-ADR.
 | `AR-OP-001` | Konkrete CRD-Spec-Feld-Typen und kubebuilder-Marker (validation, defaulting, printcolumns) | Geschlossen mit M2 ([`api/v1alpha1/opendeskpreflightcheck_types.go`](../api/v1alpha1/opendeskpreflightcheck_types.go)): vollständige Spec/Status-Typen, `+kubebuilder:validation:Enum`/`Pattern`/`MinLength`, `+kubebuilder:default=production`/`"1.34"`/`info`, Printcolumns `Phase`/`Age` und Shortname `opdc`. M3 ergänzt `KubernetesVersionSpec.Validate` für Cross-Field-Constraints. |
 | `AR-OP-002` | Wahl zwischen `mockery`-generierten Mocks und handgeschriebenen Test-Doubles für `internal/hexagon/port/*` | Geschlossen mit M2/M3: **handgeschriebene Test-Doubles**. `fake.NewClientBuilder` aus controller-runtime für den k8s-Client; lokale `stubCheck` und `fakeRegistry` pro Test-File (siehe `internal/hexagon/application/reconciler_test.go`, `internal/adapter/check/*_test.go`). Kein `mockery`-Generator nötig — Test-Doubles bleiben klein und gut lesbar. |
 | `AR-OP-004` | Konkrete `+kubebuilder:rbac:...`-Marker-Sets am `Reconcile`-Receiver: genauer Verb-Satz pro Ressource, Marker-Doppelungen bei mehreren API-Gruppen, Konsolidierung mit `AR-015`/`AR-016` (Platzierung in `AR-007` festgelegt) | Geschlossen mit M2 ([`internal/hexagon/application/reconciler.go`](../internal/hexagon/application/reconciler.go)): 8 `+kubebuilder:rbac:`-Marker decken die `AR-015`-MVP-Minimum-Tabelle 1:1 ab; `controller-gen rbac` produziert `config/rbac/role.yaml` deterministisch (Generated-Drift-Gate aktiv). |
-| `AR-OP-005` | Anwender-Overridebarkeit des Default-Operator-Namespace `k-deskflight-system` via Kustomize-Overlay (ab MVP) bzw. Helm-Values (ab v0.2, `ADR 0005`) — exakte Override-Mechanik | Geschlossen mit M6 ([`docs/plan/planning/done/slice-M6-metrics-tests-doku.md §2.4`](../docs/plan/planning/done/slice-M6-metrics-tests-doku.md) + [`docs/user/installation.md §4`](../docs/user/installation.md)): Kustomize-Overlay-Pattern mit zwei Pflicht-Patches (Namespace-Resource selbst + ClusterRoleBinding-Subject-Namespace) dokumentiert; alle anderen namespaced Resources werden via `namespace:`-Kustomize-Feld automatisch umgeschrieben. Cluster-Smoke-Pipeline (`scripts/cluster-smoke.sh`) nutzt das gleiche Overlay-Pattern operativ für Image-Override. Helm-Values-Variante kommt mit v0.2 (`ADR 0005`). |
-| `AR-OP-006` | OTel-Integration: Tracing-Spans im Reconcile-Pfad ja/nein | offen — v0.2-Slice, koordiniert mit `ADR 0007` |
-| `AR-OP-007` | Conversion-Webhook für künftige Versionssprünge (`AR-008`) — implementieren oder via Re-Apply lösen | offen — Folge-ADR zu `ADR 0006 §4` |
-| `AR-OP-008` | Harte Namespace-/Tenant-Isolation (separate Operator-Instanz, eingeschränkte ClusterRole, profilierte Check-Matrix) | offen — v0.2/ Folge-ADR |
+| `AR-OP-005` | Anwender-Overridebarkeit des Default-Operator-Namespace `k-deskflight-system` via Kustomize-Overlay (ab MVP) bzw. Helm-Values (ab v0.2, `ADR 0005`) — exakte Override-Mechanik | Geschlossen mit M6 und M8: Kustomize-Overlay-Pattern dokumentiert in [`docs/plan/planning/done/slice-M6-metrics-tests-doku.md §2.4`](../docs/plan/planning/done/slice-M6-metrics-tests-doku.md) + [`docs/user/installation.md §4`](../docs/user/installation.md) (zwei Pflicht-Patches: Namespace-Resource selbst + ClusterRoleBinding-Subject-Namespace; alle anderen namespaced Resources werden via `namespace:`-Kustomize-Feld automatisch umgeschrieben; Cluster-Smoke-Pipeline nutzt dasselbe Pattern operativ für Image-Override). **Helm-Values-Variante mit M8 realisiert** ([`docs/plan/planning/in-progress/slice-M8-helm-chart.md`](../docs/plan/planning/in-progress/slice-M8-helm-chart.md) + [`docs/user/installation.md §8.3`](../docs/user/installation.md)): Override via `values.yaml.namespace.name` + `values.yaml.namespace.create`-Toggle; Anwender-Verantwortung dass `namespace.name` zum `--namespace`-Flag passt (kein Schema-Cross-Field-Constraint). |
+| `AR-OP-006` | OTel-Integration: Tracing-Spans im Reconcile-Pfad ja/nein | **In v0.2 aktiviert** mit [`ADR 0014 §2.3`](../docs/plan/adr/0014-v0.2-scope-schnitt.md); konkrete Slice-Umsetzung ist [M12 — OpenTelemetry-Tracing-Spans](../docs/plan/planning/in-progress/roadmap-0.2.md), gekoppelt an M11 (Domain-Metrics als gemeinsame OTel-Instrumentations-Basis) und `ADR 0007 §4` |
+| `AR-OP-007` | Conversion-Webhook für künftige Versionssprünge (`AR-008`) — implementieren oder via Re-Apply lösen | offen — explizit aus v0.2 ausgegrenzt mit [`ADR 0014 §2.4`](../docs/plan/adr/0014-v0.2-scope-schnitt.md) (CRD bleibt `v1alpha1` in v0.2, additive Felder reichen); Folge-ADR zu `ADR 0006 §4` erst bei `v1alpha2`/`v1beta1`-Sprung (vermutlich v1.0 / `LH-REL-004`) |
+| `AR-OP-008` | Harte Namespace-/Tenant-Isolation (separate Operator-Instanz, eingeschränkte ClusterRole, profilierte Check-Matrix) | offen — verschoben nach v0.3+ mit [`ADR 0014 §2.5`](../docs/plan/adr/0014-v0.2-scope-schnitt.md) (kein konkreter Multi-Mandanten-Use-Case im aktuellen Lastenheft); Folge-ADR sobald Use-Case entsteht |
 | `AR-OP-009` | controller-runtime-`Result.RequeueAfter`-Pflicht-Pattern: bei jeder `RequeueAfter`-Verwendung beide Pfade (`err == nil` und `err != nil`) explizit durchdenken | Geschlossen mit M6 ([`internal/hexagon/application/reconciler.go`](../internal/hexagon/application/reconciler.go) Z. 96–185 + [`docs/plan/planning/done/slice-M6-metrics-tests-doku.md §4 Step-1-Round-2-Befund 1`](../docs/plan/planning/done/slice-M6-metrics-tests-doku.md)): controller-runtime v0.24.1 verwirft `Result.RequeueAfter` bei non-nil `retErr` und loggt zusätzlich eine Warnung. Konsequenz für M6-Reconciler: bei `apierrors.IsConflict` wird `(Result{Requeue: true}, nil)` zurückgegeben (Rate-Limiter wartet nicht exponentiell auf erwartete Konflikte); bei anderen markPhase-Fehlern bleibt `(Result{}, err)` (controller-runtime-Default-Backoff). Im Panic-Pfad ist `Result{}` korrekt, weil `RequeueAfter: interval` mit non-nil retErr ohnehin verworfen würde — ConfigurationInvalid-Diagnose wird über `writeStatus` persistiert. Pattern verbindlich für alle künftigen Reconciler-Erweiterungen (M7-Release-Hardening eingeschlossen). |
 | `AR-OP-010` | Reason-Code-Naming-Konvention `Reason<Feature><State>` für v1alpha1-Status-API-Stabilität | Geschlossen mit M6 ([`internal/hexagon/application/interval.go`](../internal/hexagon/application/interval.go) + [`docs/plan/planning/done/slice-M6-metrics-tests-doku.md §4 Step-1-Round-2-Befund 3`](../docs/plan/planning/done/slice-M6-metrics-tests-doku.md)): `Reason<Feature><State>`-Pattern strict einhalten — `State` ist der konkrete Fehlerfall (`Unparseable`/`ClampedMin`/`ClampedMax`/`Defaulted`), **nicht** ein Sammel-Reason wie „Normalized". M6 hat `ReasonIntervalNormalized` initial als Sammel-Reason für drei semantisch verschiedene Fälle eingeführt; Step-1-Round-2-Review hat das in drei spezifische Reasons gesplittet (`IntervalUnparseable`, `IntervalClampedMin`, `IntervalClampedMax`), bevor v0.1.0 das in API-Stein meißeln konnte. Anwender filtern in jsonpath/Prometheus auf die spezifischen Reasons; Sammel-Reasons sind Anti-Pattern. Pattern verbindlich für alle künftigen Reason-Codes in `internal/adapter/check/` und `internal/hexagon/application/`. |
 
