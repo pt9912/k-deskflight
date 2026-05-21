@@ -468,6 +468,33 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
    damit Anwender nicht versehentlich `operator.mode=namespace-scope`
    ohne Begleit-RBAC versuchen (Schema-Constraint fängt das
    client-seitig ab, aber ein Doku-Block macht die Erwartung explizit).
+
+   **Step-8-Closure-Notiz (2026-05-21):**
+   - `docs/user/installation.md` erhält neuen §8 „Alternative:
+     Installation via Helm-Chart" (Sub-Sektionen §8.1 Voraussetzungen,
+     §8.2 Default-Installation mit Pattern-A/-B-Tabelle für die
+     Namespace-Mechanik, §8.3 Image-Pin + Overrides, §8.4
+     Betriebsmodus-Toggle, §8.5 RBAC extern verwalten, §8.6 Upgrade/
+     Uninstall mit CRD-Warning). Bestehende §8 „Weiterführend"
+     wandert nach §9 (keine eingehenden Cross-Refs auf den alten §8,
+     also keine Folge-Edits).
+   - Header-Stand-Notiz aktualisiert: v0.1 ausgeliefert, v0.2 in
+     Arbeit, Helm-Chart als zweite Distribution.
+   - `deploy/charts/k-deskflight/README.md` neu mit Chart-eigener
+     Anwender-Doku (Voraussetzungen, Install-Snippet,
+     `values.yaml`-Slot-Tabelle, Betriebsmodus-Hinweis, Uninstall-
+     CRD-Warning, Source-Link).
+   - Beide Step-2/Step-6-Review-Heads-ups eingelöst:
+     - §8.5 dokumentiert `rbac.create=false` + externe RBAC-Pfad
+       explizit (Step-2-Review).
+     - §8.2 Pattern-A/-B-Tabelle entzaubert die
+       `--create-namespace + namespace.create=false`-Mechanik als
+       eine von zwei legitimen Optionen statt als „Smoke-Workaround".
+       Step-6-Review N-2 hatte die Mechanik strenger als nötig
+       beurteilt — die anschließende Helm-Doku-Recherche hat
+       gezeigt, dass das Pattern eine gängige Operations-Variante
+       ist; die ehrlichere Doku-Behandlung ist beide Patterns
+       gleichwertig zu listen.
 9. **CHANGELOG.** Unter `## [Unreleased] Added` einen Helm-Chart-
    Eintrag ergänzen (wird mit M16-Closure in die `[0.2.0]`-Section
    verschoben).

@@ -3,9 +3,14 @@
 > **Adressat:** Cluster-Betreiber, die den k-deskflight-Operator in
 > einem Kubernetes-Cluster ausrollen wollen.
 >
-> **Stand:** MVP v0.1. Helm Chart ist
-> [bewusst nicht im MVP](../plan/adr/0005-helm-chart-nicht-im-mvp.md);
-> Distribution erfolgt über raw manifests.
+> **Stand:** v0.1 (MVP) ausgeliefert; v0.2 in Arbeit. Default-
+> Distribution sind die raw Kubernetes-Manifeste unter
+> [`deploy/manifests/`](../../deploy/manifests/) (§2–§7). Ab v0.2
+> steht zusätzlich ein Helm-Chart unter
+> [`deploy/charts/k-deskflight/`](../../deploy/charts/k-deskflight/)
+> bereit (§8); beide Pfade rendern dasselbe Funktionsset und werden
+> über die Cluster-Smoke-Matrix (`install-mode: [manifests, helm]`)
+> gemeinsam attestiert.
 
 ---
 
@@ -291,7 +296,181 @@ Für CR-Lebenszyklus-Operationen (Re-Run, Edit, Delete) siehe
 
 ---
 
-## 8. Weiterführend
+## 8. Alternative: Installation via Helm-Chart
+
+Ab v0.2 steht der Operator zusätzlich als Helm-Chart unter
+[`deploy/charts/k-deskflight/`](../../deploy/charts/k-deskflight/)
+bereit (`LH-NF-016`, `LH-SST-010`, [ADR 0005](../plan/adr/0005-helm-chart-nicht-im-mvp.md)).
+Der Chart leitet seine Templates 1:1 aus `deploy/manifests/` ab und
+deckt dieselben Resources wie die Kustomize-Default-Installation (§2)
+ab; die Wahl zwischen den beiden Pfaden ist eine Distributions-, keine
+Funktions-Entscheidung.
+
+### 8.1 Voraussetzungen
+
+Zusätzlich zu §1:
+
+- Helm 3.x auf dem Client (Validierung gegen `kubeVersion: ">=1.34.0-0"`
+  aus [`deploy/charts/k-deskflight/Chart.yaml`](../../deploy/charts/k-deskflight/Chart.yaml)).
+- Cluster-Admin-Rechte (CRD-Install, ClusterRole/ClusterRoleBinding).
+
+### 8.2 Default-Installation
+
+Aus dem Repository-Checkout heraus:
+
+```bash
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system \
+    --create-namespace \
+    --set namespace.create=false
+```
+
+**Hinweis zur Namespace-Mechanik:** das Chart enthält eine
+Namespace-Resource (Default `namespace.create=true`), Helm verlangt
+aber, dass der `--namespace`-Wert beim Install bereits existiert.
+Das ergibt zwei tragfähige Operations-Patterns:
+
+| Pattern | Konfiguration | Wer verwaltet den Namespace? |
+| ------- | ------------- | ---------------------------- |
+| **A** (oben gezeigt) | `--create-namespace` + `--set namespace.create=false` | Helm |
+| **B** | Namespace vorab per `kubectl create ns k-deskflight-system`; `helm install` ohne `--create-namespace`, `namespace.create=false` | Anwender / GitOps |
+
+Pattern A ist die kürzere CLI-Variante; Pattern B passt zu GitOps-
+Setups, in denen der Operator-Namespace aus einem separaten
+Cluster-Bootstrap-Layer kommt. Beide Patterns deaktivieren das
+Chart-Namespace-Template, um die „rendered manifests contain a
+resource that already exists"-Kollision zu vermeiden.
+
+Verifikation:
+
+```bash
+kubectl -n k-deskflight-system wait \
+    --for=condition=Available deployment/k-deskflight-operator \
+    --timeout=120s
+kubectl get crd opendeskpreflightchecks.k-deskflight.geo-terrain.net
+```
+
+### 8.3 Image-Pin und Konfigurations-Overrides
+
+Alle Konfigurations-Optionen via `values.yaml`-Overrides; die
+vollständige Schema-Definition liegt in
+[`deploy/charts/k-deskflight/values.yaml`](../../deploy/charts/k-deskflight/values.yaml)
+mit JSON-Schema-Validierung in
+[`values.schema.json`](../../deploy/charts/k-deskflight/values.schema.json).
+
+Häufige Overrides:
+
+```bash
+# Pin auf konkreten Image-Tag:
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system --create-namespace \
+    --set namespace.create=false \
+    --set image.tag=v0.1.0
+
+# Replicas + Resources:
+helm install … \
+    --set operator.replicas=1 \
+    --set operator.resources.requests.cpu=100m \
+    --set operator.resources.limits.memory=512Mi
+
+# Eigener Operator-Namespace:
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace my-operators --create-namespace \
+    --set namespace.create=false \
+    --set namespace.name=my-operators
+```
+
+`values.yaml.namespace.name` muss zum `--namespace`-Flag passen,
+damit Service-DNS-FQDN und ClusterRoleBinding-Subjects kohärent
+bleiben.
+
+### 8.4 Betriebsmodus: Cluster-Wide vs. Namespace-Scope
+
+Der Chart belichtet das `AR-016`/`AR-017`-Betriebsmodus-Pattern via
+`operator.mode`-Toggle (siehe
+[`spec/architecture.md` AR-016](../../spec/architecture.md)):
+
+```bash
+# Cluster-Wide Mode (Default):
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system --create-namespace \
+    --set namespace.create=false
+# → ClusterRole + ClusterRoleBinding, Operator reconciliert
+#    OpenDeskPreflightCheck-CRs in allen Namespaces.
+
+# Namespace-Reconcile-Scope Mode:
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system --create-namespace \
+    --set namespace.create=false \
+    --set operator.mode=namespace-scope
+# → zusätzlich Role + RoleBinding im Operator-Namespace;
+#    Deployment bekommt `--namespace=k-deskflight-system`-Arg,
+#    Operator reconciliert nur CRs im eigenen Namespace.
+```
+
+Die `values.schema.json`-Validierung schließt die Kombination
+`operator.mode=namespace-scope` + `rbac.create=false` aus
+(Schema-Error vor `helm install`), weil der Operator dann mit
+`--namespace`-Arg ohne nötige Role/RoleBinding starten würde
+(403-Fehler beim ersten Reconcile).
+
+### 8.5 RBAC extern verwalten
+
+Wer den Operator in eine Umgebung deployt, in der RBAC-Objekte
+durch einen separaten Layer (z. B. Argo-CD ApplicationSets,
+zentrale Policy-Engine, Compliance-Tooling) verwaltet werden,
+schaltet die Chart-RBAC-Erzeugung ab:
+
+```bash
+helm install k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system --create-namespace \
+    --set namespace.create=false \
+    --set rbac.create=false \
+    --set serviceAccount.create=false \
+    --set serviceAccount.name=k-deskflight-operator
+```
+
+In dieser Konfiguration muss der Anwender außerhalb des Charts
+sicherstellen:
+
+- Eine ClusterRole mit dem Verb-Set aus
+  [`config/rbac/role.yaml`](../../config/rbac/role.yaml) (`AR-015`).
+- Ein ClusterRoleBinding, der die ClusterRole an den vorhandenen
+  ServiceAccount bindet.
+- Im Namespace-Scope Mode zusätzlich Role + RoleBinding nach
+  [`AR-016`/`AR-017`](../../spec/architecture.md).
+- Der ServiceAccount muss im durch `serviceAccount.name`
+  benannten Wert existieren.
+
+Achtung — `operator.mode=namespace-scope` + `rbac.create=false`
+ist von der Schema-Validierung blockiert, weil die saubere
+Trennung nicht garantiert werden kann. Die Kombination
+`rbac.create=false` setzt also implizit
+`operator.mode=cluster-wide`.
+
+### 8.6 Upgrade und Uninstall
+
+```bash
+# Upgrade auf neuen Operator-Tag oder Chart-Version:
+helm upgrade k-deskflight deploy/charts/k-deskflight/ \
+    --namespace k-deskflight-system \
+    --set namespace.create=false \
+    --set image.tag=v0.2.0
+
+# Uninstall:
+helm uninstall k-deskflight --namespace k-deskflight-system
+```
+
+**Achtung:** `helm uninstall` löscht **auch** die CRD (das Chart
+rendert sie als reguläres Template). `kubectl get
+opendeskpreflightcheck -A` vor dem Uninstall sichert; CR-Verlust
+ist nicht reversibel ohne manuellen Re-Apply der gesicherten YAMLs.
+Wer CRs überleben lassen will: `--set crd.install=false` beim
+Install verwenden und die CRD separat via GitOps verwalten.
+
+---
+
+## 9. Weiterführend
 
 - [`cr-examples.md`](cr-examples.md) — zwei CR-Beispiele
   (`evaluation` + `production`) mit Profile-Default-Erklärung.
