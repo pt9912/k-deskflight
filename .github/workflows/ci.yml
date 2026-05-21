@@ -27,7 +27,7 @@ permissions: {}
 
 jobs:
   gates:
-    name: gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check)
+    name: gates (build + lint + test + coverage-gate + doc-refs + generated-drift-check + helm-lint + helm-template)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

@@ -310,8 +310,33 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
    - `minimal.yaml` — `crd.install: false`, `namespace.create: false`
      (GitOps-Szenario).
    - `full.yaml` — alle Felder explizit gesetzt (Coverage-Maximum).
-4. **`make helm-lint`/`helm-template`/`helm-manifests-sync`** als
-   Targets im `Makefile`. In `make gates` einhängen.
+4. **`make`-Targets in `Makefile`**. Strukturelle Aktivierung der
+   drei Helm-Gates:
+   - `helm-lint` (existiert seit Step 1) → in `make gates` einhängen.
+   - `helm-template` (existiert seit Step 3) → in `make gates`
+     einhängen.
+   - `helm-manifests-sync` → als Target neu anlegen, ruft
+     `scripts/helm-manifests-sync.sh` auf. Skript ist in Step 4
+     bewusst nur ein **Stub** (exit 1 mit klarer Hinweis-Message,
+     Skript-Header dokumentiert den geplanten Algorithmus). **Bewusst
+     NICHT** in `make gates` aufgenommen, weil CI sonst transient rot
+     wird; Einhängung in `gates` erst in Step 5 nach Grün-Stand.
+   - Alle vier neuen Helm-Targets (`helm-tools-image`, `helm-lint`,
+     `helm-template`, `helm-manifests-sync`) landen in der
+     `.PHONY`-Liste.
+   - CI-Workflow (`.github/workflows/ci.yml`) ruft weiterhin
+     `make gates` ohne Einzelschritt-Auflistung; der Job-Name in
+     Z. 30 wird mitgepflegt, damit das GitHub-Actions-Pane den
+     erweiterten Scope sichtbar zeigt.
+
+   **Step-4-Review-Heads-up für Step 5:** das Stub-Skript läuft
+   in Step 4 direkt auf dem Host (nur `cat` + `exit`). Sobald
+   Step 5 das Skript um `helm`/`kubectl`/`yq` erweitert, muss
+   der Aufruf auf das Pattern `docker run … $(IMAGE):helm-tools
+   bash scripts/helm-manifests-sync.sh` umgestellt werden — sonst
+   bricht K-2 (Docker-only). Wahrscheinlich ist die `helm-tools`-
+   Stage um `kubectl` und `yq` zu erweitern oder eine eigene
+   `chart-sync-tools`-Stage anzulegen. Entscheidung in Step 5.
 5. **`make helm-manifests-sync` zum Grün-Stand bringen.** Wenn
    Drift gegen `deploy/manifests/` auftritt: zuerst Drift-Ursache
    verstehen, dann entscheiden ob Template oder Original-Manifest

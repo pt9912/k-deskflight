@@ -53,7 +53,7 @@ TRIVY_IMAGE ?= aquasec/trivy:0.59.1
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
         operator-http-smoke image-publish-dry-run image-publish-guard \
         image-publish image-scan release-guard release-guard-test clean \
-        helm-tools-image helm-lint helm-template
+        helm-tools-image helm-lint helm-template helm-manifests-sync
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -200,9 +200,19 @@ helm-template: helm-tools-image ## helm template über drei Test-Values-Overlays
 	        done; \
 	        echo "[helm-template] all three overlays rendered"'
 
+# Drift-Detektion zwischen Chart-Templates und kanonischer Quelle
+# (deploy/manifests/ + config/crd/). Step-4-Stand: Target existiert
+# strukturell, Skript ist noch Stub (slice-M8 §4 step 5 macht es grün).
+# Bewusst NICHT in `make gates` bis Step 5 — sonst läuft CI rot.
+helm-manifests-sync: ## Structural drift gate between chart templates and deploy/manifests/ (slice-M8 §2.5; stub until step 5).
+	bash scripts/helm-manifests-sync.sh
+
 # ---- gate bundles ----------------------------------------------------------
 
-gates: build lint test coverage-gate doc-refs generated-drift-check ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
+# `make gates` erweitert um die zwei grünen Helm-Gates aus slice-M8
+# (helm-lint + helm-template). `helm-manifests-sync` kommt mit Step 5
+# hinzu, sobald das Skript drift-frei läuft.
+gates: build lint test coverage-gate doc-refs generated-drift-check helm-lint helm-template ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
 	@echo "[gates] passed"
 
 # `govulncheck` läuft in einem golang:1.26.3-Container und installiert
