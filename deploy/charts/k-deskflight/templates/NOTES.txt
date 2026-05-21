@@ -10,7 +10,7 @@ Verify the operator is running:
 Apply an example preflight check:
 
   kubectl apply -f https://raw.githubusercontent.com/pt9912/k-deskflight/main/deploy/samples/cluster-readiness-evaluation.yaml
-  kubectl get opendeskpreflightcheck cluster-readiness
+  kubectl get opendeskpreflightcheck cluster-readiness-evaluation
 
 Uninstall:
 

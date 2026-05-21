@@ -51,6 +51,7 @@ client-seitig ab — vor jedem Server-Round-Trip.
 | `operator.leaderElect` | `true` | Leader-Election ([`AR-026`](https://github.com/pt9912/k-deskflight/blob/main/spec/architecture.md)). |
 | `metrics.enabled` | `true` | Prometheus-`/metrics`-Endpoint via Service. |
 | `metrics.port` | `8080` | Service-Port; Container-Port ist statisch 8080. |
+| `metrics.service.type` | `ClusterIP` | Service-Typ; `NodePort`/`LoadBalancer` für Cluster-externe Scrape-Pfade. |
 | `metrics.clusterRolePattern.create` | `true` | Pattern-Asset-ClusterRole für Prometheus-Operator-Scrape (v0.1 explizit unauthenticated, [`ADR 0007 §3`](https://github.com/pt9912/k-deskflight/blob/main/docs/plan/adr/0007-prometheus-metrik-scope-im-mvp.md)). |
 | `rbac.create` | `true` | ClusterRole + Bindings via Chart erzeugen. Bei `false` muss RBAC extern verwaltet werden — siehe Operations-Doku. |
 | `serviceAccount.create` | `true` | Operator-ServiceAccount via Chart erzeugen. |
@@ -79,7 +80,7 @@ Verifikations-Kommandos. Ein erstes Preflight-Check-CR:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/pt9912/k-deskflight/main/deploy/samples/cluster-readiness-evaluation.yaml
-kubectl get opendeskpreflightcheck cluster-readiness
+kubectl get opendeskpreflightcheck cluster-readiness-evaluation
 ```
 
 Vollständige Anwender-Doku, Conditions-Katalog und Troubleshooting:

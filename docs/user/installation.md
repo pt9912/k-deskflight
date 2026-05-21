@@ -316,6 +316,13 @@ Zusätzlich zu §1:
 
 ### 8.2 Default-Installation
 
+> **Hinweis:** Bis zur v0.2.0-Veröffentlichung wird der Chart aus
+> dem Repository-Checkout installiert. Die `helm repo add`- und
+> `helm pull oci://`-Varianten dokumentieren wir, sobald die
+> Distributions-Form (Helm-Repository vs. OCI-Registry) per
+> Folge-ADR (`ADR 0015`, slice-M8 Step 7) entschieden und der erste
+> Chart-Publish ausgeführt ist (M16).
+
 Aus dem Repository-Checkout heraus:
 
 ```bash
@@ -339,7 +346,10 @@ Pattern A ist die kürzere CLI-Variante; Pattern B passt zu GitOps-
 Setups, in denen der Operator-Namespace aus einem separaten
 Cluster-Bootstrap-Layer kommt. Beide Patterns deaktivieren das
 Chart-Namespace-Template, um die „rendered manifests contain a
-resource that already exists"-Kollision zu vermeiden.
+resource that already exists"-Kollision zu vermeiden — Helm's
+`--create-namespace`-Pre-Apply-Phase und ein chart-eigenes
+Namespace-Template würden sonst beide versuchen, denselben
+Namespace anzulegen.
 
 Verifikation:
 
@@ -380,9 +390,12 @@ helm install k-deskflight deploy/charts/k-deskflight/ \
     --set namespace.name=my-operators
 ```
 
-`values.yaml.namespace.name` muss zum `--namespace`-Flag passen,
-damit Service-DNS-FQDN und ClusterRoleBinding-Subjects kohärent
-bleiben.
+`values.yaml.namespace.name` und der `--namespace`-Flag-Wert
+müssen übereinstimmen — das wird vom Chart nicht erzwungen
+(`values.schema.json` enthält keinen Cross-Field-Constraint dafür),
+sondern liegt in der Verantwortung des Anwenders. Bei Drift
+zeigen Service-DNS-FQDN und ClusterRoleBinding-Subjects auf
+einen anderen Namespace als der gerenderte Helm-Release-Scope.
 
 ### 8.4 Betriebsmodus: Cluster-Wide vs. Namespace-Scope
 
@@ -443,10 +456,13 @@ sicherstellen:
   benannten Wert existieren.
 
 Achtung — `operator.mode=namespace-scope` + `rbac.create=false`
-ist von der Schema-Validierung blockiert, weil die saubere
-Trennung nicht garantiert werden kann. Die Kombination
-`rbac.create=false` setzt also implizit
-`operator.mode=cluster-wide`.
+ist von der Schema-Validierung blockiert (siehe §8.4): wer
+`rbac.create=false` setzt, muss daher entweder bei
+`operator.mode=cluster-wide` (Default) bleiben, oder die
+Namespace-Scope-RBAC-Objekte ebenfalls extern bereitstellen und
+den Mode-Constraint via `--set operator.mode=cluster-wide`
+explizit halten. Das Schema setzt keinen Mode implizit — es
+verwirft die ungültige Kombination.
 
 ### 8.6 Upgrade und Uninstall
 
@@ -461,12 +477,16 @@ helm upgrade k-deskflight deploy/charts/k-deskflight/ \
 helm uninstall k-deskflight --namespace k-deskflight-system
 ```
 
-**Achtung:** `helm uninstall` löscht **auch** die CRD (das Chart
-rendert sie als reguläres Template). `kubectl get
-opendeskpreflightcheck -A` vor dem Uninstall sichert; CR-Verlust
-ist nicht reversibel ohne manuellen Re-Apply der gesicherten YAMLs.
-Wer CRs überleben lassen will: `--set crd.install=false` beim
-Install verwenden und die CRD separat via GitOps verwalten.
+**Achtung:** Wenn beim Install `crd.install=true` war (Default),
+löscht `helm uninstall` **auch** die CRD und damit alle
+`OpenDeskPreflightCheck`-CRs cluster-weit — das Chart rendert die
+CRD als reguläres Template und der Helm-Release verwaltet sie.
+`kubectl get opendeskpreflightcheck -A -o yaml > backup.yaml` vor
+dem Uninstall sichert; CR-Verlust ist nicht reversibel ohne
+manuellen Re-Apply der gesicherten YAMLs. Wer CRs zwischen
+Releases überleben lassen will, installiert mit
+`--set crd.install=false` und verwaltet die CRD separat
+(GitOps-Pattern).
 
 ---
 

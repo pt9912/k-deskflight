@@ -495,6 +495,37 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
        gezeigt, dass das Pattern eine gängige Operations-Variante
        ist; die ehrlichere Doku-Behandlung ist beide Patterns
        gleichwertig zu listen.
+
+   **Step-8-Review-Folgen umgesetzt (Doku-Review nach K-1):**
+   - H-1: CR-Name-Bug `cluster-readiness` → `cluster-readiness-evaluation`
+     in `templates/NOTES.txt` (Z. 13) und `deploy/charts/k-deskflight/README.md`
+     (Z. 82) gefixt — der falsche Name würde jeden Helm-Anwender
+     nach `helm install` mit `NotFound` begrüßen.
+   - M-1: OCI/Repo-Install-Varianten in §8.2 als „kommt mit
+     ADR 0015 / M16-Publish" markiert; Slice-Plan-Step-7 muss vor
+     Slice-Closure noch geschrieben werden.
+   - M-2: §8.5-Schlusssatz präzisiert — Schema verwirft die
+     ungültige Kombination, setzt nicht implizit den Default-Mode.
+   - M-3: §8.6-Uninstall-Achtung um „wenn beim Install
+     `crd.install=true` war (Default)" konditioniert; backup-
+     Empfehlung mit `-o yaml > backup.yaml`-Snippet konkreter.
+   - M-4: §8.3 Pattern-A/-B-Tabellen-Nachsatz markiert die
+     `namespace.name` ↔ `--namespace` Konsistenz explizit als
+     Anwender-Verantwortung (kein Schema-Constraint).
+   - N-1: chart-README-Slot-Tabelle um `metrics.service.type`
+     ergänzt (Operations-relevant für NodePort/LoadBalancer).
+   - D-1: §8.2 Pattern-Abschluss um Helm-`--create-namespace`-
+     Pre-Apply-Phase-Begründung ergänzt — macht die technische
+     Notwendigkeit der Doppel-Flag-Mechanik transparent, ohne sie
+     als Best Practice zu adeln.
+   - Unverändert: N-2 (relative vs. absolute Cross-Links im
+     chart-README) — bewusste Trennung Chart-Tarball-intern relativ,
+     Repo-Verweise absolut; in dieser Closure-Notiz als Konvention
+     dokumentiert.
+   - Unverändert: N-3 (§8.4/§8.5 Schema-Erwähnung doppelt),
+     N-4 (Tabellen-Lesbarkeit), N-5 (LH-Header-Politur), D-2
+     (`make`-Verifikation in Anwender-Doku) — niedrige Priorität,
+     keine Funktional-Wirkung.
 9. **CHANGELOG.** Unter `## [Unreleased] Added` einen Helm-Chart-
    Eintrag ergänzen (wird mit M16-Closure in die `[0.2.0]`-Section
    verschoben).
