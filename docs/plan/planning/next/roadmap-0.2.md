@@ -21,8 +21,8 @@ Detail.
 
 - **`ADR 0014`** fixiert den v0.2-Scope-Schnitt (Voll-`LH-PRI-002` +
   `AR-OP-006`/OTel; `AR-OP-007`/Conversion-Webhook und `AR-OP-008`/
-  Tenant-Isolation bleiben offen). Diese Roadmap löst den Scope-
-  Schnitt operativ in Slices auf.
+  Tenant-Isolation bleiben offen). Diese Roadmap löst den Scope-Schnitt
+  operativ in Slices auf.
 - **`spec/architecture.md`** trägt die strukturellen v0.2-Entscheidungen
   bereits (Layer-Modell, depguard-Regeln, RBAC-Erweiterungen für
   `core/events` und `core/configmaps` aus §10). Slice-spezifische
@@ -34,8 +34,9 @@ Detail.
   duplikativ.
 - **Bewegungspfad dieser Datei:**
   `next/` (jetzt, Review-Phase) → `in-progress/` (mit Aktivierung des
-  ersten Slices `M8`) → `done/` (wenn alle M8–M16 in `done/` liegen,
-  als Sammel-Closure analog zur abgeschlossenen v0.1-Roadmap).
+  ersten Slices `M8`) → `done/` (mit
+  `done/roadmap-0.2.md` als Closure, wenn alle M8–M16
+  in `done/` liegen, analog zur abgeschlossenen v0.1-Roadmap).
 
 ---
 
@@ -62,7 +63,7 @@ v0.2 (`LH-REL-002`) gemäß `LH-PRI-002` und `ADR 0014`:
   Image — analog zur M7-Mechanik aus v0.1.
 
 `AR-OP-007` (Conversion-Webhook), `AR-OP-008` (Tenant-Isolation), der
-„mit-Auth"-Block aus `ADR 0010 §2.3` (PostgreSQL/S3) und alle
+"mit-Auth"-Block aus `ADR 0010 §2.3` (PostgreSQL/S3) und alle
 `LH-PRI-003`-Punkte (Plattformprofile, HTML-Report, kubectl-Plugin)
 sind **nicht** Teil von v0.2 — siehe §4.
 
@@ -88,7 +89,7 @@ sind **nicht** Teil von v0.2 — siehe §4.
 
 > Diese Detail-Sektion ist absichtlich schlanker gehalten als die
 > M1–M7-Roadmap. Vollständige Slice-Pläne entstehen mit der Aktivierung
-> des jeweiligen Slices unter `planning/in-progress/slice-MX-…md`.
+> des jeweiligen Slices unter `in-progress/slice-MX-…md`.
 
 ### M8 — Helm-Chart als Distributions-Pfad
 
@@ -160,7 +161,7 @@ aufsetzt.
 **Out-of-scope-Notizen:** Custom-Histogram-Buckets werden im Slice-
 Plan festgelegt. Auth-Filter für `/metrics`-Endpoint (v0.1: explizit
 unauthenticated) wird in einer eigenen Folge-ADR adressiert
-(`slice-M6-metrics-tests-doku.md` deferral).
+([`slice-M6-metrics-tests-doku.md`](../done/slice-M6-metrics-tests-doku.md) deferral).
 
 ### M12 — OpenTelemetry-Tracing-Spans im Reconcile-Pfad
 
@@ -170,8 +171,8 @@ Spans für `Reconcile`-Aufruf und pro Check-Ausführung; Standard-
 Attribute (`k-deskflight.cr.name`, `k-deskflight.cr.namespace`,
 `k-deskflight.profile`, `k-deskflight.check.name`,
 `k-deskflight.check.severity`). Header-Propagation für
-ausgehende HTTP-Calls (DNS/TLS/Reachability — M14/M15) folgt
-W3C-Trace-Context-Konvention.
+ausgehende Netzwerk-Calls (DNS/TLS/Reachability — M14/M15) folgt
+der W3C-Trace-Context-Konvention.
 
 **Eingangsabhängigkeit:** M11 (OTel-Provider-Basis).
 
@@ -191,7 +192,7 @@ wird im Slice-Plan festgelegt.
   über `spec.checks.certManager.clusterIssuers[]` (Namens-Liste oder
   „alle vorhandenen").
 
-Beide Checks erweitern die existierende `port.*Discovery`-Pattern-
+Beide Checks erweitern die bestehende Check-Adapter-/Registry-Pattern-
 Familie (M4) um zwei neue Interfaces. SAR-Selbstprüfung (`AR-018`)
 ist obligatorisch.
 
@@ -244,10 +245,10 @@ PostgreSQL- und S3-Reachability sind `mit-Auth`-Block (v0.3+).
 **Lieferziel:** Analog zu Slice M7 aus v0.1:
 - `CHANGELOG.md` erhält eine `[0.2.0]`-Section unterhalb
   `[Unreleased]`, gepflegt schrittweise aus den M8–M15-Closures.
-- `make image-build VER=v0.2.0`, `make image-publish-{dry-run,guard,}
-  VER=v0.2.0`, `make image-scan VER=v0.2.0`, `make security-gates
-  VER=v0.2.0`, `make release-guard VER=v0.2.0` — vollständig geerbt
-  aus M7.
+- `make image-build VER=v0.2.0`, `make image-publish-dry-run VER=v0.2.0`,
+  `make image-publish VER=v0.2.0`, `make image-scan VER=v0.2.0`,
+  `make security-gates VER=v0.2.0`, `make release-guard VER=v0.2.0` —
+  vollständig geerbt aus M7.
 - Trivy-Scan gegen das v0.2.0-Image (CRITICAL/HIGH blockierend).
 - GHCR-Publish des Images.
 - Helm-Chart-Publish (Distributions-Form aus M8-Slice).
@@ -327,5 +328,5 @@ angereichert (analog zur abgeschlossenen v0.1-Roadmap).
 **Aktueller Stand (2026-05-21):** Draft. Wartet auf Review der
 Slice-Schnitte M8–M16 (insbesondere Bündelung in M13/M14 und
 Trennung von Metrics/OTel in M11+M12). Aktivierung erfolgt durch
-Move dieser Datei nach `planning/in-progress/roadmap-0.2.md` und
+Move dieser Datei nach `in-progress/roadmap-0.2.md` und
 Erstellung des `slice-M8-helm-chart.md`-Plans.
