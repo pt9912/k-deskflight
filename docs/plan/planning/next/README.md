@@ -18,4 +18,6 @@ Ein Eintrag wechselt typischerweise:
 
 ## Bestand
 
-Aktuell keine Einträge.
+| Datei | Eröffnet | Scope-Skizze |
+| ----- | -------- | ------------ |
+| [`roadmap-0.2.md`](roadmap-0.2.md) | 2026-05-21 | Folge-Roadmap zur abgeschlossenen MVP-Roadmap v0.1. Neun Slices M8–M16 lösen den in [`ADR 0014`](../../adr/0014-v0.2-scope-schnitt.md) fixierten v0.2-Scope-Schnitt (Voll-`LH-PRI-002` + `AR-OP-006`) operativ auf. Wartet auf Review; Aktivierung via Move nach `in-progress/`. |
