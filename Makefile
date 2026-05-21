@@ -182,14 +182,23 @@ helm-lint: helm-tools-image ## helm lint deploy/charts/k-deskflight/ (slice-M8 �
 	    $(IMAGE):helm-tools \
 	    helm lint deploy/charts/k-deskflight/
 
-helm-template: helm-tools-image ## helm template deploy/charts/k-deskflight/ with default values (slice-M8 §2.5).
+helm-template: helm-tools-image ## helm template über drei Test-Values-Overlays (slice-M8 §2.5 + §4 step 3).
 	docker run --rm \
 	    -v "$(CURDIR):/src" \
 	    -w /src \
 	    $(IMAGE):helm-tools \
-	    helm template release-test deploy/charts/k-deskflight/ \
-	        --namespace k-deskflight-system \
-	        --kube-version $(HELM_KUBE_VERSION)
+	    sh -ec ' \
+	        for v in default minimal full; do \
+	            echo "[helm-template] === overlay: test-values/$$v.yaml ==="; \
+	            helm template release-test deploy/charts/k-deskflight/ \
+	                --namespace k-deskflight-system \
+	                --kube-version $(HELM_KUBE_VERSION) \
+	                -f deploy/charts/k-deskflight/test-values/$$v.yaml \
+	                > /tmp/render-$$v.yaml; \
+	            kinds=$$(grep -c "^kind:" /tmp/render-$$v.yaml || true); \
+	            echo "[helm-template]     rendered $$kinds resources"; \
+	        done; \
+	        echo "[helm-template] all three overlays rendered"'
 
 # ---- gate bundles ----------------------------------------------------------
 

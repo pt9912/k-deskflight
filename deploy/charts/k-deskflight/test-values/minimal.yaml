@@ -1,0 +1,17 @@
+# Slice-M8 §4 step 3 — minimal test-values overlay.
+#
+# GitOps-Szenario: CRD und Namespace werden außerhalb des Charts
+# verwaltet (z. B. Argo-CD CRD-only-Application, Cluster-Bootstrap-
+# Stack, separate Kustomize-Layer für Plattform-Setup). Der Chart
+# rendert dann nur die Anwendungs-Resources (Deployment, Service,
+# RBAC, ServiceAccount).
+#
+# Erwarteter Render: 6 Resources.
+#   ServiceAccount, ClusterRole, ClusterRoleBinding,
+#   ClusterRole(metrics-scrape), Service, Deployment.
+#   (Namespace und CRD entfallen.)
+
+crd:
+  install: false
+namespace:
+  create: false

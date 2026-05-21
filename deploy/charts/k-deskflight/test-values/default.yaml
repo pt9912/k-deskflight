@@ -1,0 +1,11 @@
+# Slice-M8 §4 step 3 — default test-values overlay.
+#
+# Diese Datei ist absichtlich kommentar-only: alle Werte kommen aus
+# values.yaml. Sie existiert, damit `make helm-template` einen
+# gleichförmigen Loop über drei Overlay-Dateien ausführen kann (default,
+# minimal, full) statt Sonderlogik für den Default-Fall.
+#
+# Erwarteter Render: 8 Resources (Cluster-Wide Mode).
+#   Namespace, ServiceAccount, CRD, ClusterRole, ClusterRoleBinding,
+#   ClusterRole(metrics-scrape), Service, Deployment.
+{}

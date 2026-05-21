@@ -1,0 +1,52 @@
+# Slice-M8 §4 step 3 — full test-values overlay.
+#
+# Coverage-Maximum: jedes Feld aus values.yaml ist explizit gesetzt,
+# `operator.mode` ist auf `namespace-scope` gestellt, damit die
+# conditional Templates (Role, RoleBinding, --namespace-Arg) im
+# Render-Test mit abgedeckt sind.
+#
+# Erwarteter Render: 10 Resources.
+#   Namespace, ServiceAccount, CRD, ClusterRole, ClusterRoleBinding,
+#   Role, RoleBinding, ClusterRole(metrics-scrape), Service, Deployment.
+
+namespace:
+  create: true
+  name: k-deskflight-test
+
+image:
+  repository: ghcr.io/pt9912/k-deskflight
+  tag: "v0.1.0"
+  pullPolicy: Always
+
+operator:
+  mode: namespace-scope
+  replicas: 1
+  leaderElect: true
+  expectedReplicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+metrics:
+  enabled: true
+  port: 9090
+  service:
+    type: ClusterIP
+  clusterRolePattern:
+    create: true
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations:
+    example.k-deskflight.geo-terrain.net/owner: platform-team
+
+crd:
+  install: true
