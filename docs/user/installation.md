@@ -316,14 +316,14 @@ Zusätzlich zu §1:
 
 ### 8.2 Default-Installation
 
-> **Hinweis:** Bis zur v0.2.0-Veröffentlichung wird der Chart aus
-> dem Repository-Checkout installiert. Die `helm repo add`- und
-> `helm pull oci://`-Varianten dokumentieren wir, sobald die
-> Distributions-Form (Helm-Repository vs. OCI-Registry) per
-> Folge-ADR (`ADR 0015`, slice-M8 Step 7) entschieden und der erste
-> Chart-Publish ausgeführt ist (M16).
+Zwei Install-Wege:
 
-Aus dem Repository-Checkout heraus:
+- **Repository-Checkout** (heute funktionsfähig, weiter verfügbar
+  auch nach M16) — der unten gezeigte Default-Pfad.
+- **OCI-Registry** (ab M16-Closure aufrufbar, [ADR 0015](../plan/adr/0015-helm-chart-distributions-form.md)) —
+  weiter unten skizziert.
+
+**Default — Install aus dem Repository-Checkout:**
 
 ```bash
 helm install k-deskflight deploy/charts/k-deskflight/ \
@@ -331,6 +331,29 @@ helm install k-deskflight deploy/charts/k-deskflight/ \
     --create-namespace \
     --set namespace.create=false
 ```
+
+**OCI-Install (verfügbar ab v0.2.0 / M16-Closure):**
+
+> Hinweis: Dieser Befehl liefert bis zum ersten erfolgreichen
+> Chart-Publish in M16 + der Public-Schaltung des GHCR-Packages
+> einen `unauthorized` / `not found`. Form und Argumente sind hier
+> ergänzend dokumentiert, damit Anwender nach M16-Closure direkt
+> umsteigen können.
+
+```bash
+helm install k-deskflight oci://ghcr.io/pt9912/charts/k-deskflight \
+    --version 0.2.0 \
+    --namespace k-deskflight-system \
+    --create-namespace \
+    --set namespace.create=false
+```
+
+`--version` wird explizit empfohlen. Ohne Flag fällt Helm auf das
+im `Chart.yaml` veröffentlichte SemVer-Tag zurück (kein implizites
+`latest` wie bei Container-Images); bei mehreren publizierten
+Versionen führt der Verzicht aufs Pinning aber zu unbeabsichtigtem
+Auto-Upgrade. Semver-Range-Auswahl (`--version "^0.2"`) ist
+Helm-3-Standard. Helm 3.8+ ist Pflicht für OCI-Support.
 
 **Hinweis zur Namespace-Mechanik:** das Chart enthält eine
 Namespace-Resource (Default `namespace.create=true`), Helm verlangt

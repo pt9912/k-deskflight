@@ -295,7 +295,7 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
 | `Dockerfile` (`tools`-Stage) | erweitert | `helm` und `kubectl` bereits vorhanden; ggf. Version-Pin nachjustieren |
 | `scripts/cluster-smoke.sh` | erweitert | `INSTALL_MODE=helm` (§2.7) |
 | `.github/workflows/ci.yaml` | erweitert | zweite Matrix-Dimension `install-mode: [manifests, helm]` für Cluster-Smoke-Job |
-| `docs/plan/adr/0015-helm-chart-distributions-form.md` | neu | §2.8 Folge-ADR |
+| `docs/plan/adr/0015-helm-chart-distributions-form.md` | neu (Step 7) | §2.8 Folge-ADR; Status Accepted, fixiert OCI über GHCR + Push-Ziel + Versions-Sync + Approval-Pattern |
 | `docs/user/installation.md` | erweitert | neuer §-Block „Installation via Helm-Chart" |
 | `CHANGELOG.md` | erweitert | `[Unreleased] Added`: Helm-Chart |
 | `docs/plan/planning/in-progress/roadmap-0.2.md` | erweitert | Slice-Status-Anriss in §2 mit Closure-Link beim M8-Abschluss |
@@ -460,6 +460,67 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
 7. **`ADR 0015 — Helm-Chart-Distributions-Form` schreiben.**
    Status: Accepted. Inhalt: OCI vs. Helm-Repo (Vorgriff §2.8), Publish-
    Flow, Versions-Sync mit `Chart.yaml.version`.
+
+   **Step-7-Closure-Notiz (2026-05-21):**
+   - [`docs/plan/adr/0015-helm-chart-distributions-form.md`](../../adr/0015-helm-chart-distributions-form.md)
+     angelegt, Status `Accepted`. Entscheidung: OCI-Registry über
+     GHCR (`oci://ghcr.io/pt9912/charts/k-deskflight`); Push-Ziel
+     `oci://ghcr.io/pt9912/charts` (Chart-Name wird beim Push als
+     letztes Pfadsegment angehängt).
+   - ADR §2.3 fixiert die `make chart-publish-{dry-run,guard,}`-
+     Target-Form analog zum Image-Publish-Pattern aus M7 §2.3;
+     Implementation gehört zu M16.
+   - ADR §2.4 dokumentiert die Anonymous-Pull-Aktivierung als
+     einmaligen GHCR-Settings-Schritt analog zum Operator-Image-
+     Pfad aus M7 §10.5 #11b.
+   - ADR §3 listet die Folge-Implikationen: §8.2-Doku-Nachzug
+     mit OCI-Snippet (kann jetzt geschrieben werden), `AR-022`-
+     Folgesatz in `spec/architecture.md` (mit Slice-Closure),
+     `release-guard`-Erweiterung in M16.
+   - ADR §4 grenzt sauber aus: Chart-Signing (Folge-ADR v0.3+),
+     chart-testing + helm-docs (open/-Trigger), ArtifactHub-
+     Repository-Anlage (M16-task), Mirror-Hosting (nicht
+     vorgesehen).
+
+   §8.2 in `installation.md` wird im nächsten Folge-Commit
+   nachgezogen: der „kommt mit ADR 0015"-Hinweis-Block kann jetzt
+   durch das endgültige OCI-Install-Snippet ersetzt werden (das
+   funktionale Anonymous-Pull-Verhalten kommt aber erst mit M16
+   nach dem ersten Publish + Public-Schaltung — bis dahin bleibt
+   der Hinweis-Block stehen, weil das OCI-Pfad zwar dokumentiert,
+   aber noch nicht aufrufbar ist).
+
+   **Step-7-Review-Folgen umgesetzt:**
+   - H1: `--version`-Wording in ADR §2.5 und installation.md §8.2
+     präzisiert — Helm fällt ohne Flag auf das `Chart.yaml`-
+     SemVer-Tag zurück; `--version` ist Empfehlung, keine
+     technische Pflicht. „Kein implizites `latest`" stimmt aber
+     weiter (Helm ≠ Docker-Tag-Semantik).
+   - H2: cert-manager-Analogie in ADR §2.1 auf den verifizierten
+     OCI-Chart-Pfad reduziert; die parallele Image-Pfad-Behauptung
+     war ungenau (cert-manager-Images leben unter
+     `cert-manager-controller`/`-webhook`/`-cainjector`-Suffixen,
+     nicht unter dem flachen `cert-manager`-Namen).
+   - M1: ADR §2.4 GHCR-Private-Default mit Verweis auf den
+     Operator-Image-Präzedenzfall aus M7 §10.5 #11b — die
+     Privacy-Default-Politik ist nicht OCI-Chart-spezifisch.
+   - M2: installation.md §8.2 Reihenfolge umgedreht — Repo-Checkout
+     (heute funktionsfähig) zuerst, OCI (ab M16 aufrufbar) zweitens
+     mit explizitem Hinweis-Block, der den nicht-aufrufbaren Zustand
+     vor dem Codeblock benennt.
+   - M3: ADR §2.2 um expliziten normativen Versions-Sync-Constraint
+     erweitert (`Chart.yaml.appVersion == "v<RELEASE_TAG>"`);
+     release-guard-Erweiterung als Klammer-Detail für M16-
+     Implementation.
+   - M4: ADR §2.4 Schritt 1 ergänzt um „URL erst nach erstem
+     erfolgreichen `helm push` aufrufbar".
+   - N1: ADR §3 Konsequenzen um Tag-Präfix-Asymmetrie-Hinweis
+     ergänzt (Image: `v`-Präfix; Chart-Version: ohne `v`).
+   - N4: ADR §4 Nicht-Gegenstand um Tag-Immutability-Protection-
+     Slot ergänzt (Re-Push überschreibt heute stillschweigend).
+   - ArtifactHub-Wording in ADR §2.1 von „indexiert OCI-Registries"
+     auf „unterstützt OCI-Repositories nach manueller Anlage"
+     präzisiert.
 8. **Doku.** `docs/user/installation.md` um Helm-Block erweitern
    (Voraussetzungen, `helm repo add`/`helm pull oci://`, Override-
    Beispiele für `values.yaml`). `deploy/charts/k-deskflight/README.md`
