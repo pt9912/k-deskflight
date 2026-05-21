@@ -1,0 +1,26 @@
+# Patterns to ignore when building Helm-Chart packages.
+# See https://helm.sh/docs/chart_template_guide/helm_ignore_file/.
+
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.bzrignore
+.hg/
+.hgignore
+.svn/
+
+# Editor / OS clutter
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project
+.idea/
+*.tmproj
+.vscode/
+
+# Slice-internal test-values overlays (Step 3 of slice-M8 §4). They
+# live alongside the chart but must not ship in the packaged tarball.
+test-values/

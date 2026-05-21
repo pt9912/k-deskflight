@@ -62,6 +62,31 @@ ARG CONTROLLER_GEN_VERSION=v0.21.0
 
 RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
 
+# ---- helm-tools ------------------------------------------------------------
+# Helm-Chart-Tooling-Stage (slice-M8 §2.5). Pins helm CLI für den v0.2-
+# Helm-Chart-Distributionspfad. Genutzt von `make helm-lint`,
+# `make helm-template`, `make helm-manifests-sync`.
+#
+# Aufbau parallel zur `smoke`-Stage: alpine-basierend, Binary
+# heruntergeladen + sha256-verifiziert. Pinning-Politik wie übrige
+# Tool-Stages (ADR 0012 §2.8 Abs. 3): ARG mit Default, Hebung Routine
+# ohne ADR, Override via `docker build --build-arg HELM_VERSION=…`.
+FROM alpine:3.20 AS helm-tools
+
+ARG HELM_VERSION=v3.16.4
+
+RUN apk add --no-cache bash ca-certificates curl \
+    && cd /tmp \
+    && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o "helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+    && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" -o "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" \
+    && sha256sum -c "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" \
+    && tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+    && mv linux-amd64/helm /usr/local/bin/helm \
+    && chmod +x /usr/local/bin/helm \
+    && rm -rf "helm-${HELM_VERSION}-linux-amd64.tar.gz" "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" linux-amd64
+
+WORKDIR /src
+
 # ---- smoke -----------------------------------------------------------------
 # Cluster-Smoke-Stage (ADR 0013): pinnt `kind` und `kubectl` in einem
 # Container, der über den gemounteten Host-Docker-Socket

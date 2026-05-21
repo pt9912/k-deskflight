@@ -108,6 +108,7 @@ image:
   pullPolicy: IfNotPresent
 
 operator:
+  mode: cluster-wide        # AR-016/AR-017: cluster-wide | namespace-scope
   replicas: 1
   leaderElect: true
   expectedReplicaCount: 1   # AR-026 Single-Pod-Topologie-Guard
@@ -150,6 +151,14 @@ Begründung der Auswahl:
   HA-Tuning ist v0.2-out-of-scope, aber das Feld muss da sein, damit
   Anwender später Replicas konfigurieren können ohne Chart-Upgrade
   zu warten).
+- **`operator.mode`** — implementiert das `AR-016`/`AR-017`-Versprechen,
+  Namespace-Reconcile-Scope Mode „ab v0.2 zusätzlich per Helm-Values"
+  zu exponieren. `cluster-wide` (Default) rendert nur ClusterRole +
+  ClusterRoleBinding (v0.1-Default); `namespace-scope` rendert
+  zusätzlich Role + RoleBinding im Operator-Namespace und setzt
+  `--namespace=<namespace.name>` an den Deployment-Args. Die ClusterRole
+  bleibt in beiden Modi aktiv für cluster-weite Read-Ressourcen
+  (`nodes`, `storageclasses`, `ingressclasses`, CRDs).
 
 ### 2.4 `values.schema.json` — JSON-Schema-Validierung
 
@@ -158,6 +167,7 @@ Begründung der Auswahl:
 
 - `image.repository`: non-empty string
 - `image.pullPolicy`: enum `{IfNotPresent, Always, Never}`
+- `operator.mode`: enum `{cluster-wide, namespace-scope}`
 - `operator.replicas`: integer ≥ 1
 - `operator.expectedReplicaCount`: integer ≥ 1
 - `metrics.service.type`: enum `{ClusterIP, NodePort, LoadBalancer}`
@@ -256,10 +266,12 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
 | `deploy/charts/k-deskflight/templates/crd.yaml` | abgeleitet | aus `deploy/manifests/crd.yaml` |
 | `deploy/charts/k-deskflight/templates/namespace.yaml` | abgeleitet | aus `deploy/manifests/namespace.yaml` |
 | `deploy/charts/k-deskflight/templates/serviceaccount.yaml` | abgeleitet | aus `deploy/manifests/rbac.yaml` |
-| `deploy/charts/k-deskflight/templates/clusterrole.yaml` | abgeleitet | aus `deploy/manifests/rbac.yaml` |
-| `deploy/charts/k-deskflight/templates/clusterrolebinding.yaml` | abgeleitet | aus `deploy/manifests/rbac.yaml` |
-| `deploy/charts/k-deskflight/templates/role.yaml` | abgeleitet | aus `deploy/manifests/rbac.yaml` |
-| `deploy/charts/k-deskflight/templates/rolebinding.yaml` | abgeleitet | aus `deploy/manifests/rbac.yaml` |
+| `deploy/charts/k-deskflight/templates/clusterrole.yaml` | abgeleitet | aus `config/rbac/role.yaml` (controller-gen-Output, `AR-015` MVP-Minimum) |
+| `deploy/charts/k-deskflight/templates/clusterrolebinding.yaml` | abgeleitet | aus `deploy/manifests/clusterrolebinding.yaml` |
+| `deploy/manifests/role.yaml` | **neu** | M8 schließt die `AR-016`-Lücke aus v0.1. Namespaced Role mit `AR-016 §1028`-Verben (`opendeskpreflightchecks` + `/status`); nicht im Default-`kustomization.yaml`, weil Cluster-Wide-Default unverändert bleibt. |
+| `deploy/manifests/rolebinding.yaml` | **neu** | M8, dito. Bindet die Role an den Operator-SA im Operator-Namespace. Auch nicht im Default-`kustomization.yaml`. |
+| `deploy/charts/k-deskflight/templates/role.yaml` | abgeleitet | aus `deploy/manifests/role.yaml`; conditional auf `values.operator.mode == "namespace-scope"` |
+| `deploy/charts/k-deskflight/templates/rolebinding.yaml` | abgeleitet | aus `deploy/manifests/rolebinding.yaml`; conditional dito |
 | `deploy/charts/k-deskflight/templates/deployment.yaml` | abgeleitet | aus `deploy/manifests/deployment.yaml` |
 | `deploy/charts/k-deskflight/templates/service.yaml` | abgeleitet | aus `deploy/manifests/service.yaml` (M6) |
 | `deploy/charts/k-deskflight/templates/metrics-clusterrole.yaml` | abgeleitet | aus `deploy/manifests/metrics-clusterrole.yaml` (M6 Pattern-Asset) |

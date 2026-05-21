@@ -52,7 +52,8 @@ TRIVY_IMAGE ?= aquasec/trivy:0.59.1
         manifests generated-drift-check govulncheck image-build run gates \
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
         operator-http-smoke image-publish-dry-run image-publish-guard \
-        image-publish image-scan release-guard release-guard-test clean
+        image-publish image-scan release-guard release-guard-test clean \
+        helm-tools-image helm-lint
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -64,6 +65,10 @@ KIND_VERSION    ?= v0.31.0
 KUBECTL_VERSION ?= v1.34.0
 K8S_VERSION     ?= v1.34.0
 CLUSTER_NAME    ?= k-deskflight-smoke
+
+# Helm-Pin (slice-M8 §2.5). Hebung Routine ohne ADR (ADR 0012 §2.8
+# Abs. 3); Override via `make helm-lint HELM_VERSION=…`.
+HELM_VERSION    ?= v3.16.4
 CLUSTER_KEEP    ?= 0
 
 help: ## Show this help.
@@ -149,6 +154,24 @@ generated-drift-check: manifests
 	        exit 1; \
 	    }
 	@echo "[generated-drift-check] passed"
+
+# ---- helm chart ------------------------------------------------------------
+# Slice-M8 §2.5: helm-Tooling über die `helm-tools`-Stage des Dockerfiles.
+# Konvention parallel zu `tools` / `cluster-smoke-image`: erst Image
+# bauen, dann via `docker run` aufrufen — Docker-only, keine Host-helm-
+# Anforderung.
+
+helm-tools-image: ## Build the helm-tools image with helm pinned.
+	docker build --target helm-tools \
+	    --build-arg HELM_VERSION=$(HELM_VERSION) \
+	    -t $(IMAGE):helm-tools .
+
+helm-lint: helm-tools-image ## helm lint deploy/charts/k-deskflight/ (slice-M8 §2.5).
+	docker run --rm \
+	    -v "$(CURDIR):/src" \
+	    -w /src \
+	    $(IMAGE):helm-tools \
+	    helm lint deploy/charts/k-deskflight/
 
 # ---- gate bundles ----------------------------------------------------------
 

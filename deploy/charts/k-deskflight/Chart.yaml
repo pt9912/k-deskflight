@@ -1,0 +1,31 @@
+---
+# k-deskflight Helm-Chart (slice-M8 §2.6, ADR 0005 §4 Folge).
+#
+# Versions-Politik (slice-M8 §2.6):
+#   version    — Chart-Schema-Version, eigenständiger SemVer.
+#                Bumps bei Chart-internen Änderungen (values-Schema,
+#                Template-Refactor) ohne Operator-Release-Bump.
+#   appVersion — Operator-Image-Version. Zeigt initial auf v0.1.0
+#                (letzter Operator-Tag); M16 hebt auf v0.2.0 zusammen
+#                mit dem v0.2.0-Release-Commit.
+apiVersion: v2
+name: k-deskflight
+description: OpenDesk Preflight Operator — Kubernetes-native pre-installation checks for OpenDesk deployments.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.34.0-0"
+home: https://github.com/pt9912/k-deskflight
+sources:
+  - https://github.com/pt9912/k-deskflight
+maintainers:
+  - name: pt9912
+    url: https://github.com/pt9912
+keywords:
+  - kubernetes
+  - operator
+  - preflight
+  - opendesk
+  - cluster-readiness
+annotations:
+  artifacthub.io/license: MIT

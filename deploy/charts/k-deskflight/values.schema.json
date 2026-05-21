@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "k-deskflight Helm-Chart values",
+  "description": "Slice-M8 §2.4 schema. Validates values.yaml client-side via Helm 3 native schema support.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "namespace",
+    "image",
+    "operator",
+    "metrics",
+    "rbac",
+    "serviceAccount",
+    "crd"
+  ],
+  "properties": {
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "name"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "description": "RFC 1123 DNS label: lowercase alphanumeric, hyphens allowed in the interior."
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": {
+          "type": "string",
+          "description": "Empty string falls back to Chart.appVersion at render time."
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["IfNotPresent", "Always", "Never"]
+        }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "replicas", "leaderElect", "expectedReplicaCount", "resources"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["cluster-wide", "namespace-scope"],
+          "description": "AR-016/AR-017 operating mode. cluster-wide (default) ships ClusterRole + ClusterRoleBinding; namespace-scope additionally renders Role + RoleBinding in the operator namespace and passes --namespace to the operator."
+        },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "leaderElect": { "type": "boolean" },
+        "expectedReplicaCount": { "type": "integer", "minimum": 1 },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": { "type": "object" },
+            "limits": { "type": "object" }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "port", "service", "clusterRolePattern"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+            }
+          }
+        },
+        "clusterRolePattern": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["create"],
+          "properties": {
+            "create": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create"],
+      "properties": {
+        "create": { "type": "boolean" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "crd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["install"],
+      "properties": {
+        "install": { "type": "boolean" }
+      }
+    }
+  }
+}

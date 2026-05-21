@@ -1,0 +1,75 @@
+---
+# Default values for the k-deskflight Helm-Chart.
+#
+# Structure mirrors slice-M8 §2.3. Each field is validated by
+# values.schema.json (slice-M8 §2.4); helm install / helm template
+# rejects values that violate the schema before any server-side
+# round-trip.
+
+namespace:
+  # Wenn true, rendert der Chart einen eigenen Namespace-Resource
+  # (M8 Default für Stand-alone-Install). Auf false setzen wenn der
+  # Operator-Namespace per GitOps verwaltet wird.
+  create: true
+  name: k-deskflight-system
+
+image:
+  repository: ghcr.io/pt9912/k-deskflight
+  # Leerer Default → fällt auf Chart.appVersion zurück. Damit pinnt
+  # ein "helm upgrade" automatisch auf die zur Chart-Version passende
+  # Operator-Version, ohne dass Anwender den Tag manuell synchron
+  # halten müssen.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+operator:
+  # AR-016/AR-017: Betriebsmodus.
+  #   cluster-wide      — Default. ClusterRole + ClusterRoleBinding,
+  #                       Reconcile über alle Namespaces.
+  #   namespace-scope   — Optional. Zusätzlich Role + RoleBinding im
+  #                       Operator-Namespace, Operator-Args bekommen
+  #                       `--namespace=<namespace.name>`. ClusterRole
+  #                       bleibt für cluster-weite Read-Ressourcen
+  #                       (nodes, storageclasses, ingressclasses, CRDs)
+  #                       erhalten.
+  mode: cluster-wide
+  replicas: 1
+  # AR-026: Leader-Election ist Default-on. Bei replicas == 1 wirkt
+  # die Election als Single-Pod-Topologie-Guard (Reason
+  # `SinglePodTopologyMismatch` bei expectedReplicaCount-Drift).
+  leaderElect: true
+  expectedReplicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+metrics:
+  enabled: true
+  port: 8080
+  service:
+    type: ClusterIP
+  # Pattern-Asset-ClusterRole für Prometheus-Operator-Stacks. v0.1
+  # bleibt explizit unauthenticated (ADR 0007 §3); Auth-Filter
+  # Aktivierung kommt mit einer Folge-ADR zu ADR 0007.
+  clusterRolePattern:
+    create: true
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  # Leer → vom Helm-Release-Namen abgeleitet (siehe templates/_helpers.tpl
+  # `k-deskflight.serviceAccountName`).
+  name: ""
+  annotations: {}
+
+crd:
+  # Wenn true, rendert der Chart die CRD aus controller-gen-Output.
+  # Auf false setzen wenn CRDs separat verwaltet werden (z. B. via
+  # Argo-CD CRD-only-Application oder Cluster-Bootstrap).
+  install: true
