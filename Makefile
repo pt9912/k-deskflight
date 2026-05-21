@@ -53,7 +53,7 @@ TRIVY_IMAGE ?= aquasec/trivy:0.59.1
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
         operator-http-smoke image-publish-dry-run image-publish-guard \
         image-publish image-scan release-guard release-guard-test clean \
-        helm-tools-image helm-lint
+        helm-tools-image helm-lint helm-template
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -69,6 +69,15 @@ CLUSTER_NAME    ?= k-deskflight-smoke
 # Helm-Pin (slice-M8 §2.5). Hebung Routine ohne ADR (ADR 0012 §2.8
 # Abs. 3); Override via `make helm-lint HELM_VERSION=…`.
 HELM_VERSION    ?= v3.16.4
+
+# Helm-Kube-Capabilities-Override für `helm template` (slice-M8 §2.5).
+# Helm rendert offline gegen eine eingebaute Default-K8s-Version
+# (3.16.4 → v1.31.0), und Chart.yaml `kubeVersion: ">=1.34.0-0"` würde
+# damit fehlschlagen. Default folgt $(K8S_VERSION) (kind-Node-Image),
+# ist aber bewusst eine separate Variable: ein Hebung von
+# $(KIND_VERSION)/$(K8S_VERSION) soll Helm-Capabilities nicht
+# automatisch mitziehen (Step-2-Review §2 Mittel-Befund #5).
+HELM_KUBE_VERSION ?= $(K8S_VERSION)
 CLUSTER_KEEP    ?= 0
 
 help: ## Show this help.
@@ -172,6 +181,15 @@ helm-lint: helm-tools-image ## helm lint deploy/charts/k-deskflight/ (slice-M8 �
 	    -w /src \
 	    $(IMAGE):helm-tools \
 	    helm lint deploy/charts/k-deskflight/
+
+helm-template: helm-tools-image ## helm template deploy/charts/k-deskflight/ with default values (slice-M8 §2.5).
+	docker run --rm \
+	    -v "$(CURDIR):/src" \
+	    -w /src \
+	    $(IMAGE):helm-tools \
+	    helm template release-test deploy/charts/k-deskflight/ \
+	        --namespace k-deskflight-system \
+	        --kube-version $(HELM_KUBE_VERSION)
 
 # ---- gate bundles ----------------------------------------------------------
 

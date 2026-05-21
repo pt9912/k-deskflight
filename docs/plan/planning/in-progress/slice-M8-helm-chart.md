@@ -190,7 +190,12 @@ Zwei neue `make`-Targets, eingehängt in den `make gates`-Pfad
   + drei Test-Values-Overlays (siehe §4 Reihenfolge): rendert, prüft
   YAML-Wohlgeformtheit über `kubectl --dry-run=client -o yaml`-Parse.
 - **`make helm-manifests-sync`** — siehe §2.2: strukturelle
-  Drift-Detektion zu `deploy/manifests/`.
+  Drift-Detektion zu `deploy/manifests/`. **Step-2-Review-Heads-up:**
+  das Sync-Gate muss Helm-Meta-Labels (`helm.sh/chart`,
+  `app.kubernetes.io/version`, `app.kubernetes.io/managed-by`)
+  explizit von der Vergleichsbasis exkludieren — der Chart fügt sie
+  als zusätzliche Labels in Pod-Template und Resource-Metadaten ein,
+  die Manifeste tragen sie nicht. Ohne Exklusion läuft das Gate rot.
 
 Optional, **nicht** in M8: `chart-testing` (`ct lint`/`ct install`)
 und `helm-docs`. Beide sind Quality-of-Life-Tools; ihre Aktivierung
@@ -322,7 +327,11 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
 8. **Doku.** `docs/user/installation.md` um Helm-Block erweitern
    (Voraussetzungen, `helm repo add`/`helm pull oci://`, Override-
    Beispiele für `values.yaml`). `deploy/charts/k-deskflight/README.md`
-   anlegen.
+   anlegen. **Step-2-Review-Heads-up:** den Kombi-Fall
+   `rbac.create=false` + extern verwaltete RBAC explizit beschreiben,
+   damit Anwender nicht versehentlich `operator.mode=namespace-scope`
+   ohne Begleit-RBAC versuchen (Schema-Constraint fängt das
+   client-seitig ab, aber ein Doku-Block macht die Erwartung explizit).
 9. **CHANGELOG.** Unter `## [Unreleased] Added` einen Helm-Chart-
    Eintrag ergänzen (wird mit M16-Closure in die `[0.2.0]`-Section
    verschoben).

@@ -39,16 +39,25 @@ operator:
   # `SinglePodTopologyMismatch` bei expectedReplicaCount-Drift).
   leaderElect: true
   expectedReplicaCount: 1
+  # Resource-Defaults entsprechen 1:1 deploy/manifests/deployment.yaml
+  # (slice-M8 §2.2 1:1-Regel; Default-Vorrang: Manifest gewinnt).
+  # Anwender mit höheren Reconcile-Lasten heben die Limits via
+  # `helm install --set operator.resources.limits.cpu=…`.
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 50m
+      memory: 64Mi
     limits:
-      cpu: 500m
+      cpu: 200m
       memory: 256Mi
 
 metrics:
   enabled: true
+  # Service-Port für den /metrics-Endpoint. Der Container-Port ist
+  # statisch 8080 (controller-runtime-Default in cmd/operator/main.go;
+  # nicht über values konfigurierbar). Service mappt auf den Named-
+  # Port `metrics`, d. h. dieser Wert ist der Cluster-interne Scrape-
+  # Port unter `k-deskflight-operator-metrics.<ns>.svc.cluster.local:<port>`.
   port: 8080
   service:
     type: ClusterIP

@@ -1,0 +1,23 @@
+{{- if .Values.metrics.enabled -}}
+---
+# Service für den Prometheus-/metrics-Endpoint (architecture.md AR-024,
+# slice-M6 §2.2). 1:1 aus deploy/manifests/service.yaml abgeleitet.
+# Endpoint bleibt unauthenticated wie in v0.1 — Auth-Filter-Aktivierung
+# ist v0.2-Folge-ADR zu ADR 0007.
+apiVersion: v1
+kind: Service
+metadata:
+  name: k-deskflight-operator-metrics
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "k-deskflight.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.metrics.service.type }}
+  selector:
+    {{- include "k-deskflight.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

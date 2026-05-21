@@ -1,0 +1,21 @@
+{{- if and .Values.metrics.enabled .Values.metrics.clusterRolePattern.create -}}
+---
+# Pattern-Asset-ClusterRole für Prometheus-/metrics-Scrape
+# (slice-M6 §2.2.1). 1:1 aus deploy/manifests/metrics-clusterrole.yaml
+# abgeleitet. Funktional nur wirksam, wenn der Operator-Endpoint
+# authentisiert ausgeliefert wird (v0.2-Folge-ADR zu ADR 0007). Kein
+# ClusterRoleBinding mitgeliefert — Monitoring-ServiceAccount ist
+# stack-spezifisch.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k-deskflight-metrics-scrape
+  labels:
+    {{- include "k-deskflight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics-scrape
+rules:
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+{{- end }}

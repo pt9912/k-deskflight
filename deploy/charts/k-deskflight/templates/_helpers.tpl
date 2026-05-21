@@ -1,61 +1,56 @@
 {{/*
 Slice-M8 chart helpers.
 
-Naming and label helpers used by every template in this chart.
+Design-Prinzip: Resource-Namen sind **statisch** und matchen die
+kanonische Quelle in deploy/manifests/ 1:1 (slice-M8 §2.2). Kein
+release-präfix-basiertes name/fullname-Helper-Schema, weil:
 
-  k-deskflight.name             — chart-derived short name (label value).
-  k-deskflight.fullname         — release-prefixed resource name.
-  k-deskflight.chart            — `<chart>-<version>` for the helm.sh/chart
-                                  label.
-  k-deskflight.labels           — Kubernetes recommended labels.
-  k-deskflight.selectorLabels   — minimal selector labels (stable across
-                                  upgrades; MUST NOT include version-bearing
-                                  labels).
-  k-deskflight.serviceAccountName — release-derived SA name, override-able
-                                  via .Values.serviceAccount.name.
-  k-deskflight.imageRef         — full image reference; empty
-                                  .Values.image.tag falls back to
-                                  .Chart.AppVersion.
+  - der Operator-Chart pro Cluster nur einmal installiert wird,
+  - eine zweite Helm-Release derselben Chart im selben Cluster keine
+    sinnvolle Semantik hat (RBAC-Objekte, CRD, Cluster-Resources sind
+    cluster-singletons),
+  - das `helm-manifests-sync`-Gate (slice-M8 §2.5) Drift-Detektion
+    zwischen Chart-Templates und `deploy/manifests/` ohne Spezialregeln
+    durchführen kann.
+
+  k-deskflight.chart           — `<chart>-<version>` for the helm.sh/chart
+                                 label.
+  k-deskflight.selectorLabels  — minimal selector labels (stabil über
+                                 Upgrades; matched deploy/manifests/
+                                 selector-Sets 1:1).
+  k-deskflight.labels          — Kubernetes recommended labels mit
+                                 Helm-Meta (chart, version, managed-by)
+                                 zusätzlich.
+  k-deskflight.serviceAccountName — Default-Override via
+                                 .Values.serviceAccount.name; fällt auf
+                                 statischen Namen `k-deskflight-operator`
+                                 zurück.
+  k-deskflight.imageRef        — full image reference; leerer
+                                 .Values.image.tag fällt auf
+                                 .Chart.AppVersion zurück.
 */}}
-
-{{- define "k-deskflight.name" -}}
-{{- .Chart.Name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-
-{{- define "k-deskflight.fullname" -}}
-{{- $name := .Chart.Name -}}
-{{- if contains $name .Release.Name -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-{{- end -}}
 
 {{- define "k-deskflight.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "k-deskflight.selectorLabels" -}}
+app.kubernetes.io/name: k-deskflight
+app.kubernetes.io/component: operator
+{{- end -}}
+
 {{- define "k-deskflight.labels" -}}
-helm.sh/chart: {{ include "k-deskflight.chart" . }}
 {{ include "k-deskflight.selectorLabels" . }}
+app.kubernetes.io/part-of: k-deskflight
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/part-of: k-deskflight
-{{- end -}}
-
-{{- define "k-deskflight.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "k-deskflight.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+helm.sh/chart: {{ include "k-deskflight.chart" . }}
 {{- end -}}
 
 {{- define "k-deskflight.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create -}}
-{{- default (include "k-deskflight.fullname" .) .Values.serviceAccount.name -}}
-{{- else -}}
-{{- default "default" .Values.serviceAccount.name -}}
-{{- end -}}
+{{- default "k-deskflight-operator" .Values.serviceAccount.name -}}
 {{- end -}}
 
 {{- define "k-deskflight.imageRef" -}}

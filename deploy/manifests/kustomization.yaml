@@ -17,3 +17,11 @@ resources:
   # ClusterRole-Pattern-Asset für künftige Auth-Filter-Aktivierung.
   - service.yaml
   - metrics-clusterrole.yaml
+# Hinweis: `role.yaml` und `rolebinding.yaml` (slice-M8 §2.3) sind
+# bewusst NICHT in der Default-Basis enthalten — sie liefern den
+# optionalen Namespace-Reconcile-Scope Mode (AR-016 / AR-017) und
+# werden nur aktiviert, wenn der Operator mit `--namespace=…` läuft.
+# Aktivierung: `kubectl apply -f role.yaml -f rolebinding.yaml`
+# zusätzlich zum `kubectl apply -k .` (Cluster-Wide-Basis bleibt).
+# Im Helm-Chart wird derselbe Schalter via `values.yaml.operator.mode`
+# bedient (slice-M8 §2.3-Begründung).

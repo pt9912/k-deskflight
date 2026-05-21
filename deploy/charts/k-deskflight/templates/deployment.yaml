@@ -1,0 +1,80 @@
+---
+# Operator-Deployment (architecture.md AR-026).
+# 1:1 aus deploy/manifests/deployment.yaml abgeleitet, mit
+# values.yaml-Substitutionen für Image, Replicas, Resources, Metrics-
+# Port und Operator-Mode-Args.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k-deskflight-operator
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "k-deskflight.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "k-deskflight.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "k-deskflight.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "k-deskflight.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: {{ include "k-deskflight.imageRef" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # AR-026 Leader-Election; AR-016 Namespace-Reconcile-Scope
+          # Mode setzt zusätzlich --namespace=<ns>.
+          args:
+            - --leader-elect={{ .Values.operator.leaderElect }}
+            {{- if eq .Values.operator.mode "namespace-scope" }}
+            - --namespace={{ .Values.namespace.name }}
+            {{- end }}
+          env:
+            # Downward-API liefert den Operator-Namespace an
+            # cmd/operator/main.go (AR-026, slice-M7 §2.8).
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            # Container-Port ist statisch 8080 — die controller-runtime-
+            # Manager-Konfiguration in cmd/operator/main.go bindet
+            # `:8080` ohne Flag-Override. `values.yaml.metrics.port`
+            # konfiguriert ausschließlich den Service-Port (siehe
+            # templates/service.yaml); die Service-targetPort-Indirektion
+            # über den Named-Port `metrics` koppelt beide Werte sauber.
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: probes
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}

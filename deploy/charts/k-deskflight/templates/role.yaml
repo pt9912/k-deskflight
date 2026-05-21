@@ -1,0 +1,32 @@
+{{- if and .Values.rbac.create (eq .Values.operator.mode "namespace-scope") -}}
+---
+# Namespace-scope Role (architecture.md AR-016).
+# 1:1 aus deploy/manifests/role.yaml abgeleitet. Wird nur gerendert
+# wenn operator.mode == "namespace-scope" — siehe slice-M8 §2.3.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k-deskflight-operator-namespace
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "k-deskflight.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - k-deskflight.geo-terrain.net
+    resources:
+      - opendeskpreflightchecks
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+  - apiGroups:
+      - k-deskflight.geo-terrain.net
+    resources:
+      - opendeskpreflightchecks/status
+    verbs:
+      - get
+      - update
+      - patch
+{{- end }}

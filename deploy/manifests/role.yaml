@@ -1,0 +1,44 @@
+---
+# Namespace-scope Role für den optionalen Namespace-Reconcile-Scope
+# Mode (architecture.md AR-016, slice-M8 §2.3). Wird NUR aktiv, wenn
+# der Operator mit `--namespace=<operator-namespace>` läuft und reduziert
+# damit den Reconcile-Scope auf den eigenen Namespace.
+#
+# Verb-Set und Ressourcen folgen AR-016 §1028 wörtlich. Cluster-weite
+# Read-Ressourcen (nodes, storageclasses, ingressclasses, CRDs) bleiben
+# weiterhin via ClusterRole erreichbar — AR-017 beschreibt das Profil.
+#
+# **NICHT** im Default-`kustomization.yaml`-Apply enthalten, weil
+# `kubectl apply -k deploy/manifests/` den Cluster-Wide Mode bleibt
+# (slice-M8 §2.3 §3-Datei-Inventar-Begründung). Für den
+# Namespace-Reconcile-Scope Mode appliyt der Anwender entweder via
+# Helm-Chart mit `operator.mode=namespace-scope` oder manuell mit
+# `kubectl apply -f deploy/manifests/role.yaml -f deploy/manifests/rolebinding.yaml`.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k-deskflight-operator-namespace
+  namespace: k-deskflight-system
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: k-deskflight
+rules:
+  - apiGroups:
+      - k-deskflight.geo-terrain.net
+    resources:
+      - opendeskpreflightchecks
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+  - apiGroups:
+      - k-deskflight.geo-terrain.net
+    resources:
+      - opendeskpreflightchecks/status
+    verbs:
+      - get
+      - update
+      - patch

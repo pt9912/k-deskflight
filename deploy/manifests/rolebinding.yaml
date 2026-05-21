@@ -1,0 +1,25 @@
+---
+# Namespace-scope RoleBinding (architecture.md AR-017, slice-M8 §2.3).
+# Bindet die Role `k-deskflight-operator-namespace` aus role.yaml an
+# den Operator-ServiceAccount im Operator-Namespace. Begleitet den
+# Namespace-Reconcile-Scope Mode.
+#
+# **NICHT** im Default-`kustomization.yaml`-Apply — siehe role.yaml
+# Header-Kommentar.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: k-deskflight-operator
+  namespace: k-deskflight-system
+  labels:
+    app.kubernetes.io/name: k-deskflight
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: k-deskflight
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k-deskflight-operator-namespace
+subjects:
+  - kind: ServiceAccount
+    name: k-deskflight-operator
+    namespace: k-deskflight-system

@@ -13,6 +13,33 @@
     "serviceAccount",
     "crd"
   ],
+  "allOf": [
+    {
+      "$comment": "Slice-M8 step-2 code-review finding [Hoch] #3: operator.mode=namespace-scope requires Role+RoleBinding. Without rbac.create=true the chart would not render them and the operator would 403 on first reconcile. Block the broken combination here so `helm install` and `helm template` reject it client-side, before any server round-trip.",
+      "if": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "mode": { "const": "namespace-scope" }
+            },
+            "required": ["mode"]
+          }
+        },
+        "required": ["operator"]
+      },
+      "then": {
+        "properties": {
+          "rbac": {
+            "properties": {
+              "create": { "const": true }
+            },
+            "required": ["create"]
+          }
+        },
+        "required": ["rbac"]
+      }
+    }
+  ],
   "properties": {
     "namespace": {
       "type": "object",
