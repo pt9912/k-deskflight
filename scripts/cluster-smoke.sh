@@ -15,6 +15,8 @@
 #   - LH-AK-008 — cert-manager-Check gegen die Stub-CRD-Registrierung.
 #   - LH-AK-009 — ClusterResources-Check gegen kind-Worker-Allocatable
 #     mit MinCPU=1/MinMemory=1Gi.
+#   - LH-NF-016 — Helm-Installierbarkeit (nur INSTALL_MODE=helm,
+#     slice-M8). Manifests-Pfad attestiert sie nicht.
 #
 # Cluster-State-Stubs (cert-manager-API-Gruppe und nginx-IngressClass)
 # werden vor dem Operator-Deploy appliziert, sind aber kein Upstream-
@@ -25,6 +27,11 @@
 #   K8S_VERSION=v1.34.0         — kindest/node-Tag (Default synchron mit ADR 0009 §2.2)
 #   IMAGE_TAG=k-deskflight:go   — Operator-Image, das in kind geladen wird
 #   CLUSTER_KEEP=0|1            — bei 1 wird der Cluster nach Erfolg behalten
+#   INSTALL_MODE=manifests|helm — Default `manifests` (kubectl apply via kustomize-overlay
+#                                 wie seit M2). `helm` installiert den Operator über das
+#                                 Chart unter deploy/charts/k-deskflight/ (slice-M8 §2.7).
+#                                 Beide Modi rendern dasselbe Funktionsset; CI fährt beide
+#                                 parallel als Matrix-Job.
 #   CLUSTER_SMOKE_ATTEST_FILE   — optional: Pfad für YAML-Status-Dump als Attest-Artefakt
 #   PROBE_NAMESPACE=ns          — **Symbol-Konstante**, kein echter Override (Default: default).
 #                                 Ein Override erfordert paralleles Patchen der drei
@@ -44,8 +51,25 @@ CLUSTER_NAME="${CLUSTER_NAME:-k-deskflight-smoke}"
 K8S_VERSION="${K8S_VERSION:-v1.34.0}"
 IMAGE_TAG="${IMAGE_TAG:-k-deskflight:go}"
 CLUSTER_KEEP="${CLUSTER_KEEP:-0}"
+# Slice-M8 §2.7 + step 6: Install-Modus.
+#   manifests (Default) — Operator via `kubectl kustomize deploy/manifests/`
+#                          (Cluster-Wide Mode), wie seit M2.
+#   helm                 — Operator via `helm install` aus dem Chart unter
+#                          deploy/charts/k-deskflight/; CRD+RBAC+Deployment+
+#                          Service+metrics-ClusterRole als single chart-release.
+INSTALL_MODE="${INSTALL_MODE:-manifests}"
+if [[ "${INSTALL_MODE}" != "manifests" && "${INSTALL_MODE}" != "helm" ]]; then
+    echo "[cluster-smoke] FAIL: INSTALL_MODE must be 'manifests' or 'helm', got '${INSTALL_MODE}'" >&2
+    exit 2
+fi
 
 KIND_CONTEXT="kind-${CLUSTER_NAME}"
+# Step-6-Review-M-1: zentrale Skript-Variable für den Operator-
+# Namespace, sodass Step-3+4 (helm/manifests install) und Step 5
+# (Deployment-Available-Wait) dieselbe Quelle nutzen. Default folgt
+# dem Chart-`values.yaml`-Default und dem Manifest unter
+# deploy/manifests/namespace.yaml.
+OPERATOR_NAMESPACE="${OPERATOR_NAMESPACE:-k-deskflight-system}"
 SAMPLE_NAMESPACE="default"
 SAMPLE_NAME="smoke"
 WAIT_TIMEOUT_PHASE=60
@@ -77,6 +101,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+log "INSTALL_MODE=${INSTALL_MODE}"
+
 # Step 1 — kind cluster (idempotent).
 log "Step 1: kind create cluster ${CLUSTER_NAME} (k8s ${K8S_VERSION})"
 if kind get clusters 2>/dev/null | grep -qx "${CLUSTER_NAME}"; then
@@ -98,21 +124,69 @@ kind load docker-image --name "${CLUSTER_NAME}" "${IMAGE_TAG}"
 log "Step 2b: apply cluster-state stubs (cert-manager.io CRD + IngressClass nginx)"
 kubectl --context "${KIND_CONTEXT}" apply -f hack/cluster-smoke/cluster-state-stubs.yaml
 
-# Step 3 — CRD installieren (LH-AK-001).
-log "Step 3: apply CRD"
-kubectl --context "${KIND_CONTEXT}" apply -f config/crd/
-kubectl --context "${KIND_CONTEXT}" wait --for=condition=Established \
-    crd/opendeskpreflightchecks.k-deskflight.geo-terrain.net --timeout=30s
+if [[ "${INSTALL_MODE}" == "helm" ]]; then
+    # Step 3+4 (helm) — CRD und Operator in einem Helm-Release.
+    # `--wait` blockiert bis das Deployment Available ist; das macht
+    # Step 5 strukturell redundant, wir behalten ihn aber als
+    # expliziten Sanity-Check (kostet wenige Sekunden, hält Symmetrie
+    # zum manifests-Pfad).
+    log "Step 3+4 (helm): helm install k-deskflight (image-override → ${IMAGE_TAG})"
+    # Step-6-Review-N-2 Anmerkung: die `--create-namespace` +
+    # `--set namespace.create=false`-Kombination ist ein
+    # **Smoke-spezifischer Workaround**, keine Operations-Empfehlung.
+    # Anwender, die das Chart produktiv installieren, wählen genau
+    # eine der zwei sauberen Optionen:
+    #   (a) Chart-Default beibehalten (`namespace.create=true`) und
+    #       das `--create-namespace`-Flag weglassen — der Chart
+    #       verwaltet den Namespace.
+    #   (b) `--set namespace.create=false` UND `--create-namespace`
+    #       benutzen — Helm verwaltet den Namespace, Chart nicht.
+    # Smoke nimmt (b) hier nur, weil wir den Chart-Default
+    # `namespace.create=true` unverändert ausrollen wollen (um Step 5
+    # idempotent zu halten gegen wiederholte Smoke-Läufe in CI), aber
+    # `helm install --namespace ohne-Existenz` ohne `--create-namespace`
+    # mit Chart-Namespace-Resource trotzdem failt ("namespaces … not
+    # found"). Step-6-Review-N-2 + Step-8-Doku werden das Pattern
+    # in der Anwender-Doku explizit ausgrenzen.
+    #
+    # Step-6-Review-N-1: `--atomic` rollt einen Failed-Install
+    # automatisch zurück; Cleanup-Trap löscht ohnehin den Cluster,
+    # aber `--atomic` sorgt für klareres Helm-Side-Logging im
+    # Fehlerfall (CI-Run-Output wird lesbarer).
+    helm --kube-context "${KIND_CONTEXT}" install k-deskflight \
+        deploy/charts/k-deskflight/ \
+        --namespace "${OPERATOR_NAMESPACE}" \
+        --create-namespace \
+        --set namespace.create=false \
+        --set image.repository="${IMAGE_TAG%:*}" \
+        --set image.tag="${IMAGE_TAG##*:}" \
+        --atomic --wait --timeout=120s
+    # CRD-Establishment-Wait als Belt-and-Suspenders: helm --wait
+    # blockt nur auf Deployment-Ready (kind_sorter sortiert die CRD
+    # zwar vor das Deployment, aber --wait observiert die CRD-
+    # `Established`-Condition nicht). Wenn die CRD wider Erwarten
+    # nicht Established wäre, würde der Operator-Pod im
+    # Reconcile-Loop straucheln und helm --wait timeouten — dieser
+    # explizite Wait gibt eine 30s-Window für die saubere Failure-
+    # Detektion (Step-6-Review M-2).
+    kubectl --context "${KIND_CONTEXT}" wait --for=condition=Established \
+        crd/opendeskpreflightchecks.k-deskflight.geo-terrain.net --timeout=30s
+else
+    # Step 3 — CRD installieren (LH-AK-001).
+    log "Step 3: apply CRD"
+    kubectl --context "${KIND_CONTEXT}" apply -f config/crd/
+    kubectl --context "${KIND_CONTEXT}" wait --for=condition=Established \
+        crd/opendeskpreflightchecks.k-deskflight.geo-terrain.net --timeout=30s
 
-# Step 4 — Operator-Manifeste mit Image-Substitution.
-log "Step 4: apply operator manifests (image-override → ${IMAGE_TAG})"
-# kustomize akzeptiert keine absoluten Pfade im `resources:`-Feld
-# (`new root … cannot be absolute`). Wir legen das Overlay neben das
-# Workspace ab und referenzieren relativ.
-TMP_OVERLAY="/src/.cluster-smoke-overlay"
-rm -rf "${TMP_OVERLAY}"
-mkdir -p "${TMP_OVERLAY}"
-cat > "${TMP_OVERLAY}/kustomization.yaml" <<EOF
+    # Step 4 — Operator-Manifeste mit Image-Substitution.
+    log "Step 4: apply operator manifests (image-override → ${IMAGE_TAG})"
+    # kustomize akzeptiert keine absoluten Pfade im `resources:`-Feld
+    # (`new root … cannot be absolute`). Wir legen das Overlay neben das
+    # Workspace ab und referenzieren relativ.
+    TMP_OVERLAY="/src/.cluster-smoke-overlay"
+    rm -rf "${TMP_OVERLAY}"
+    mkdir -p "${TMP_OVERLAY}"
+    cat > "${TMP_OVERLAY}/kustomization.yaml" <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -122,20 +196,23 @@ images:
     newName: ${IMAGE_TAG%:*}
     newTag: ${IMAGE_TAG##*:}
 EOF
-# deploy/manifests/kustomization.yaml referenziert ../../config/crd/
-# und ../../config/rbac/ (Generated-Drift-Konsistenz). Das verstößt
-# gegen kustomize's Default-load-restrictor; wir nutzen
-# `kubectl kustomize --load-restrictor=LoadRestrictionsNone` und
-# pipen das Ergebnis in `kubectl apply -f -`. (Pure `kubectl apply -k`
-# kennt das Flag nicht.)
-kubectl --context "${KIND_CONTEXT}" kustomize "${TMP_OVERLAY}" \
-    --load-restrictor=LoadRestrictionsNone \
-    | kubectl --context "${KIND_CONTEXT}" apply -f -
-rm -rf "${TMP_OVERLAY}"
+    # deploy/manifests/kustomization.yaml referenziert ../../config/crd/
+    # und ../../config/rbac/ (Generated-Drift-Konsistenz). Das verstößt
+    # gegen kustomize's Default-load-restrictor; wir nutzen
+    # `kubectl kustomize --load-restrictor=LoadRestrictionsNone` und
+    # pipen das Ergebnis in `kubectl apply -f -`. (Pure `kubectl apply -k`
+    # kennt das Flag nicht.)
+    kubectl --context "${KIND_CONTEXT}" kustomize "${TMP_OVERLAY}" \
+        --load-restrictor=LoadRestrictionsNone \
+        | kubectl --context "${KIND_CONTEXT}" apply -f -
+    rm -rf "${TMP_OVERLAY}"
+fi
 
-# Step 5 — Deployment ready (LH-AK-002).
+# Step 5 — Deployment ready (LH-AK-002). Im Helm-Pfad strukturell
+# durch `helm install --wait` redundant; bewusst beibehalten für
+# Symmetrie und als zusätzlicher Sanity-Check.
 log "Step 5: wait for Deployment Available (timeout ${DEPLOYMENT_WAIT_TIMEOUT})"
-kubectl --context "${KIND_CONTEXT}" -n k-deskflight-system wait \
+kubectl --context "${KIND_CONTEXT}" -n "${OPERATOR_NAMESPACE}" wait \
     --for=condition=Available deployment/k-deskflight-operator \
     --timeout="${DEPLOYMENT_WAIT_TIMEOUT}"
 

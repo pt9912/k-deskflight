@@ -19,7 +19,15 @@ permissions: {}
 
 jobs:
   smoke:
-    name: cluster-smoke (kind + LH-AK-001/-002/-005)
+    # Slice-M8 §2.7: Matrix-Dimension `install-mode` fährt manifests-
+    # und helm-Pfad parallel. Beide installieren denselben Operator,
+    # nur die Distribution (kubectl-kustomize vs. helm install) ist
+    # unterschiedlich; die Phasen-Assertions sind identisch.
+    name: cluster-smoke (kind + ${{ matrix.install-mode }})
+    strategy:
+      fail-fast: false
+      matrix:
+        install-mode: [manifests, helm]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -30,14 +38,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run cluster-smoke
-        run: make cluster-smoke
+      - name: Run cluster-smoke (${{ matrix.install-mode }})
+        run: make cluster-smoke INSTALL_MODE=${{ matrix.install-mode }}
 
       - name: Upload attest artifact
         if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cluster-smoke-attest
+          # Artefakt-Name pro Modus, sonst Upload-Kollision.
+          name: cluster-smoke-attest-${{ matrix.install-mode }}
           path: |
             .cluster-smoke-attest.yaml
           if-no-files-found: ignore

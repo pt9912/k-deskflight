@@ -261,13 +261,21 @@ security-gates: govulncheck $(if $(strip $(VER)),image-scan) ## govulncheck imme
 # (127.0.0.1:<port>) aus dem Container erreichbar bleibt.
 # Nicht in `make gates` — opt-in pro ADR 0013 §2.5.
 
-cluster-smoke-image: ## Build the smoke tool image (kind + kubectl + docker-cli).
+cluster-smoke-image: ## Build the smoke tool image (kind + kubectl + helm + docker-cli).
 	docker build --target smoke \
 	    --build-arg KIND_VERSION=$(KIND_VERSION) \
 	    --build-arg KUBECTL_VERSION=$(KUBECTL_VERSION) \
+	    --build-arg HELM_VERSION=$(HELM_VERSION) \
+	    --build-arg YQ_VERSION=$(YQ_VERSION) \
 	    -t $(IMAGE):go-smoke .
 
-cluster-smoke: build cluster-smoke-image ## End-to-end Cluster-Smoke gegen kind.
+# Slice-M8 §2.7: cluster-smoke unterstützt zwei Install-Modi via
+# `INSTALL_MODE` env-var (Default `manifests`, `helm` für den Helm-
+# Chart-Pfad). Beide laufen parallel im CI-Matrix-Job; lokal kann
+# der Benutzer wahlweise `make cluster-smoke` (Default) oder
+# `make cluster-smoke INSTALL_MODE=helm` aufrufen.
+INSTALL_MODE ?= manifests
+cluster-smoke: build cluster-smoke-image ## End-to-end Cluster-Smoke gegen kind. INSTALL_MODE=manifests|helm.
 	docker run --rm \
 	    --network host \
 	    -v /var/run/docker.sock:/var/run/docker.sock \
@@ -277,6 +285,7 @@ cluster-smoke: build cluster-smoke-image ## End-to-end Cluster-Smoke gegen kind.
 	    -e K8S_VERSION=$(K8S_VERSION) \
 	    -e IMAGE_TAG=$(IMAGE):go \
 	    -e CLUSTER_KEEP=$(CLUSTER_KEEP) \
+	    -e INSTALL_MODE=$(INSTALL_MODE) \
 	    $(IMAGE):go-smoke \
 	    bash scripts/cluster-smoke.sh
 

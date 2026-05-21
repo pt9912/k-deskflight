@@ -158,6 +158,13 @@ RUN apk add --no-cache \
     && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
     && rm /tmp/kubectl.sha256
 
+# Slice-M8 step 6: helm-Binary aus der helm-tools-Stage übernehmen,
+# damit `cluster-smoke.sh INSTALL_MODE=helm` ohne separaten Download
+# läuft. Single-Source-of-Truth-Pinning: alle Helm-bezogenen Stages
+# nehmen ihren helm-Binary aus dieser einen Quelle (DRY gegen Drift
+# zwischen helm-tools- und smoke-Versions-Pins).
+COPY --from=helm-tools /usr/local/bin/helm /usr/local/bin/helm
+
 WORKDIR /src
 
 # ---- compile ---------------------------------------------------------------

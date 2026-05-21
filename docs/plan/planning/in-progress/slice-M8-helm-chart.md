@@ -403,12 +403,60 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
      Wenn die CRD-Marker in v0.2 zusätzliche generierte
      Annotationen produzieren (z. B. `api-approved.kubernetes.io`),
      kippt das Gate stumm in False-Positive. Refactor auf
-     Whitelist-Modell (welche Annotationen *behalten*) ist ein
-     eigener kleiner Slice oder M16-Sub-Task.
+     Whitelist-Modell als Trigger-Datei unter
+     [`../open/controller-gen-annotation-whitelist.md`](../open/controller-gen-annotation-whitelist.md)
+     verankert (M16-Pin wurde im Step-6-Review-Nachgang verworfen,
+     weil Release-Slice nicht Polish-Sammler werden darf).
 6. **Cluster-Smoke-Erweiterung.** `scripts/cluster-smoke.sh`
    `INSTALL_MODE=helm` umsetzen; CI-Matrix-Dimension
    `install-mode: [manifests, helm]` ergänzen. Beide laufen parallel
    grün.
+
+   **Step-6-Closure-Notiz (2026-05-21):**
+   - `Dockerfile` smoke-Stage: helm wird via `COPY --from=helm-tools
+     /usr/local/bin/helm` aus der helm-tools-Stage geholt — Single-
+     Source-of-Truth-Pinning, keine Helm-Version-Duplikation zwischen
+     den zwei Tooling-Images.
+   - `Makefile`: `INSTALL_MODE ?= manifests` als neue Variable;
+     `cluster-smoke` forwarded sie als env-var; `cluster-smoke-image`
+     reicht jetzt `HELM_VERSION` und `YQ_VERSION` zusätzlich durch,
+     damit die transitive helm-tools-Stage-Dependency mit denselben
+     Pins baut.
+   - `scripts/cluster-smoke.sh`: neuer `INSTALL_MODE`-Schalter mit
+     Validierung (manifests|helm), Step 3+4 conditional. Im Helm-
+     Pfad: `helm install k-deskflight … --create-namespace --set
+     namespace.create=false --wait --timeout=120s` (Namespace-Anlage
+     übernimmt Helm, Chart-Namespace-Resource ist abgeschaltet —
+     sonst Kollision „rendered manifests contain a resource that
+     already exists").
+   - `.github/workflows/cluster-smoke.yml`: `strategy.matrix.install-
+     mode: [manifests, helm]` mit `fail-fast: false`; Job-Name und
+     Artefakt-Name enthalten den Modus, damit beide Parallel-Läufe
+     getrennt aufgezeichnet werden.
+   - Verifikation lokal: beide Modi laufen grün durch alle Steps
+     (1–9d), inklusive identischer 669-Zeilen-/metrics-Output und
+     Lease-Existenz für Leader-Election. Per-CR-Phase-Assertion
+     identisch zwischen den Modi (1× Passed + 4× Failed mit
+     erwarteten Reason-Codes).
+
+   **Step-6-Review-Folgen umgesetzt:**
+   - M-1: `OPERATOR_NAMESPACE`-Skript-Variable als zentrale Quelle;
+     Helm-`--namespace`, Step-5-`-n` und (mittelbar) Cleanup-
+     Referenzen nutzen sie statt hart-codierte Strings.
+   - M-2: CRD-Wait-Kommentar im Helm-Pfad als „Belt-and-Suspenders"
+     präzisiert (helm --wait deckt nur Deployment-Ready, nicht
+     CRD-Established).
+   - N-1: `--atomic` zum `helm install` für sauberere Rollback-
+     Semantik bei Timeouts.
+   - N-2: Doppel-Flag-Mechanik (`--create-namespace` +
+     `--set namespace.create=false`) als **Smoke-spezifischer
+     Workaround** mit Operations-Empfehlungen für (a) reinen
+     Chart-Pfad oder (b) reinen Helm-Pfad inline kommentiert.
+     Schließt einen Doku-Heads-up für Step 8 (`docs/user/
+     installation.md`) auf, das Pattern explizit als nicht-
+     produktions-tauglich auszugrenzen.
+   - N-3: `LH-NF-016`-Eintrag (Helm-only-Attestierung) im
+     Skript-Header-Listing ergänzt.
 7. **`ADR 0015 — Helm-Chart-Distributions-Form` schreiben.**
    Status: Accepted. Inhalt: OCI vs. Helm-Repo (Vorgriff §2.8), Publish-
    Flow, Versions-Sync mit `Chart.yaml.version`.
@@ -490,11 +538,14 @@ nachgereicht.
   keine Pre-/Post-Logik. Falls später ein CRD-Migrations-Hook
   nötig wird (`AR-OP-007`-Aktivierung, frühestens v1.0), eigene
   Folge-ADR.
-- **`chart-testing` (`ct`-CLI) als Quality-Gate** — verschoben auf
-  M16, sobald Publish-Pipeline steht.
+- **`chart-testing` (`ct`-CLI) als Quality-Gate** — als Trigger-
+  Datei unter
+  [`../open/chart-testing-activation.md`](../open/chart-testing-activation.md)
+  verankert. M16-Pin im Step-6-Review-Nachgang verworfen, weil
+  Release-Tag-Slice nicht zum Polish-Sammler werden darf.
 - **`helm-docs`-Automatisierung** der Chart-`README.md` aus
-  `values.yaml`-Kommentaren — Quality-of-Life, verschoben auf
-  M16 oder eigener Slice.
+  `values.yaml`-Kommentaren — analog als Trigger-Datei unter
+  [`../open/helm-docs-automation.md`](../open/helm-docs-automation.md).
 - **Multi-Replica-HA-Tuning** — `expectedReplicaCount`-Feld ist
   exponiert, aber Replicas > 1 werden in v0.2 nicht getestet
   (`AR-026` v0.1-Closure dokumentiert das als v0.2-out-of-scope).
