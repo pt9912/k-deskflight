@@ -11,6 +11,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 order as the [0.1.0] section below: Added, Changed, Deprecated,
 Removed, Fixed, Security. -->
 
+### Added
+
+- **Helm-Chart as a second distribution path**
+  ([`LH-NF-016`](spec/lastenheft.md), [`LH-SST-010`](spec/lastenheft.md),
+  [`ADR 0005`](docs/plan/adr/0005-helm-chart-nicht-im-mvp.md),
+  [`ADR 0015`](docs/plan/adr/0015-helm-chart-distributions-form.md)).
+  Chart lives under [`deploy/charts/k-deskflight/`](deploy/charts/k-deskflight/)
+  and derives its templates 1:1 from the canonical
+  [`deploy/manifests/`](deploy/manifests/) (slice-M8 §2.2). The chart
+  ships a tight `values.schema.json` with seven top-level slots
+  (`namespace`, `image`, `operator`, `metrics`, `rbac`,
+  `serviceAccount`, `crd`) and a cross-field `if/then` constraint
+  that rejects the broken combination `rbac.create=false ∧
+  operator.mode=namespace-scope` client-side. The chart targets
+  OCI distribution per `ADR 0015`
+  (`oci://ghcr.io/pt9912/charts/k-deskflight`); the first OCI
+  push will land with the v0.2.0 tag in slice M16, until then
+  install via the repo checkout. Operations docs in
+  [`docs/user/installation.md` §8](docs/user/installation.md)
+  cover both install paths (raw manifests + Helm); a chart-internal
+  README ships under [`deploy/charts/k-deskflight/README.md`](deploy/charts/k-deskflight/README.md).
+- **Namespace-Reconcile-Scope Mode exposed via Helm-Values**
+  (`AR-016`/`AR-017` from
+  [`spec/architecture.md`](spec/architecture.md)). New
+  `values.yaml.operator.mode` toggle (`cluster-wide` default,
+  `namespace-scope` optional). The optional mode adds a namespaced
+  `Role` + `RoleBinding` at
+  [`deploy/manifests/role.yaml`](deploy/manifests/role.yaml) and
+  [`deploy/manifests/rolebinding.yaml`](deploy/manifests/rolebinding.yaml)
+  (intentionally not part of the default `kustomization.yaml`-apply
+  — cluster-wide stays the default behaviour) and passes
+  `--namespace=<ns>` to the operator deployment.
+- **Three new Helm quality gates wired into `make gates`**
+  (slice-M8 §2.5). `make helm-lint` runs `helm lint` against the
+  chart skeleton; `make helm-template` renders the chart against
+  three test-values overlays under
+  [`deploy/charts/k-deskflight/test-values/`](deploy/charts/k-deskflight/test-values/)
+  (default / minimal / full) and reports per-overlay resource
+  counts (8 / 6 / 10); `make helm-manifests-sync`
+  ([`scripts/helm-manifests-sync.sh`](scripts/helm-manifests-sync.sh))
+  is the structural drift gate that renders both
+  `helm template` and `kubectl kustomize deploy/manifests/`,
+  normalises both sides via `yq` (drops Helm-meta labels,
+  controller-gen annotations, `metadata.creationTimestamp`; sorts
+  resources by kind/namespace/name) and fails on any divergence.
+- **CRD-sync helper for chart maintenance**
+  (`make chart-sync-crd` via
+  [`scripts/chart-sync-crd.sh`](scripts/chart-sync-crd.sh)).
+  Regenerates the chart's CRD inline copy at
+  `deploy/charts/k-deskflight/templates/crd.yaml` from the
+  controller-gen output under
+  [`config/crd/`](config/crd/) after every `make manifests`
+  run. The `helm-manifests-sync` failure header names this
+  command explicitly when a CRD drift is detected.
+- **Tooling stage `helm-tools` in the Dockerfile** with pinned
+  helm 3.16.4, kubectl 1.34.0 (sha256-verified, identical pattern
+  to the smoke stage) and yq 4.44.5 (sha256-verified against the
+  `checksums` + `checksums_hashes_order` assets — column index
+  read dynamically so a future yq column-order change does not
+  silently bypass verification). The smoke stage gains helm via
+  `COPY --from=helm-tools` (single source of truth for the Helm
+  pin).
+- **Cluster-smoke covers both install paths**
+  ([`.github/workflows/cluster-smoke.yml`](.github/workflows/cluster-smoke.yml)).
+  New `INSTALL_MODE` env-var on
+  [`scripts/cluster-smoke.sh`](scripts/cluster-smoke.sh) toggles
+  between the M2-era kubectl/kustomize path and a new
+  `helm install --atomic --wait`-based path; the CI matrix runs
+  both modes in parallel with `fail-fast: false`. Both modes
+  attest identical behaviour (5 MVP conditions True, 4 failed-CRs
+  with expected reason, /metrics scrape via Service DNS, leader-
+  election Lease).
+### Changed
+
+- **`deploy/manifests/deployment.yaml`** operator image tag bumped
+  from the M2-era `:dev` placeholder to the released `:v0.1.0`
+  (slice-M8 step-5 drift-detection follow-up). The chart's
+  `Chart.yaml.appVersion: "0.1.0"` and the
+  [`k-deskflight.imageRef`](deploy/charts/k-deskflight/templates/_helpers.tpl)
+  helper (which prepends a `v` for the GHCR tag convention) match
+  the manifest 1:1 — `make helm-manifests-sync` verifies the
+  invariant on every run.
+- **`make gates`** now bundles `helm-lint`, `helm-template`, and
+  `helm-manifests-sync` alongside the existing `build`, `lint`,
+  `test`, `coverage-gate`, `doc-refs`, `generated-drift-check`.
+  The `gates` job name in
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml) lists
+  the new entries.
+
 ## [0.1.0] - 2026-05-20
 
 > **MVP release** of the OpenDesk Preflight Operator

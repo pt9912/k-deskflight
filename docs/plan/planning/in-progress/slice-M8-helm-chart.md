@@ -590,6 +590,45 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
 9. **CHANGELOG.** Unter `## [Unreleased] Added` einen Helm-Chart-
    Eintrag ergänzen (wird mit M16-Closure in die `[0.2.0]`-Section
    verschoben).
+
+   **Step-9-Closure-Notiz (2026-05-21):**
+   - `CHANGELOG.md` `[Unreleased]`-Section um `### Added` mit 7
+     Bullets und `### Changed` mit 2 Bullets erweitert. Format
+     folgt der `[0.1.0]`-Section (Keep-a-Changelog 1.1.0,
+     Englisch, LH-/AR-/ADR-Tracability-Links).
+   - Anwender-sichtbarer Scope abgedeckt: Helm-Chart selbst,
+     Namespace-Reconcile-Scope Mode (`AR-016`/`AR-017`),
+     drei neue `make`-Gates, CRD-Sync-Helper, helm-tools-Stage
+     mit pinned Tools, Cluster-Smoke-Matrix für beide Install-
+     Modi, v0.2-Roadmap-Aktivierung, drei `open/`-Trigger.
+   - `Changed`-Block dokumentiert den Manifest-Image-Tag-Bump
+     `:dev` → `:v0.1.0` (Step-5-Drift-Folge) und die
+     `make gates`-Erweiterung um die drei Helm-Targets.
+   - M16-Closure wird den `[Unreleased]`-Block in eine
+     `## [0.2.0] - <DATUM>`-Section umwidmen und um die
+     verbleibenden M9–M15-Beiträge ergänzen.
+
+   **Step-9-Review-Folgen umgesetzt (Doku-Review nach K-1):**
+   - M-1: Helm-OCI-Pfad-Wording korrigiert — „targets OCI
+     distribution; first OCI push will land with v0.2.0 / M16"
+     statt suggestiv „has an OCI target" (Anwender, die den
+     Eintrag heute lesen, könnten sonst denken der Chart sei
+     bereits per `helm pull oci://…` installierbar).
+   - M-2: Maintainer-Kontext-Bullets gestrichen — „v0.2-roadmap
+     activated" und „three open/-triggers" gehören nicht in
+     Anwender-Release-Notes (slice-M7 §2.2: Spec-/Plan-/
+     Roadmap-Commits sind implizit attestiert via Pre-Tag-
+     Commit-Trail). Beide bleiben in den Slice-Closure-Notes
+     und Pre-Tag-Commits sichtbar; das CHANGELOG verschlankt
+     auf installierbare Artefakte.
+   - N-2: Redundanten Satz „CI runners pick up the expanded
+     gate-bundle automatically" aus dem `make gates`-Bullet
+     gestrichen. Der Job-Name-Hinweis trägt allein.
+   - Unverändert: N-1 (Tense-Mix) — `### Added` benutzt
+     deskriptives Präsens analog zur `[0.1.0]`-Section,
+     `### Changed` benutzt Past Tense (konsistent mit dem
+     M7-Vorbild). N-3 (chart-sync-crd-Skript-Idempotenz) ist
+     ein internes Skript-Detail, kein CHANGELOG-Fix.
 10. **Doku-Review.** Per K-1-Konvention (siehe [K-1 in README.md](README.md)) — Doku-Steps 8 und 9
     vor dem Slice-Closure vom `code-reviewer`-Subagent reviewen.
 11. **Slice-Closure-Notiz §10.** Geliefertes Datei-Set, attestierte
