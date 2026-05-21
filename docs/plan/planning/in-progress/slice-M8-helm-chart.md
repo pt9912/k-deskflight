@@ -82,6 +82,14 @@ sind die **kanonische Quelle**. Die Helm-Templates leiten ihre Struktur
 1:1 ab und werden als gerenderte Variante mit
 `{{ .Values…}}`-Substitutionen versehen.
 
+**Ausnahme: Image-Tag-Pin.** Der Operator-Image-Tag in
+`deploy/manifests/deployment.yaml` folgt dem letzten veröffentlichten
+Release-Tag. Wenn `Chart.yaml.appVersion` ein neueres Release referenziert,
+gewinnt **die Chart-Seite** — beide Werte werden zusammen gehoben (idealerweise
+im Release-Slice, vgl. M16 für v0.2.0). Vor Step 5 lag der Manifest-Tag noch
+auf `:dev` (M2-Platzhalter); Step 5 hat ihn auf `:v0.1.0` gehoben, weil das
+v0.1.0-Release ausgeliefert ist (vgl. step-5-Review M-3).
+
 **Doppelpflege-Strategie:** `deploy/manifests/` bleibt parallel zum
 Chart als roher Install-Pfad bestehen (`ADR 0005 §3` —
 „Anwender, die im MVP zwingend Helm benötigen, können das
@@ -281,7 +289,9 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
 | `deploy/charts/k-deskflight/templates/service.yaml` | abgeleitet | aus `deploy/manifests/service.yaml` (M6) |
 | `deploy/charts/k-deskflight/templates/metrics-clusterrole.yaml` | abgeleitet | aus `deploy/manifests/metrics-clusterrole.yaml` (M6 Pattern-Asset) |
 | `deploy/charts/k-deskflight/templates/NOTES.txt` | neu | Anwender-Hinweise nach Install |
-| `Makefile` | erweitert | neue Targets `helm-lint`, `helm-template`, `helm-manifests-sync` |
+| `Makefile` | erweitert | neue Targets `helm-lint`, `helm-template`, `helm-manifests-sync`, `chart-sync-crd` |
+| `scripts/helm-manifests-sync.sh` | neu | Drift-Gate-Skript, läuft im helm-tools-Container |
+| `scripts/chart-sync-crd.sh` | neu | Sync der CRD-Inline-Copy nach `make manifests` (slice-M8 step-5-Review H-2) |
 | `Dockerfile` (`tools`-Stage) | erweitert | `helm` und `kubectl` bereits vorhanden; ggf. Version-Pin nachjustieren |
 | `scripts/cluster-smoke.sh` | erweitert | `INSTALL_MODE=helm` (§2.7) |
 | `.github/workflows/ci.yaml` | erweitert | zweite Matrix-Dimension `install-mode: [manifests, helm]` für Cluster-Smoke-Job |
@@ -342,6 +352,59 @@ Reihenfolge **vor** dem Chart-Publish-Schritt.
    verstehen, dann entscheiden ob Template oder Original-Manifest
    die kanonische Quelle ist. Default-Vorrang: `deploy/manifests/`
    (existiert seit M2/M5/M6).
+
+   **Step-5-Closure-Notiz (2026-05-21):**
+   - `helm-tools`-Stage um `kubectl` (für `kubectl kustomize`) und
+     `yq` (für YAML-Normalisierung) erweitert. Pin-Hebung Routine
+     ohne ADR (`YQ_VERSION ?= v4.44.5`). yq als Bare-Binary über
+     HTTPS — Tarball-Variante existiert nicht für alle Releases,
+     gleiches Vertrauensmodell wie kind in der smoke-Stage.
+   - Skript `scripts/helm-manifests-sync.sh` rendert beide Seiten
+     (`helm template` + `kubectl kustomize --load-restrictor=
+     LoadRestrictionsNone`), normalisiert über yq (Helm-Meta-Labels
+     drop, controller-gen-Annotation drop, `creationTimestamp` drop,
+     leere/null-Docs filtern, Map-Keys rekursiv sortieren, Resources
+     nach (kind, namespace, name) sortieren), diff -u.
+   - Vier Drift-Befunde im Erst-Lauf, alle vor Aktivierung gelöst:
+     1. Duplikat-Label `app.kubernetes.io/component: metrics-scrape`
+        im Chart — fix: Labels in `templates/metrics-clusterrole.yaml`
+        inline statt über den `k-deskflight.labels`-Helper.
+     2. Chart-`ClusterRole` hatte Labels, controller-gen-Output nicht
+        — fix: Labels in `templates/clusterrole.yaml` entfernt mit
+        Kommentar zur AR-007-Begründung.
+     3. Image-Tag-Drift `:dev` (Manifest-Platzhalter) vs.
+        `:0.1.0` (Chart-appVersion) — fix: `deploy/manifests/
+        deployment.yaml` auf `:v0.1.0` gehoben (Operator ist seit
+        2026-05-20 released, Platzhalter nicht mehr nötig); Helper
+        `k-deskflight.imageRef` brückt zusätzlich die appVersion-vs-
+        Image-Tag-`v`-Präfix-Konvention (Helm: ohne v, GHCR: mit v).
+     4. Leerer Leading-Doc (helm-Conditional-Render-Artefakt) — fix:
+        `map(select(. != null and (.kind // "") != ""))` in der
+        yq-Sort-Phase filtert null/empty docs.
+   - `helm-manifests-sync` jetzt in `make gates` aufgenommen
+     (Position hinter `helm-template`); CI-Job-Name in
+     `.github/workflows/ci.yml` Z. 30 mitgezogen.
+   - **Step-5-Review-Folgen umgesetzt:**
+     - H-2: `make chart-sync-crd` jetzt als Target angelegt
+       (Skript: `scripts/chart-sync-crd.sh`), Failure-Header von
+       `helm-manifests-sync` erwähnt den Sync-Befehl explizit.
+     - M-1: yq sha256-Verifizierung über das `checksums`+
+       `checksums_hashes_order`-Asset-Paar des yq-Releases
+       (robust gegen Spaltenfolge-Änderungen).
+     - M-2: Load-Restrictor-Bypass mit präziserer Begründung
+       kommentiert (in-repo, container-isoliert, alternative-
+       Indirektion ohne Sicherheitsgewinn).
+     - M-3: §2.2 um Image-Tag-Pin-Ausnahmeklausel ergänzt.
+     - N-1: `[[ -s "$output" ]]`-Sanity-Check nach `normalize`.
+     - N-2: Sort-Tiebreaker-Begründung als Inline-Kommentar.
+   - **Deferred Future-Concern (Step-5-Review H-1):**
+     Die Normalisierungs-Pipeline droppt heute nur eine controller-
+     gen-Annotation (`controller-gen.kubebuilder.io/version`).
+     Wenn die CRD-Marker in v0.2 zusätzliche generierte
+     Annotationen produzieren (z. B. `api-approved.kubernetes.io`),
+     kippt das Gate stumm in False-Positive. Refactor auf
+     Whitelist-Modell (welche Annotationen *behalten*) ist ein
+     eigener kleiner Slice oder M16-Sub-Task.
 6. **Cluster-Smoke-Erweiterung.** `scripts/cluster-smoke.sh`
    `INSTALL_MODE=helm` umsetzen; CI-Matrix-Dimension
    `install-mode: [manifests, helm]` ergänzen. Beide laufen parallel

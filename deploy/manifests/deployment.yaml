@@ -1,8 +1,10 @@
 ---
 # Operator-Deployment. M2 stellt das Skelett bereit; M6 hat Health-/
 # Metrics-Probes (AR-024) gezogen; M7 schaltet Leader-Election (AR-026)
-# scharf. Image-Pin wird beim Apply via Kustomize-Edit oder Helm-Wert
-# gesetzt; der hier eingetragene `:dev`-Tag ist ein lokaler Platzhalter.
+# scharf. Image-Pin folgt dem zuletzt veröffentlichten Operator-Tag
+# (`v0.1.0` seit 2026-05-20); Anwender mit eigener Build-Pipeline
+# kustomisieren per `kustomize edit set image …` oder benutzen die
+# Helm-Variante (`values.yaml.image.tag`, slice-M8).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +36,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: operator
-          image: ghcr.io/pt9912/k-deskflight:dev
+          image: ghcr.io/pt9912/k-deskflight:v0.1.0
           imagePullPolicy: IfNotPresent
           # AR-026: Produktions-Modus mit Leader-Election; bei einer
           # späteren Deployment.spec.replicas > 1 elected die

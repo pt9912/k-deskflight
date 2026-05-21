@@ -9,8 +9,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: k-deskflight-operator-cluster
-  labels:
-    {{- include "k-deskflight.labels" . | nindent 4 }}
+  # Labels bewusst ausgelassen, damit der Chart-Render 1:1 zum
+  # controller-gen-Output in config/rbac/role.yaml passt (drift-frei
+  # gegen `kubectl kustomize deploy/manifests/`). Wenn der
+  # controller-gen-Output später Labels bekommt (z. B. via
+  # +kubebuilder:metadata-Marker), beide Seiten synchron anpassen.
 rules:
 - apiGroups:
   - ""

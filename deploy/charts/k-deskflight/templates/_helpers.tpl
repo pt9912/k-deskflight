@@ -53,7 +53,14 @@ helm.sh/chart: {{ include "k-deskflight.chart" . }}
 {{- default "k-deskflight-operator" .Values.serviceAccount.name -}}
 {{- end -}}
 
+{{/*
+imageRef: Helm-Konvention für appVersion ist "0.1.0" (ohne v-Präfix);
+GHCR-/Git-Tag-Konvention im Projekt ist "v0.1.0" (mit v). Diese
+Helper-Funktion brückt die beiden, indem sie das v-Präfix für den
+Default-Fall hinzufügt. Anwender, die einen non-default Tag setzen
+(z. B. `image.tag=sha-…`), kontrollieren das Präfix selbst.
+*/}}
 {{- define "k-deskflight.imageRef" -}}
-{{- $tag := default .Chart.AppVersion .Values.image.tag -}}
+{{- $tag := default (printf "v%s" .Chart.AppVersion) .Values.image.tag -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}

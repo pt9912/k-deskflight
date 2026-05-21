@@ -53,7 +53,8 @@ TRIVY_IMAGE ?= aquasec/trivy:0.59.1
         security-gates cluster-smoke cluster-smoke-image cluster-smoke-cleanup \
         operator-http-smoke image-publish-dry-run image-publish-guard \
         image-publish image-scan release-guard release-guard-test clean \
-        helm-tools-image helm-lint helm-template helm-manifests-sync
+        helm-tools-image helm-lint helm-template helm-manifests-sync \
+        chart-sync-crd
 
 # controller-gen-Pin (slice-M2 §2.4, ADR 0012 §2.8 Abs. 3). Hebung ist
 # Routine ohne ADR; Override via `make manifests CONTROLLER_GEN_VERSION=…`.
@@ -69,6 +70,11 @@ CLUSTER_NAME    ?= k-deskflight-smoke
 # Helm-Pin (slice-M8 §2.5). Hebung Routine ohne ADR (ADR 0012 §2.8
 # Abs. 3); Override via `make helm-lint HELM_VERSION=…`.
 HELM_VERSION    ?= v3.16.4
+
+# yq-Pin für die helm-tools-Stage (slice-M8 step 5). Wird im
+# Drift-Gate `make helm-manifests-sync` für YAML-Normalisierung
+# verwendet. Hebung Routine ohne ADR.
+YQ_VERSION      ?= v4.44.5
 
 # Helm-Kube-Capabilities-Override für `helm template` (slice-M8 §2.5).
 # Helm rendert offline gegen eine eingebaute Default-K8s-Version
@@ -170,9 +176,11 @@ generated-drift-check: manifests
 # bauen, dann via `docker run` aufrufen — Docker-only, keine Host-helm-
 # Anforderung.
 
-helm-tools-image: ## Build the helm-tools image with helm pinned.
+helm-tools-image: ## Build the helm-tools image (helm + kubectl + yq, slice-M8 §2.5).
 	docker build --target helm-tools \
 	    --build-arg HELM_VERSION=$(HELM_VERSION) \
+	    --build-arg KUBECTL_VERSION=$(KUBECTL_VERSION) \
+	    --build-arg YQ_VERSION=$(YQ_VERSION) \
 	    -t $(IMAGE):helm-tools .
 
 helm-lint: helm-tools-image ## helm lint deploy/charts/k-deskflight/ (slice-M8 §2.5).
@@ -201,18 +209,29 @@ helm-template: helm-tools-image ## helm template über drei Test-Values-Overlays
 	        echo "[helm-template] all three overlays rendered"'
 
 # Drift-Detektion zwischen Chart-Templates und kanonischer Quelle
-# (deploy/manifests/ + config/crd/). Step-4-Stand: Target existiert
-# strukturell, Skript ist noch Stub (slice-M8 §4 step 5 macht es grün).
-# Bewusst NICHT in `make gates` bis Step 5 — sonst läuft CI rot.
-helm-manifests-sync: ## Structural drift gate between chart templates and deploy/manifests/ (slice-M8 §2.5; stub until step 5).
-	bash scripts/helm-manifests-sync.sh
+# (deploy/manifests/ + config/crd/). Step-5-Aktivierung: Skript echt,
+# Target läuft im Container (K-2-Konvention).
+helm-manifests-sync: helm-tools-image ## Structural drift gate between chart templates and deploy/manifests/ (slice-M8 §2.5).
+	docker run --rm \
+	    -v "$(CURDIR):/src" \
+	    -w /src \
+	    -e HELM_KUBE_VERSION=$(HELM_KUBE_VERSION) \
+	    $(IMAGE):helm-tools \
+	    bash scripts/helm-manifests-sync.sh
+
+# Sync der Chart-CRD-Inline-Copy mit dem controller-gen-Output
+# (slice-M8 step-5-Review H-2). Läuft auf dem Host (kein Tooling-
+# Bedarf außer bash). Aufruf nach jedem `make manifests` falls die
+# CRD-Schema geändert wurde.
+chart-sync-crd: ## Refresh templates/crd.yaml from config/crd/...yaml (after make manifests).
+	bash scripts/chart-sync-crd.sh
 
 # ---- gate bundles ----------------------------------------------------------
 
-# `make gates` erweitert um die zwei grünen Helm-Gates aus slice-M8
-# (helm-lint + helm-template). `helm-manifests-sync` kommt mit Step 5
-# hinzu, sobald das Skript drift-frei läuft.
-gates: build lint test coverage-gate doc-refs generated-drift-check helm-lint helm-template ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
+# `make gates` erweitert um die drei Helm-Gates aus slice-M8
+# (helm-lint + helm-template + helm-manifests-sync). Step-5-Aktivierung
+# nach drift-freiem Erst-Lauf.
+gates: build lint test coverage-gate doc-refs generated-drift-check helm-lint helm-template helm-manifests-sync ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
 	@echo "[gates] passed"
 
 # `govulncheck` läuft in einem golang:1.26.3-Container und installiert

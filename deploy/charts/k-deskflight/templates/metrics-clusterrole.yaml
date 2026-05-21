@@ -10,9 +10,15 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: k-deskflight-metrics-scrape
+  # Labels bewusst inline gesetzt (nicht über `k-deskflight.labels`-
+  # Helper), weil dieses Resource den Component-Wert
+  # `metrics-scrape` statt `operator` führt — der Helper-Pfad würde
+  # beide Werte ins YAML schreiben (Duplicate-Key-Drift gegen
+  # deploy/manifests/metrics-clusterrole.yaml).
   labels:
-    {{- include "k-deskflight.labels" . | nindent 4 }}
+    app.kubernetes.io/name: k-deskflight
     app.kubernetes.io/component: metrics-scrape
+    app.kubernetes.io/part-of: k-deskflight
 rules:
   - nonResourceURLs:
       - /metrics

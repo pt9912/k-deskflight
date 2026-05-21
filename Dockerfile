@@ -63,19 +63,30 @@ ARG CONTROLLER_GEN_VERSION=v0.21.0
 RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
 
 # ---- helm-tools ------------------------------------------------------------
-# Helm-Chart-Tooling-Stage (slice-M8 §2.5). Pins helm CLI für den v0.2-
-# Helm-Chart-Distributionspfad. Genutzt von `make helm-lint`,
-# `make helm-template`, `make helm-manifests-sync`.
+# Helm-Chart-Tooling-Stage (slice-M8 §2.5). Pins helm CLI plus
+# kubectl (für `kubectl kustomize` in `make helm-manifests-sync`) und
+# yq (für YAML-Normalisierung im Drift-Gate). Genutzt von:
+#   - make helm-lint           (slice-M8 step 1)
+#   - make helm-template       (slice-M8 step 3)
+#   - make helm-manifests-sync (slice-M8 step 5)
 #
-# Aufbau parallel zur `smoke`-Stage: alpine-basierend, Binary
+# Aufbau parallel zur `smoke`-Stage: alpine-basierend, Binaries
 # heruntergeladen + sha256-verifiziert. Pinning-Politik wie übrige
 # Tool-Stages (ADR 0012 §2.8 Abs. 3): ARG mit Default, Hebung Routine
-# ohne ADR, Override via `docker build --build-arg HELM_VERSION=…`.
+# ohne ADR, Override via `docker build --build-arg <NAME>_VERSION=…`.
+#
+# Naming-Entscheidung (slice-M8 step 5): die Stage heißt weiterhin
+# `helm-tools` statt `chart-tools`, weil Helm die zentrale CLI bleibt
+# und kubectl/yq Hilfs-Werkzeuge für das Drift-Gate sind. Eine
+# Umbenennung würde Make-Targets + CI-Aufrufe brechen ohne neuen
+# Erkenntnisgewinn.
 FROM alpine:3.20 AS helm-tools
 
 ARG HELM_VERSION=v3.16.4
+ARG KUBECTL_VERSION=v1.34.0
+ARG YQ_VERSION=v4.44.5
 
-RUN apk add --no-cache bash ca-certificates curl \
+RUN apk add --no-cache bash ca-certificates curl diffutils \
     && cd /tmp \
     && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o "helm-${HELM_VERSION}-linux-amd64.tar.gz" \
     && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" -o "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" \
@@ -83,7 +94,35 @@ RUN apk add --no-cache bash ca-certificates curl \
     && tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz" \
     && mv linux-amd64/helm /usr/local/bin/helm \
     && chmod +x /usr/local/bin/helm \
-    && rm -rf "helm-${HELM_VERSION}-linux-amd64.tar.gz" "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" linux-amd64
+    && rm -rf "helm-${HELM_VERSION}-linux-amd64.tar.gz" "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" linux-amd64 \
+    # kubectl + sha256-verify (identical pattern to smoke stage).
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256" -o /tmp/kubectl.sha256 \
+    && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
+    && rm /tmp/kubectl.sha256 \
+    # yq als Bare-Binary + sha256-Verifizierung über das `checksums`-
+    # Asset des yq-Releases (slice-M8 step-5-Review M-1). Der
+    # Hash-Position-Index wird zur Robustheit aus
+    # `checksums_hashes_order` gelesen statt fest verdrahtet:
+    # mikefarah/yq dokumentiert dort die Spalten-Reihenfolge der
+    # multi-hash-Tabelle (MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/
+    # …). Damit bricht der Build nicht stumm, wenn ein zukünftiger
+    # yq-Release die Spaltenfolge ändert.
+    && curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq \
+    && curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" -o /tmp/yq.checksums \
+    && curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums_hashes_order" -o /tmp/yq.checksums_hashes_order \
+    && sha256_col=$(awk '/^SHA-256$/ {print NR + 1; exit}' /tmp/yq.checksums_hashes_order) \
+    && if [ -z "$sha256_col" ]; then \
+           echo "yq checksums_hashes_order: SHA-256 column not found" >&2; exit 1; \
+       fi \
+    && expected_sha=$(awk -v col="$sha256_col" '/^yq_linux_amd64 / {print $col}' /tmp/yq.checksums) \
+    && actual_sha=$(sha256sum /usr/local/bin/yq | awk '{print $1}') \
+    && if [ "$expected_sha" != "$actual_sha" ]; then \
+           echo "yq sha256 mismatch: expected=$expected_sha actual=$actual_sha (column=$sha256_col)" >&2; exit 1; \
+       fi \
+    && rm /tmp/yq.checksums /tmp/yq.checksums_hashes_order
 
 WORKDIR /src
 
