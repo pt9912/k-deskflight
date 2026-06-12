@@ -5,10 +5,10 @@
 # `docker build --target <stage>` bzw. `docker run`; das Repository
 # hat keine host-seitige Go-Toolchain-Anforderung.
 #
-# Ausnahme: `make doc-refs` ruft `bash scripts/verify-doc-refs.sh`
-# direkt auf dem Host — ein 100-Zeilen-Bash-Skript ohne Go-Toolchain-
-# Bedarf zu containerisieren wäre Overhead ohne Nutzen. Das ist die
-# einzige Carveout-Stelle der Docker-only-Konvention.
+# `make doc-refs` läuft seit ADR 0016 über das digest-gepinnte
+# d-check-Image (Konfiguration: .d-check.yml) — die frühere
+# Host-Bash-Ausnahme (einzige Carveout-Stelle der Docker-only-
+# Konvention) ist damit aufgelöst.
 #
 # Quality-Gates (ADR 0012 §2.11):
 #   make gates           — Pflicht-Gates der Inner-Loop, PR-blockierend.
@@ -117,8 +117,11 @@ coverage-gate: ## Coverage threshold gate (M1 = 0, M6 hebt auf 90).
 # stdout, das Gate bleibt aktiv.
 coverage: coverage-gate
 
-doc-refs: ## Verify local markdown link targets (LH-QG-008).
-	bash scripts/verify-doc-refs.sh
+# Digest-Pin auf d-check v0.2.0 (ADR 0016); Hebung = Routine-Pin.
+D_CHECK_IMAGE ?= ghcr.io/pt9912/d-check@sha256:f2e0ac7bd9650fe560058e530c8890a629e2df43b8b2e696e78488794d311846
+
+doc-refs: ## Verify local markdown link targets (LH-QG-008, d-check).
+	docker run --rm -v "$(CURDIR)":/repo:ro $(D_CHECK_IMAGE)
 
 # ---- generators ------------------------------------------------------------
 
