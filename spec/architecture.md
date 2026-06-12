@@ -71,7 +71,7 @@ github.com/pt9912/k-deskflight
 
 Halterung GitHub-Org/-Account `pt9912` (konsistent mit
 `ADR 0011 §2.6` GitHub-Hosting und mit dem Halter von
-`/Development/m-trace`).
+`m-trace` (Schwester-Repo)).
 
 ### AR-002 — Paket-Layout-Schule
 
@@ -1094,7 +1094,7 @@ Multi-Stage-`Dockerfile` analog `m-trace/apps/api/Dockerfile`:
 | `make release-guard VER=X.Y.Z` | Pre-Release-Konsistenzprüfung | `ADR 0011 §2.5` |
 
 Konkrete Target-Implementierungen entstehen im M1-Slice-Plan,
-adaptiert von `/Development/m-trace/Makefile`.
+adaptiert vom `Makefile` des Schwester-Repos `m-trace`.
 
 ### AR-021 — CI-Workflow
 
