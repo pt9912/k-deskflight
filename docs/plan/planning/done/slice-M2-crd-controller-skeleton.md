@@ -4,7 +4,7 @@
 **Eröffnet:** 2026-05-17
 **Geschlossen:** 2026-05-17
 **Vorgänger:** [M1 — Repo & Build-Skeleton (Done)](slice-M1-repo-skeleton.md)
-**Nachfolger:** [M3 — Erste Prüfung: Kubernetes-Version](roadmap.md#m3--erste-pr%C3%BCfung--kubernetes-version)
+**Nachfolger:** [M3 — Erste Prüfung: Kubernetes-Version](roadmap.md#m3--erste-pr%C3%BCfung-kubernetes-version)
 **Bezug:**
 [Roadmap §3 M2](roadmap.md#m2--crd--controller-skeleton),
 [`spec/architecture.md` §4 (AR-006, AR-007, AR-008), §5 (AR-009), §7 (AR-015..AR-018)](../../../../spec/architecture.md),
