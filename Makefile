@@ -237,14 +237,14 @@ chart-sync-crd: ## Refresh templates/crd.yaml from config/crd/...yaml (after mak
 gates: build lint test coverage-gate doc-refs generated-drift-check helm-lint helm-template helm-manifests-sync ## Inner-loop Pflicht-Gates (ADR 0012 §2.11).
 	@echo "[gates] passed"
 
-# `govulncheck` läuft in einem golang:1.26.3-Container und installiert
+# `govulncheck` läuft in einem golang:1.26.4-Container und installiert
 # den Tool-Pin per `go install`. Funktionsbasiert — meldet nur tatsäch-
 # lich aufgerufene Vulnerable-Funktionen (ADR 0012 §2.8). In M1 ohne
 # externe Deps trivial grün; strikt PR-blockierend wird das Gate spätes-
 # tens in M6 mit dem ersten echten Dependency-Tree (controller-runtime
 # etc.).
 govulncheck: ## Run govulncheck (function-based scanning).
-	docker run --rm -v "$(CURDIR):/src" -w /src golang:1.26.3 \
+	docker run --rm -v "$(CURDIR):/src" -w /src golang:1.26.4 \
 	    bash -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && \
 	             "$$(go env GOPATH)/bin/govulncheck" ./...'
 
